@@ -28,6 +28,26 @@ namespace edworld
     ///\brief the directory edworld.dll lives in; a file `edworld_dump` there asks for one dump of every panel's
     /// interface surface into `edworld_dumps\` (raw rows; size, format and row pitch in the name)
     std::wstring dir;
+
+    // ---- the jump panel patch: drawn by the proxy onto the panel's interface surface while a jump charges ----
+    ///\brief 0 off, 1 on: the right superpower emblem over the panel's wrong one (destination from Status.json,
+    /// its allegiance from EDSM), 2 test: a bright frame where the patch goes, whatever the destination
+    std::uint32_t patch{0};
+    ///\brief the interface surface that carries the jump panel
+    std::uint32_t patch_surface_width{3072};
+    std::uint32_t patch_surface_height{660};
+    ///\brief the patch's centre and size on that surface, in its pixels; the emblem's height
+    float patch_x{1535.f};
+    float patch_y{322.f};
+    float patch_width{260.f};
+    float patch_height{120.f};
+    float patch_emblem_height{90.f};
+    std::uint32_t patch_ground{0x020304u};
+    ///\brief 0 = the destination's own; 1 Federation, 2 Empire, 3 Alliance = draw that emblem whatever the
+    /// destination (placing the patch where the game shows no emblem, e.g. in deep space)
+    std::uint32_t patch_force{0};
+    ///\brief ask EDSM for the destination's allegiance (only the system's id goes out)
+    bool edsm{true};
     };
 
   auto settings() noexcept -> settings_t const &;

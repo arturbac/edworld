@@ -5,6 +5,8 @@
 #include <cstdarg>
 #include <cstdio>
 #include <mutex>
+#include <cstdlib>
+#include <string>
 #include <string_view>
 
 namespace edworld
@@ -47,6 +49,13 @@ namespace edworld
         }
       return v;
       }
+    auto to_float(std::string_view s, float fallback) -> float
+      {
+      std::string const text{s};
+      char * end{};
+      float const v{std::strtof(text.c_str(), &end)};
+      return end and end != text.c_str() ? v : fallback;
+      }
     }  // namespace
 
   auto settings() noexcept -> settings_t const & { return current; }
@@ -77,6 +86,36 @@ namespace edworld
         current.log_interval_ms = to_uint(value, current.log_interval_ms);
       else if(key == "frame_gap_us")
         current.frame_gap_us = to_uint(value, current.frame_gap_us);
+      else if(key == "patch")
+        current.patch = to_uint(value, current.patch);
+      else if(key == "patch_surface")
+        {
+        auto const x{value.find('x')};
+        if(x != std::string_view::npos)
+          {
+          current.patch_surface_width = to_uint(trim(value.substr(0, x)), current.patch_surface_width);
+          current.patch_surface_height = to_uint(trim(value.substr(x + 1)), current.patch_surface_height);
+          }
+        }
+      else if(key == "patch_x")
+        current.patch_x = to_float(value, current.patch_x);
+      else if(key == "patch_y")
+        current.patch_y = to_float(value, current.patch_y);
+      else if(key == "patch_width")
+        current.patch_width = to_float(value, current.patch_width);
+      else if(key == "patch_height")
+        current.patch_height = to_float(value, current.patch_height);
+      else if(key == "patch_emblem_height")
+        current.patch_emblem_height = to_float(value, current.patch_emblem_height);
+      else if(key == "patch_ground")
+        {
+        if(auto const v{parse_hash(value)}; v)
+          current.patch_ground = static_cast<std::uint32_t>(*v);
+        }
+      else if(key == "patch_force")
+        current.patch_force = to_uint(value, current.patch_force);
+      else if(key == "edsm")
+        current.edsm = value == "1" or value == "true";
       else if(key == "log_all_vs")
         current.log_all_vs = value == "1" or value == "true";
       else if(key == "watch_vs")

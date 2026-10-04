@@ -46,11 +46,27 @@ int main()
   GetEnvironmentVariableW(L"EDWORLD_TEST_NEXT", next, MAX_PATH);
   if(next[0])
     std::fprintf(ini, "next = %ls\n", next);
+  std::fprintf(ini, "patch = 2\npatch_surface = 512x128\npatch_x = 256\npatch_y = 64\npatch_width = 100\npatch_height = 50\npatch_emblem_height = 40\npatch_force = 1\nedsm = %d\n", GetEnvironmentVariableW(L"EDWORLD_TEST_EDSM", nullptr, 0) ? 1 : 0);
   std::fprintf(ini, "watch_vs = %016llX, 1989E6D3B405FDE0\nshare = %ls\nlog_interval_ms = 1\nlog_all_vs = 1\n",
                static_cast<unsigned long long>(watched), share_path.c_str());
   std::fclose(ini);
   }
   DeleteFileW(share_path.c_str());
+  {
+  wchar_t profile[MAX_PATH]{};
+  GetEnvironmentVariableW(L"USERPROFILE", profile, MAX_PATH);
+  std::wstring status_dir{std::wstring{profile} + L"\\Saved Games"};
+  CreateDirectoryW(status_dir.c_str(), nullptr);
+  status_dir += L"\\Frontier Developments";
+  CreateDirectoryW(status_dir.c_str(), nullptr);
+  status_dir += L"\\Elite Dangerous";
+  CreateDirectoryW(status_dir.c_str(), nullptr);
+  std::FILE * status{_wfopen((status_dir + L"\\Status.json").c_str(), L"wb")};
+  std::fprintf(status, "{ \"timestamp\":\"2026-10-04T12:00:00Z\", \"event\":\"Status\", \"Flags\":16842760, \"Flags2\":524288, "
+                       "\"Destination\":{ \"System\":3932277478106, \"Body\":0, \"Name\":\"Shinrarta Dezhra\" } }");
+  std::fclose(status);
+  }
+  Sleep(300);  // the state thread polls every 100 ms
 
   ID3D11Device * dev{};
   ID3D11DeviceContext * ctx{};
@@ -133,13 +149,17 @@ int main()
   td.Height = 128;
   td.MipLevels = 1;
   td.ArraySize = 1;
-  td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+  td.Format = DXGI_FORMAT_R8G8B8A8_TYPELESS;
   td.SampleDesc.Count = 1;
-  td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+  td.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
   ID3D11Texture2D * surface{};
   dev->CreateTexture2D(&td, nullptr, &surface);
+  D3D11_SHADER_RESOURCE_VIEW_DESC svd{};
+  svd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+  svd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+  svd.Texture2D.MipLevels = 1;
   ID3D11ShaderResourceView * srv{};
-  dev->CreateShaderResourceView(surface, nullptr, &srv);
+  dev->CreateShaderResourceView(surface, &svd, &srv);
 
   D3D11_TEXTURE2D_DESC rd{};
   rd.Width = 256;
@@ -202,6 +222,46 @@ int main()
     Sleep(15);  // longer than frame_gap_us: the next panel draw starts a new frame
     }
 
+  {
+  ID3D11RenderTargetView * bound_rtv{};
+  ctx->OMGetRenderTargets(1, &bound_rtv, nullptr);
+  ID3D11ShaderResourceView * bound_srv{};
+  ctx->PSGetShaderResources(2, 1, &bound_srv);
+  ID3D11VertexShader * bound_vs{};
+  ctx->VSGetShader(&bound_vs, nullptr, nullptr);
+  check(bound_rtv == rtv and bound_srv == srv and bound_vs == other_vs, "the game's targets, surface and shader are back after the patch");
+  if(bound_rtv) bound_rtv->Release();
+  if(bound_srv) bound_srv->Release();
+  if(bound_vs) bound_vs->Release();
+
+  D3D11_TEXTURE2D_DESC sd{td};
+  sd.Usage = D3D11_USAGE_STAGING;
+  sd.BindFlags = 0;
+  sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+  ID3D11Texture2D * readback{};
+  dev->CreateTexture2D(&sd, nullptr, &readback);
+  ctx->CopyResource(readback, surface);
+  D3D11_MAPPED_SUBRESOURCE m{};
+  ctx->Map(readback, 0, D3D11_MAP_READ, 0, &m);
+  auto const pixel{[&](int x, int y) -> std::uint32_t
+    {
+    std::uint8_t const * p{static_cast<std::uint8_t const *>(m.pData) + y * m.RowPitch + x * 4};
+    return (std::uint32_t{p[0]} << 16) | (std::uint32_t{p[1]} << 8) | p[2];
+    }};
+  std::printf("surface pixels: centre %06x, frame %06x, outside %06x\n", pixel(256, 64), pixel(208, 64), pixel(10, 10));
+  std::uint32_t emblem_pixels{};
+  for(int y{44}; y != 84; ++y)
+    for(int x{226}; x != 286; ++x)
+      if(std::uint32_t const c{pixel(x, y)}; ((c >> 16) & 0xffu) > 0x80u and (c & 0xffu) < 0x80u)
+        ++emblem_pixels;
+  std::printf("federation-red pixels in the emblem box: %u\n", emblem_pixels);
+  check(emblem_pixels > 200, "forced Federation emblem drawn in its colour");
+  check(pixel(256 - 45, 64) == 0x020304u, "patch ground drawn beside the emblem");
+  check(pixel(208, 64) == 0xff00ffu, "test frame drawn at the patch's edge");
+  check(pixel(10, 10) == 0u, "surface untouched outside the patch");
+  ctx->Unmap(readback, 0);
+  }
+
   HANDLE const file{CreateFileW(share_path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr)};
   check(file != INVALID_HANDLE_VALUE, "share file exists");
   if(file == INVALID_HANDLE_VALUE)
@@ -217,7 +277,7 @@ int main()
   check(s.frame >= 20, "frames counted by the draw gap");
   edworld::panel_t const & p{s.panels[0]};
   check(p.surface_width == 512 and p.surface_height == 128, "surface size from PS t2");
-  check(p.surface_format == DXGI_FORMAT_R8G8B8A8_UNORM, "surface format");
+  check(p.surface_format == DXGI_FORMAT_R8G8B8A8_TYPELESS, "surface format (typeless, as the game's)");
   check(p.index_count == 6 and p.instance_count == 1 and p.start_instance == 3, "draw arguments");
   check(p.flags == 1u and p.record_index == 2u, "instance entry -> record 2");
   check(near_eq(p.scale, 1.5f) and near_eq(p.position[0], 0.5f) and near_eq(p.position[1], 1.5f) and near_eq(p.position[2], 2.5f),
@@ -229,7 +289,7 @@ int main()
   auto const ndc{edworld::clip_to_ndc(p.anchor_clip)};
   check(ndc and near_eq(ndc->x, 1.15f / 2.5f) and near_eq(ndc->y, 1.1f / 2.5f) and near_eq(ndc->w, 2.5f), "anchor from the record's position");
   WIN32_FIND_DATAW found{};
-  HANDLE const dumps{FindFirstFileW((dir + L"\\edworld_dumps\\*_512x128_f28_*.raw").c_str(), &found)};
+  HANDLE const dumps{FindFirstFileW((dir + L"\\edworld_dumps\\*_512x128_f27_*.raw").c_str(), &found)};
   check(dumps != INVALID_HANDLE_VALUE, "the panel's surface dumped (512x128)");
   if(dumps != INVALID_HANDLE_VALUE)
     FindClose(dumps);
@@ -243,6 +303,8 @@ int main()
     auto const calls{reinterpret_cast<calls_fn>(GetProcAddress(fake, "fake_next_calls"))};
     check(calls and calls() == 1, "chained proxy called once, its by-name call routed to the system copy");
     }
+  if(GetEnvironmentVariableW(L"EDWORLD_TEST_EDSM", nullptr, 0))
+    Sleep(3000);  // the state thread's question to EDSM
   std::printf("%s (%d failure(s))\n", failures ? "FAILED" : "PASSED", failures);
   return failures ? 1 : 0;
   }

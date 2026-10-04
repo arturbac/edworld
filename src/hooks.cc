@@ -7,7 +7,9 @@
 //    and map it frames later with DO_NOT_WAIT;
 //  - GetType before GetDesc; a fault in our code disables us, never the game call.
 #include "edworld_share.h"
+#include "game_state.h"
 #include "panel_math.h"
+#include "panel_patch.h"
 #include "runtime.h"
 
 #include <d3d11_1.h>
@@ -745,6 +747,9 @@ namespace edworld
         stage_frame(ctx, slot);
       slot.have_entry[slot.count] = stage_entry(ctx, slot, slot.count, start_instance);
 
+      if(settings().patch)
+        panel_patch(ctx, device, frame);
+
       surface_cache_t surface{};
       surface_of(ctx, surface);
       slot.meta[slot.count++] = meta_t{
@@ -945,6 +950,10 @@ namespace edworld
     immediate.store(ctx);  // the latest device wins; its context stays referenced for the process lifetime
     if(not share)
       open_share();
+    if(settings().patch)
+      start_game_state();
+    if(settings().patch and not settings().edsm)
+      log_line("patch: on, but edsm = 0 - no allegiance, only the test frame can be drawn");
     std::uint32_t const n{watched_count.load()};
     log_line(
       "attach: device %p context %p (context1 %s), %zu watched hash(es), %u already created",
