@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Live view of what edworld publishes (the share file, default /dev/shm/edworld).
+"""Live view of what edworld publishes (the panels file, default /dev/shm/eht/panels).
 
 Prints, a few times a second, every cockpit panel draw of the latest frame: interface surface size, draw
 arguments and where the panel's local origin lands on screen (NDC, x right, y up, -1..1).
@@ -23,7 +23,7 @@ def read(buf):
 
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    path = args[0] if args else "/dev/shm/edworld"
+    path = args[0] if args else "/dev/shm/eht/panels"
     with open(path, "rb") as f:
         buf = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
     while True:

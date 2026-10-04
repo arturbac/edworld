@@ -80,8 +80,8 @@ namespace edworld
       std::string_view const value{trim(text.substr(eq + 1))};
       if(key == "next")
         current.next = widen(value);
-      else if(key == "share")
-        current.share = widen(value);
+      else if(key == "shm_dir")
+        current.shm_dir = widen(value);
       else if(key == "log_interval_ms")
         current.log_interval_ms = to_uint(value, current.log_interval_ms);
       else if(key == "frame_gap_us")

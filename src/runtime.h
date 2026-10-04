@@ -17,8 +17,9 @@ namespace edworld
     std::wstring next;
     ///\brief vertex shaders whose draws are panels: the cockpit holo panel family and its "GUI effects off" twin
     std::vector<std::uint64_t> watch_vs{0x81216C77F90DEDD6ull, 0x1989E6D3B405FDE0ull};
-    ///\brief the file the panels are published in; empty = no publishing
-    std::wstring share{L"Z:\\dev\\shm\\edworld"};
+    ///\brief the tmpfs directory shared with the tools beside the game, one per data source: `panels` is
+    /// published there, `target` read from there (Z: is the Linux root under Wine); empty = neither
+    std::wstring shm_dir{L"Z:\\dev\\shm\\eddn"};
     ///\brief a summary line of the frame's panels at most this often; 0 = never
     std::uint32_t log_interval_ms{1000};
     ///\brief a gap between two panel draws longer than this starts a new frame
@@ -38,10 +39,10 @@ namespace edworld
     std::uint32_t patch_surface_height{660};
     ///\brief the patch's centre and size on that surface, in its pixels; the emblem's height
     float patch_x{1535.f};
-    float patch_y{322.f};
+    float patch_y{278.f};
     float patch_width{260.f};
     float patch_height{120.f};
-    float patch_emblem_height{90.f};
+    float patch_emblem_height{92.f};
     std::uint32_t patch_ground{0x020304u};
     ///\brief 0 = the destination's own; 1 Federation, 2 Empire, 3 Alliance = draw that emblem whatever the
     /// destination (placing the patch where the game shows no emblem, e.g. in deep space)

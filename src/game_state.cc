@@ -2,6 +2,8 @@
 // Only the destination's id goes out (api-system-v1/factions?systemId64=), once per new destination.
 #include "game_state.h"
 
+#include "edworld_share.h"
+
 #include "runtime.h"
 
 #include <shlobj.h>
@@ -9,6 +11,7 @@
 
 #include <atomic>
 #include <cstdio>
+#include <cstring>
 #include <cstdlib>
 #include <string>
 #include <string_view>
@@ -135,12 +138,74 @@ namespace edworld
       return body;
       }
 
+    // ---- the data source's target (EHT): read before EDSM is asked ----
+    target_t const * target_view{};
+    DWORD next_target_try{};
+
+    auto map_target() -> void
+      {
+      if(target_view or settings().shm_dir.empty())
+        return;
+      DWORD const now{GetTickCount()};
+      if(static_cast<LONG>(now - next_target_try) < 0)
+        return;
+      next_target_try = now + 2000;
+      std::wstring const path{settings().shm_dir + L"\\target"};
+      HANDLE const file{CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                                    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr)};
+      if(file == INVALID_HANDLE_VALUE)
+        return;
+      LARGE_INTEGER size{};
+      GetFileSizeEx(file, &size);
+      if(size.QuadPart < static_cast<LONGLONG>(sizeof(target_t)))
+        {
+        CloseHandle(file);
+        return;
+        }
+      HANDLE const mapping{CreateFileMappingW(file, nullptr, PAGE_READONLY, 0, sizeof(target_t), nullptr)};
+      CloseHandle(file);
+      if(not mapping)
+        return;
+      // the view keeps the mapping alive; neither handle is needed past this point
+      target_view = static_cast<target_t const *>(MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, sizeof(target_t)));
+      CloseHandle(mapping);
+      if(target_view)
+        log_line("state: reading the data source's target from %S", path.c_str());
+      }
+
+    ///\brief a consistent copy of the target record; false when there is none or it is not one
+    auto read_target(target_t & copy) -> bool
+      {
+      map_target();
+      if(not target_view)
+        return false;
+      for(int attempt{}; attempt != 8; ++attempt)
+        {
+        // plain loads only: the view is read-only, and an interlocked operation writes even when it changes
+        // nothing - an access violation on this page
+        auto const sequence{[]() noexcept -> std::uint32_t
+          { return *static_cast<std::uint32_t const volatile *>(&target_view->sequence); }};
+        std::uint32_t const before{sequence()};
+        MemoryBarrier();
+        if(before & 1u)
+          continue;
+        std::memcpy(&copy, target_view, sizeof copy);
+        MemoryBarrier();
+        if(sequence() == before)
+          return copy.magic == target_magic and copy.version == target_version;
+        }
+      return false;
+      }
+
     DWORD WINAPI poll_thread(LPVOID)
       {
       std::wstring const path{status_path()};
       log_line("state: polling %S", path.c_str());
       std::uint64_t asked{};
       bool last_charging{};
+      std::uint64_t target_dest{};
+      DWORD target_since{};
+      bool target_answered{};
       for(;;)
         {
         std::string const text{read_file(path)};
@@ -148,7 +213,9 @@ namespace edworld
           {
           bool ok{};
           std::uint64_t const flags2{number_after(text, "\"Flags2\"", 0, ok)};
-          bool const now_charging{ok and (flags2 & (1ull << 19)) != 0};
+          // the game rewrites the file in place: a read caught halfway has no Flags2 and says nothing new
+          bool const complete{ok and text.find('}') != std::string::npos and text.back() == '}'};
+          bool const now_charging{complete ? (flags2 & (1ull << 19)) != 0 : last_charging};
           charging.store(now_charging, std::memory_order_relaxed);
           auto const dest_at{text.find("\"Destination\"")};
           bool have_dest{};
@@ -167,7 +234,32 @@ namespace edworld
             }
           }
         std::uint64_t const dest{destination.load()};
-        if(dest and dest != asked and settings().edsm)
+        // the data source first: when it knows the destination, it is the answer; when it says it does not,
+        // or says nothing of this destination for two seconds, EDSM is asked
+        if(dest != target_dest)
+          {
+          target_dest = dest;
+          target_since = GetTickCount();
+          target_answered = false;
+          }
+        target_t t{};
+        bool const have_target{read_target(t)};
+        if(dest and have_target and t.system_address == dest and not target_answered)
+          {
+          target_answered = true;
+          if(t.known)
+            {
+            allegiance_e const a{t.allegiance <= 5 ? static_cast<allegiance_e>(t.allegiance) : allegiance_e::unknown};
+            allegiance.store(static_cast<std::uint8_t>(a));
+            asked = dest;  // no EDSM for it
+            log_line("state: %llu (%.64s) -> %s, from the data source", static_cast<unsigned long long>(dest), t.name,
+                     allegiance_name(a));
+            }
+          else
+            log_line("state: %llu (%.64s) unknown to the data source", static_cast<unsigned long long>(dest), t.name);
+          }
+        bool const source_silent{not have_target or (not target_answered and GetTickCount() - target_since > 2000)};
+        if(dest and dest != asked and settings().edsm and (source_silent or (target_answered and t.system_address == dest and not t.known)))
           {
           asked = dest;
           std::string const body{edsm_factions(dest)};

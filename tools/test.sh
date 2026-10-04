@@ -25,9 +25,9 @@ cd "$RUN"
 set +e
 WINEDEBUG=-all WINEDLLOVERRIDES="d3d11=n,b" wine test_app.exe
 rc=$?
-echo "--- with EDSM asked for the destination (Shinrarta Dezhra's id; needs the network)"
+echo "--- with EDSM allowed: the data source knows the destination, so EDSM must not be asked"
 EDWORLD_TEST_EDSM=1 WINEDEBUG=-all WINEDLLOVERRIDES="d3d11=n,b" wine test_app.exe | grep -E "PASSED|FAILED"
-sleep 2; grep "edsm:" edworld.log | tail -2
+sleep 2; grep -E "edsm:|from the data source" edworld.log | tail -2
 echo "--- chained through fake_next.dll (calls d3d11.dll by name)"
 EDWORLD_TEST_NEXT=fake_next.dll WINEDEBUG=-all WINEDLLOVERRIDES="d3d11=n,b" wine test_app.exe
 rc2=$?

@@ -36,7 +36,8 @@ int main()
   GetModuleFileNameW(nullptr, exe, MAX_PATH);
   std::wstring dir{exe};
   dir.resize(dir.find_last_of(L"\\/"));
-  std::wstring const share_path{dir + L"\\edworld_test.shm"};
+  std::wstring const shm_dir{dir + L"\\shm"};
+  std::wstring const share_path{shm_dir + L"\\panels"};
 
   // The settings must be in place before the first d3d11 export call.
   std::uint64_t const watched{edworld::fnv1a64(g_panel_vs, sizeof g_panel_vs)};
@@ -46,12 +47,28 @@ int main()
   GetEnvironmentVariableW(L"EDWORLD_TEST_NEXT", next, MAX_PATH);
   if(next[0])
     std::fprintf(ini, "next = %ls\n", next);
-  std::fprintf(ini, "patch = 2\npatch_surface = 512x128\npatch_x = 256\npatch_y = 64\npatch_width = 100\npatch_height = 50\npatch_emblem_height = 40\npatch_force = 1\nedsm = %d\n", GetEnvironmentVariableW(L"EDWORLD_TEST_EDSM", nullptr, 0) ? 1 : 0);
-  std::fprintf(ini, "watch_vs = %016llX, 1989E6D3B405FDE0\nshare = %ls\nlog_interval_ms = 1\nlog_all_vs = 1\n",
-               static_cast<unsigned long long>(watched), share_path.c_str());
+  std::fprintf(ini, "patch = 2\npatch_surface = 512x128\npatch_x = 256\npatch_y = 64\npatch_width = 100\npatch_height = 50\npatch_emblem_height = 40\nedsm = %d\n", GetEnvironmentVariableW(L"EDWORLD_TEST_EDSM", nullptr, 0) ? 1 : 0);
+  std::fprintf(ini, "watch_vs = %016llX, 1989E6D3B405FDE0\nshm_dir = %ls\nlog_interval_ms = 1\nlog_all_vs = 1\n",
+               static_cast<unsigned long long>(watched), shm_dir.c_str());
   std::fclose(ini);
   }
   DeleteFileW(share_path.c_str());
+  // the data source's target, as EHT writes it: the destination is known, an Empire system
+  CreateDirectoryW(shm_dir.c_str(), nullptr);
+  {
+  edworld::target_t t{};
+  t.magic = edworld::target_magic;
+  t.version = edworld::target_version;
+  t.size = sizeof t;
+  t.sequence = 2;
+  t.system_address = 3932277478106ull;
+  t.known = 1;
+  t.allegiance = 2;
+  std::strcpy(t.name, "Shinrarta Dezhra");
+  std::FILE * tf{_wfopen((shm_dir + L"\\target").c_str(), L"wb")};
+  std::fwrite(&t, sizeof t, 1, tf);
+  std::fclose(tf);
+  }
   {
   wchar_t profile[MAX_PATH]{};
   GetEnvironmentVariableW(L"USERPROFILE", profile, MAX_PATH);
@@ -252,10 +269,10 @@ int main()
   std::uint32_t emblem_pixels{};
   for(int y{44}; y != 84; ++y)
     for(int x{226}; x != 286; ++x)
-      if(std::uint32_t const c{pixel(x, y)}; ((c >> 16) & 0xffu) > 0x80u and (c & 0xffu) < 0x80u)
+      if(std::uint32_t const c{pixel(x, y)}; (c & 0xffu) > 0x80u and ((c >> 16) & 0xffu) < 0x80u)
         ++emblem_pixels;
-  std::printf("federation-red pixels in the emblem box: %u\n", emblem_pixels);
-  check(emblem_pixels > 200, "forced Federation emblem drawn in its colour");
+  std::printf("empire-blue pixels in the emblem box: %u\n", emblem_pixels);
+  check(emblem_pixels > 150, "Empire emblem from the data source's target, in its colour");
   check(pixel(256 - 45, 64) == 0x020304u, "patch ground drawn beside the emblem");
   check(pixel(208, 64) == 0xff00ffu, "test frame drawn at the patch's edge");
   check(pixel(10, 10) == 0u, "surface untouched outside the patch");

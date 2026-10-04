@@ -157,9 +157,11 @@ namespace edworld
     // ---- the published record ----
     auto open_share() noexcept -> void
       {
-      std::wstring const & path{settings().share};
-      if(path.empty())
+      std::wstring const & dir{settings().shm_dir};
+      if(dir.empty())
         return;
+      CreateDirectoryW(dir.c_str(), nullptr);
+      std::wstring const path{dir + L"\\panels"};
       HANDLE const file{CreateFileW(
         path.c_str(),
         GENERIC_READ | GENERIC_WRITE,
