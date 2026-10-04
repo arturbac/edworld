@@ -53,6 +53,7 @@ namespace edworld
 
   auto load_settings(std::wstring const & dir) -> void
     {
+    current.dir = dir;
     std::wstring const path{dir + L"\\edworld.ini"};
     std::FILE * f{_wfopen(path.c_str(), L"rb")};
     if(not f)

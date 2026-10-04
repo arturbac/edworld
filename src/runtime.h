@@ -25,6 +25,9 @@ namespace edworld
     std::uint32_t frame_gap_us{2500};
     ///\brief log the hash of every vertex shader the game creates (discovery)
     bool log_all_vs{false};
+    ///\brief the directory edworld.dll lives in; a file `edworld_dump` there asks for one dump of every panel's
+    /// interface surface into `edworld_dumps\` (raw rows; size, format and row pitch in the name)
+    std::wstring dir;
     };
 
   auto settings() noexcept -> settings_t const &;

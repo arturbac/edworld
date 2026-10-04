@@ -13,6 +13,7 @@
 #include <d3d11_1.h>
 
 #include <atomic>
+#include <cstdio>
 #include <cstring>
 
 namespace edworld
@@ -72,9 +73,24 @@ namespace edworld
       std::uint32_t start_instance;
       };
 
+    constexpr std::uint32_t entry_bytes{16u};  // one VB0 instance entry (8 used) per panel draw
+    constexpr std::uint32_t cb1_first_row{268u};
+    constexpr std::uint32_t cb1_rows{8u};  // 268..275; 275 = world-rebase origin
+    constexpr std::uint32_t side_bytes{max_panels * entry_bytes + cb1_rows * 16u};
+    constexpr std::uint32_t pool_limit{64u * 1024u * 1024u};
+
     struct slot_t
       {
       ID3D11Buffer * staging{};
+      ID3D11Buffer * side{};  ///< VB0 entries at panel * 16, then cb1 rows 268..275
+      ID3D11Buffer * pool{};  ///< the whole t33 record pool of the frame
+      std::uint32_t pool_capacity{};
+      std::uint32_t pool_bytes{};
+      std::uint32_t pool_first{};
+      std::uint32_t pool_stride{};
+      bool have_pool{};
+      bool have_cb1{};
+      bool have_entry[max_panels]{};
       meta_t meta[max_panels]{};
       std::uint32_t count{};
       std::uint64_t frame{};
@@ -178,7 +194,77 @@ namespace edworld
       log_line("share: publishing to %S (%zu bytes)", path.c_str(), sizeof(share_t));
       }
 
-    auto publish(slot_t const & slot, std::uint8_t const * bytes) noexcept -> void
+    struct mapped_t
+      {
+      std::uint8_t const * cb0{};   ///< the cb0 rows of every panel draw
+      std::uint8_t const * side{};  ///< VB0 entries, then cb1 rows 268..275; null when not read
+      std::uint8_t const * pool{};  ///< the t33 pool; null when not read
+      };
+
+    ///\brief the panel's record: VB0 entry -> record index -> 336-byte record in the pool
+    auto read_record(slot_t const & slot, mapped_t const & m, std::uint32_t i, record_t & out, std::uint32_t & index)
+      noexcept -> bool
+      {
+      if(not m.side or not m.pool or not slot.have_entry[i] or not slot.pool_stride)
+        return false;
+      std::memcpy(&index, m.side + i * entry_bytes, 4);
+      std::uint64_t const at{(static_cast<std::uint64_t>(slot.pool_first) + index) * slot.pool_stride};
+      if(at + 28u > slot.pool_bytes)
+        return false;
+      out = decode_record(m.pool + at);
+      return true;
+      }
+
+    auto rebase_of(slot_t const & slot, mapped_t const & m, float (&rebase)[4]) noexcept -> bool
+      {
+      if(not m.side or not slot.have_cb1)
+        return false;
+      std::memcpy(rebase, m.side + max_panels * entry_bytes + 7u * 16u, 16);  // row 275 = 268 + 7
+      return true;
+      }
+
+    ///\brief everything about panel i, from what was mapped
+    auto describe(slot_t const & slot, mapped_t const & m, std::uint32_t i, panel_t & p) noexcept -> void
+      {
+      meta_t const & d{slot.meta[i]};
+      p.surface_id = d.surface_id;
+      p.surface_width = d.surface_width;
+      p.surface_height = d.surface_height;
+      p.surface_format = d.surface_format;
+      p.vs_index = d.vs_index;
+      p.index_count = d.index_count;
+      p.instance_count = d.instance_count;
+      p.start_index = d.start_index;
+      p.base_vertex = d.base_vertex;
+      p.start_instance = d.start_instance;
+      p.ordinal = i;
+      std::memcpy(p.cb0, m.cb0 + i * record_bytes, record_bytes);
+      record_t r{};
+      std::uint32_t index{};
+      float rebase[4]{};
+      if(read_record(slot, m, i, r, index) and rebase_of(slot, m, rebase))
+        {
+        p.position[0] = r.position[0] - rebase[0];
+        p.position[1] = r.position[1] - rebase[1];
+        p.position[2] = r.position[2] - rebase[2];
+        p.scale = r.scale;
+        std::memcpy(p.orientation, r.orientation, sizeof p.orientation);
+        p.record_index = index;
+        p.flags = 1u;
+        project_local(p.cb0, p.position[0], p.position[1], p.position[2], p.anchor_clip);
+        }
+      else
+        {
+        std::memset(p.position, 0, sizeof p.position);
+        p.scale = 0.f;
+        std::memset(p.orientation, 0, sizeof p.orientation);
+        p.record_index = 0;
+        p.flags = 0;
+        anchor_from_cb0(p.cb0, p.anchor_clip);
+        }
+      }
+
+    auto publish(slot_t const & slot, mapped_t const & m) noexcept -> void
       {
       if(not share)
         return;
@@ -188,31 +274,18 @@ namespace edworld
       share->source_frame = slot.frame;
       share->unix_ms = unix_ms_now();
       share->panel_count = slot.count;
+      share->pool_bytes = m.pool ? slot.pool_bytes : 0u;
+      if(not rebase_of(slot, m, share->rebase))
+        std::memset(share->rebase, 0, sizeof share->rebase);
       for(std::uint32_t i{}; i != slot.count; ++i)
-        {
-        panel_t & p{share->panels[i]};
-        meta_t const & m{slot.meta[i]};
-        p.surface_id = m.surface_id;
-        p.surface_width = m.surface_width;
-        p.surface_height = m.surface_height;
-        p.surface_format = m.surface_format;
-        p.vs_index = m.vs_index;
-        p.index_count = m.index_count;
-        p.instance_count = m.instance_count;
-        p.start_index = m.start_index;
-        p.base_vertex = m.base_vertex;
-        p.start_instance = m.start_instance;
-        p.ordinal = i;
-        std::memcpy(p.cb0, bytes + i * record_bytes, record_bytes);
-        anchor_from_cb0(p.cb0, p.anchor_clip);
-        }
+        describe(slot, m, i, share->panels[i]);
       sequence.fetch_add(1u, std::memory_order_acq_rel);  // even: done
       }
 
-    auto log_summary(slot_t const & slot, std::uint8_t const * bytes) noexcept -> void
+    auto log_summary(slot_t const & slot, mapped_t const & m) noexcept -> void
       {
       log_line(
-        "frame %llu: %u panel draw(s); totals draws %llu published %llu dropped %llu full %llu faults %u vs %llu",
+        "frame %llu: %u panel draw(s); totals draws %llu published %llu dropped %llu full %llu faults %u vs %llu pool %u",
         static_cast<unsigned long long>(slot.frame),
         slot.count,
         static_cast<unsigned long long>(stat_draws),
@@ -220,33 +293,33 @@ namespace edworld
         static_cast<unsigned long long>(stat_dropped),
         static_cast<unsigned long long>(stat_full),
         faults,
-        static_cast<unsigned long long>(vs_created.load())
+        static_cast<unsigned long long>(vs_created.load()),
+        m.pool ? slot.pool_bytes : 0u
       );
       for(std::uint32_t i{}; i != slot.count; ++i)
         {
-        meta_t const & m{slot.meta[i]};
-        float cb0[cb0_rows][4];
-        std::memcpy(cb0, bytes + i * record_bytes, record_bytes);
-        float clip[4];
-        anchor_from_cb0(cb0, clip);
-        auto const ndc{clip_to_ndc(clip)};
+        panel_t p{};
+        describe(slot, m, i, p);
+        auto const ndc{clip_to_ndc(p.anchor_clip)};
         log_line(
-          "  #%u vs%u surf %08llx %ux%u f%u n%u x%u si%u bv%d inst%u anchor %s %.4f %.4f w %.4f",
+          "  #%u vs%u surf %08llx %ux%u n%u inst%u rec%s%u pos %.3f %.3f %.3f s%.3f anchor %s %.4f %.4f w %.4f",
           i,
-          m.vs_index,
-          static_cast<unsigned long long>(m.surface_id & 0xffffffffull),
-          m.surface_width,
-          m.surface_height,
-          m.surface_format,
-          m.index_count,
-          m.instance_count,
-          m.start_index,
-          m.base_vertex,
-          m.start_instance,
+          p.vs_index,
+          static_cast<unsigned long long>(p.surface_id & 0xffffffffull),
+          p.surface_width,
+          p.surface_height,
+          p.index_count,
+          p.start_instance,
+          p.flags ? "" : "-",
+          p.record_index,
+          p.position[0],
+          p.position[1],
+          p.position[2],
+          p.scale,
           ndc ? "ndc" : "behind",
-          ndc ? ndc->x : clip[0],
-          ndc ? ndc->y : clip[1],
-          clip[3]
+          ndc ? ndc->x : p.anchor_clip[0],
+          ndc ? ndc->y : p.anchor_clip[1],
+          p.anchor_clip[3]
         );
         }
       }
@@ -262,8 +335,9 @@ namespace edworld
             oldest = &s;
         if(not oldest)
           return;
-        D3D11_MAPPED_SUBRESOURCE m{};
-        HRESULT const hr{immediate.load()->Map(oldest->staging, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &m)};
+        ID3D11DeviceContext * const ctx{immediate.load()};
+        D3D11_MAPPED_SUBRESOURCE main{};
+        HRESULT const hr{ctx->Map(oldest->staging, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &main)};
         if(hr == DXGI_ERROR_WAS_STILL_DRAWING)
           {
           if((now - oldest->qpc) * 1000 / qpc_frequency > 100)
@@ -274,30 +348,186 @@ namespace edworld
             }
           return;  // the GPU has not got there; newer slots are not ready either
           }
-        if(FAILED(hr) or not m.pData)
+        if(FAILED(hr) or not main.pData)
           {
           oldest->filled = false;
           ++stat_dropped;
           continue;
           }
-        auto const * const bytes{static_cast<std::uint8_t const *>(m.pData)};
+        // the side and pool copies were recorded before the frame's last cb0 copy: ready when it is
+        mapped_t m{static_cast<std::uint8_t const *>(main.pData)};
+        D3D11_MAPPED_SUBRESOURCE side{}, pool{};
+        bool const side_mapped{SUCCEEDED(ctx->Map(oldest->side, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &side))
+                               and side.pData};
+        bool const pool_mapped{oldest->have_pool
+                               and SUCCEEDED(ctx->Map(oldest->pool, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &pool))
+                               and pool.pData};
+        if(side_mapped)
+          m.side = static_cast<std::uint8_t const *>(side.pData);
+        if(pool_mapped)
+          m.pool = static_cast<std::uint8_t const *>(pool.pData);
         bool const stale{(now - oldest->qpc) * 1000 / qpc_frequency > 100};
         if(not stale)
           {
-          publish(*oldest, bytes);
+          publish(*oldest, m);
           ++stat_published;
           if(settings().log_interval_ms
              and (now - last_log_qpc) * 1000 / qpc_frequency >= settings().log_interval_ms)
             {
             last_log_qpc = now;
-            log_summary(*oldest, bytes);
+            log_summary(*oldest, m);
             }
           }
         else
           ++stat_dropped;
-        immediate.load()->Unmap(oldest->staging, 0);
+        if(pool_mapped)
+          ctx->Unmap(oldest->pool, 0);
+        if(side_mapped)
+          ctx->Unmap(oldest->side, 0);
+        ctx->Unmap(oldest->staging, 0);
         oldest->filled = false;
         }
+      }
+
+    // ---- surface dumps, on request (discovery): which panel shows what ----
+    struct pending_dump_t
+      {
+      ID3D11Texture2D * staging;
+      std::uint64_t id;
+      std::uint32_t width, height, format;
+      LONGLONG qpc;
+      };
+
+    constexpr std::uint32_t max_dumps{16};
+    pending_dump_t pending_dumps[max_dumps]{};
+    std::uint32_t pending_count{};
+    std::uint64_t dumped_ids[max_dumps]{};
+    std::uint32_t dumped_count{};
+    bool dump_armed{};
+    std::uint64_t dump_frame{};
+    LONGLONG last_trigger_check{};
+    char dump_stamp[32]{};
+
+    auto trigger_path() -> std::wstring { return settings().dir + L"\\edworld_dump"; }
+
+    auto check_trigger(LONGLONG now) noexcept -> void
+      {
+      if(dump_armed)
+        {
+        if(frame > dump_frame)  // one frame of panel draws asked; done
+          {
+          dump_armed = false;
+          DeleteFileW(trigger_path().c_str());
+          log_line("dump: %u surface(s) queued", dumped_count);
+          }
+        return;
+        }
+      if((now - last_trigger_check) * 1000 / qpc_frequency < 500)
+        return;
+      last_trigger_check = now;
+      if(GetFileAttributesW(trigger_path().c_str()) == INVALID_FILE_ATTRIBUTES)
+        return;
+      dump_armed = true;
+      dump_frame = frame;
+      dumped_count = 0;
+      SYSTEMTIME t;
+      GetSystemTime(&t);
+      std::snprintf(dump_stamp, sizeof dump_stamp, "%04u%02u%02uT%02u%02u%02u_%03uZ", t.wYear, t.wMonth, t.wDay, t.wHour,
+                    t.wMinute, t.wSecond, t.wMilliseconds);
+      CreateDirectoryW((settings().dir + L"\\edworld_dumps").c_str(), nullptr);
+      log_line("dump: armed (%s)", dump_stamp);
+      }
+
+    auto queue_dump(ID3D11DeviceContext * ctx) noexcept -> void
+      {
+      if(pending_count == max_dumps or dumped_count == max_dumps)
+        return;
+      ID3D11ShaderResourceView * srv{};
+      ctx->PSGetShaderResources(2, 1, &srv);
+      if(not srv)
+        ctx->PSGetShaderResources(1, 1, &srv);
+      if(not srv)
+        return;
+      ID3D11Resource * res{};
+      srv->GetResource(&res);
+      srv->Release();
+      if(not res)
+        return;
+      auto const id{reinterpret_cast<std::uint64_t>(static_cast<void *>(res))};
+      for(std::uint32_t i{}; i != dumped_count; ++i)
+        if(dumped_ids[i] == id)
+          {
+          res->Release();
+          return;
+          }
+      D3D11_RESOURCE_DIMENSION dim{};
+      res->GetType(&dim);
+      ID3D11Texture2D * tex{};
+      if(dim == D3D11_RESOURCE_DIMENSION_TEXTURE2D)
+        res->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void **>(&tex));
+      res->Release();
+      if(not tex)
+        return;
+      D3D11_TEXTURE2D_DESC d{};
+      tex->GetDesc(&d);
+      dumped_ids[dumped_count++] = id;
+      if(d.SampleDesc.Count != 1 or d.ArraySize != 1)
+        {
+        tex->Release();
+        log_line("dump: surface %08llx %ux%u skipped (samples %u, array %u)", static_cast<unsigned long long>(id & 0xffffffffull),
+                 d.Width, d.Height, d.SampleDesc.Count, d.ArraySize);
+        return;
+        }
+      D3D11_TEXTURE2D_DESC sd{d};
+      sd.Usage = D3D11_USAGE_STAGING;
+      sd.BindFlags = 0;
+      sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+      sd.MiscFlags = 0;
+      ID3D11Texture2D * staging{};
+      if(FAILED(device->CreateTexture2D(&sd, nullptr, &staging)) or not staging)
+        {
+        tex->Release();
+        return;
+        }
+      ctx->CopyResource(staging, tex);
+      tex->Release();
+      pending_dumps[pending_count++] = pending_dump_t{staging, id, d.Width, d.Height, static_cast<std::uint32_t>(d.Format), qpc_now()};
+      }
+
+    ///\brief writes the dumps whose copies the GPU has finished; a few frames after queueing
+    auto write_dumps(LONGLONG now) noexcept -> void
+      {
+      std::uint32_t kept{};
+      for(std::uint32_t i{}; i != pending_count; ++i)
+        {
+        pending_dump_t & p{pending_dumps[i]};
+        D3D11_MAPPED_SUBRESOURCE m{};
+        HRESULT const hr{immediate.load()->Map(p.staging, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &m)};
+        if(hr == DXGI_ERROR_WAS_STILL_DRAWING and (now - p.qpc) * 1000 / qpc_frequency < 2000)
+          {
+          pending_dumps[kept++] = p;
+          continue;
+          }
+        if(SUCCEEDED(hr) and m.pData)
+          {
+          wchar_t name[MAX_PATH];
+          std::swprintf(name, MAX_PATH, L"%ls\\edworld_dumps\\%hs_%08llx_%ux%u_f%u_pitch%u.raw", settings().dir.c_str(),
+                        dump_stamp, static_cast<unsigned long long>(p.id & 0xffffffffull), p.width, p.height, p.format,
+                        m.RowPitch);
+          if(std::FILE * f{_wfopen(name, L"wb")})
+            {
+            std::fwrite(m.pData, 1, static_cast<std::size_t>(m.RowPitch) * p.height, f);
+            std::fclose(f);
+            log_line("dump: wrote %S", name);
+            }
+          immediate.load()->Unmap(p.staging, 0);
+          }
+        else
+          log_line("dump: surface %08llx lost (hr 0x%08lX)", static_cast<unsigned long long>(p.id & 0xffffffffull),
+                   static_cast<unsigned long>(hr));
+        p.staging->Release();
+        }
+      pending_count = kept;
       }
 
     auto begin_frame(LONGLONG now) noexcept -> void
@@ -307,11 +537,16 @@ namespace edworld
       recording = -1;
       ++frame;
       drain(now);
+      if(pending_count)
+        write_dumps(now);
+      check_trigger(now);
       for(int i{}; i != static_cast<int>(ring_slots); ++i)
-        if(not ring[i].filled and ring[i].staging)
+        if(not ring[i].filled and ring[i].staging and ring[i].side)
           {
           recording = i;
           ring[i].count = 0;
+          ring[i].have_pool = false;
+          ring[i].have_cb1 = false;
           ring[i].frame = frame;
           ring[i].qpc = now;
           return;
@@ -361,6 +596,109 @@ namespace edworld
       return true;
       }
 
+    ///\brief once a frame, at its first panel draw: the t33 record pool and cb1 rows 268..275
+    auto stage_frame(ID3D11DeviceContext * ctx, slot_t & slot) noexcept -> void
+      {
+      ID3D11Buffer * cb1{};
+      UINT first{}, count{};
+      if(immediate1)
+        immediate1->VSGetConstantBuffers1(1, 1, &cb1, &first, &count);
+      else
+        ctx->VSGetConstantBuffers(1, 1, &cb1);
+      if(cb1)
+        {
+        D3D11_BUFFER_DESC bd{};
+        cb1->GetDesc(&bd);
+        std::uint32_t const offset{(first + cb1_first_row) * 16u};
+        if(offset + cb1_rows * 16u <= bd.ByteWidth)
+          {
+          D3D11_BOX const box{offset, 0, 0, offset + cb1_rows * 16u, 1, 1};
+          ctx->CopySubresourceRegion(slot.side, 0, max_panels * entry_bytes, 0, 0, cb1, 0, &box);
+          slot.have_cb1 = true;
+          }
+        cb1->Release();
+        }
+
+      ID3D11ShaderResourceView * srv{};
+      ctx->VSGetShaderResources(33, 1, &srv);
+      if(not srv)
+        return;
+      D3D11_SHADER_RESOURCE_VIEW_DESC vd{};
+      srv->GetDesc(&vd);
+      std::uint32_t first_element{};
+      if(vd.ViewDimension == D3D11_SRV_DIMENSION_BUFFER)
+        first_element = vd.Buffer.FirstElement;
+      else if(vd.ViewDimension == D3D11_SRV_DIMENSION_BUFFEREX)
+        first_element = vd.BufferEx.FirstElement;
+      ID3D11Resource * res{};
+      srv->GetResource(&res);
+      srv->Release();
+      if(not res)
+        return;
+      D3D11_RESOURCE_DIMENSION dim{};
+      res->GetType(&dim);
+      ID3D11Buffer * buf{};
+      if(dim == D3D11_RESOURCE_DIMENSION_BUFFER)
+        res->QueryInterface(__uuidof(ID3D11Buffer), reinterpret_cast<void **>(&buf));
+      res->Release();
+      if(not buf)
+        return;
+      D3D11_BUFFER_DESC bd{};
+      buf->GetDesc(&bd);
+      if(bd.ByteWidth == 0 or bd.ByteWidth > pool_limit)
+        {
+        buf->Release();
+        return;
+        }
+      if(slot.pool_capacity < bd.ByteWidth)
+        {
+        if(slot.pool)
+          slot.pool->Release();
+        slot.pool = nullptr;
+        slot.pool_capacity = 0;
+        D3D11_BUFFER_DESC d{};
+        d.ByteWidth = bd.ByteWidth;
+        d.Usage = D3D11_USAGE_STAGING;
+        d.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        if(FAILED(device->CreateBuffer(&d, nullptr, &slot.pool)) or not slot.pool)
+          {
+          slot.pool = nullptr;
+          buf->Release();
+          return;
+          }
+        slot.pool_capacity = bd.ByteWidth;
+        }
+      D3D11_BOX const box{0, 0, 0, bd.ByteWidth, 1, 1};
+      ctx->CopySubresourceRegion(slot.pool, 0, 0, 0, 0, buf, 0, &box);
+      buf->Release();
+      slot.pool_bytes = bd.ByteWidth;
+      slot.pool_first = first_element;
+      slot.pool_stride = bd.StructureByteStride ? bd.StructureByteStride : 336u;
+      slot.have_pool = true;
+      }
+
+    ///\brief the draw's own instance entry (VB0, at start_instance): its first u32 indexes the pool
+    auto stage_entry(ID3D11DeviceContext * ctx, slot_t & slot, std::uint32_t panel, std::uint32_t start_instance)
+      noexcept -> bool
+      {
+      ID3D11Buffer * vb0{};
+      UINT stride{}, offset{};
+      ctx->IAGetVertexBuffers(0, 1, &vb0, &stride, &offset);
+      if(not vb0)
+        return false;
+      D3D11_BUFFER_DESC bd{};
+      vb0->GetDesc(&bd);
+      std::uint64_t const at{offset + static_cast<std::uint64_t>(start_instance) * (stride ? stride : 8u)};
+      bool const fits{at + 8u <= bd.ByteWidth};
+      if(fits)
+        {
+        D3D11_BOX const box{static_cast<UINT>(at), 0, 0, static_cast<UINT>(at + 8u), 1, 1};
+        ctx->CopySubresourceRegion(slot.side, 0, panel * entry_bytes, 0, 0, vb0, 0, &box);
+        }
+      vb0->Release();
+      return fits;
+      }
+
     auto observe_panel(
       ID3D11DeviceContext * ctx,
       std::uint32_t index_count,
@@ -400,6 +738,12 @@ namespace edworld
       D3D11_BOX const box{offset, 0, 0, offset + record_bytes, 1, 1};
       ctx->CopySubresourceRegion(slot.staging, 0, slot.count * record_bytes, 0, 0, cb, 0, &box);
       cb->Release();
+
+      if(dump_armed)
+        queue_dump(ctx);
+      if(slot.count == 0)
+        stage_frame(ctx, slot);
+      slot.have_entry[slot.count] = stage_entry(ctx, slot, slot.count, start_instance);
 
       surface_cache_t surface{};
       surface_of(ctx, surface);
@@ -588,6 +932,12 @@ namespace edworld
       s.staging = nullptr;
       if(FAILED(dev->CreateBuffer(&d, nullptr, &s.staging)))
         s.staging = nullptr;
+      d.ByteWidth = side_bytes;
+      s.side = nullptr;
+      if(FAILED(dev->CreateBuffer(&d, nullptr, &s.side)))
+        s.side = nullptr;
+      s.pool = nullptr;
+      s.pool_capacity = 0;
       }
     recording = -1;
     device = dev;

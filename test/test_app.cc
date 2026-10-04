@@ -66,12 +66,50 @@ int main()
   dev->CreateVertexShader(g_panel_vs, sizeof g_panel_vs, nullptr, &panel_vs);
   dev->CreateVertexShader(g_other_vs, sizeof g_other_vs, nullptr, &other_vs);
   dev->CreatePixelShader(g_panel_ps, sizeof g_panel_ps, nullptr, &ps);
+  // as the game's instanced path: VB0 = instance entries (8 bytes, first u32 = record index), VB1 = vertices
   D3D11_INPUT_ELEMENT_DESC const layout_desc[]{
-    {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
-    {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"INSTANCE", 0, DXGI_FORMAT_R32G32_UINT, 0, 0, D3D11_INPUT_PER_INSTANCE_DATA, 1},
+    {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 1, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 1, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
   };
   ID3D11InputLayout * layout{};
-  dev->CreateInputLayout(layout_desc, 2, g_panel_vs, sizeof g_panel_vs, &layout);
+  hr = dev->CreateInputLayout(layout_desc, 3, g_panel_vs, sizeof g_panel_vs, &layout);
+  check(SUCCEEDED(hr), "input layout");
+
+  // instance entries: the panel draws with start_instance 3, whose entry names record 2
+  std::uint32_t const entries[]{0, 0, 1, 0, 9, 0, 2, 0, 7, 0};
+  D3D11_BUFFER_DESC ebd{sizeof entries, D3D11_USAGE_IMMUTABLE, D3D11_BIND_VERTEX_BUFFER, 0, 0, 0};
+  D3D11_SUBRESOURCE_DATA einit{entries, 0, 0};
+  ID3D11Buffer * instances{};
+  dev->CreateBuffer(&ebd, &einit, &instances);
+
+  // t33: 4 records of 336 bytes; record 2 = scale 1.5, position (1, 2, 3)
+  std::uint8_t records[4 * 336]{};
+  float const scale{1.5f}, position[3]{1.f, 2.f, 3.f};
+  std::uint32_t const quat_xy{0x8000u | (0x8000u << 16)}, quat_zw{0x8000u | (0xFFFFu << 16)};
+  std::memcpy(records + 2 * 336 + 4, &scale, 4);
+  std::memcpy(records + 2 * 336 + 8, &quat_xy, 4);
+  std::memcpy(records + 2 * 336 + 12, &quat_zw, 4);
+  std::memcpy(records + 2 * 336 + 16, position, 12);
+  D3D11_BUFFER_DESC pbd{sizeof records, D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, D3D11_RESOURCE_MISC_BUFFER_STRUCTURED, 336};
+  D3D11_SUBRESOURCE_DATA pinit{records, 0, 0};
+  ID3D11Buffer * pool{};
+  dev->CreateBuffer(&pbd, &pinit, &pool);
+  ID3D11ShaderResourceView * pool_srv{};
+  dev->CreateShaderResourceView(pool, nullptr, &pool_srv);
+
+  // cb1: 276 rows, row 275 = the world-rebase origin (0.5, 0.5, 0.5)
+  float cb1_rows[276][4]{};
+  cb1_rows[275][0] = cb1_rows[275][1] = cb1_rows[275][2] = 0.5f;
+  D3D11_BUFFER_DESC c1d{sizeof cb1_rows, D3D11_USAGE_DEFAULT, D3D11_BIND_CONSTANT_BUFFER, 0, 0, 0};
+  D3D11_SUBRESOURCE_DATA c1init{cb1_rows, 0, 0};
+  ID3D11Buffer * cb1{};
+  dev->CreateBuffer(&c1d, &c1init, &cb1);
+
+  // a dump of the panels' surfaces asked for before the first frame
+  std::FILE * trigger{_wfopen((dir + L"\\edworld_dump").c_str(), L"wb")};
+  if(trigger)
+    std::fclose(trigger);
 
   float const quad[]{-1, -1, 0, 0, 1, 1, -1, 0, 1, 1, -1, 1, 0, 0, 0, 1, 1, 0, 1, 0};
   D3D11_BUFFER_DESC vbd{sizeof quad, D3D11_USAGE_IMMUTABLE, D3D11_BIND_VERTEX_BUFFER, 0, 0, 0};
@@ -132,7 +170,11 @@ int main()
     ctx->OMSetRenderTargets(1, &rtv, nullptr);
     ctx->RSSetViewports(1, &vp);
     ctx->IASetInputLayout(layout);
-    ctx->IASetVertexBuffers(0, 1, &vb, &stride, &offset);
+    UINT const entry_stride{8};
+    ctx->IASetVertexBuffers(0, 1, &instances, &entry_stride, &offset);
+    ctx->IASetVertexBuffers(1, 1, &vb, &stride, &offset);
+    ctx->VSSetShaderResources(33, 1, &pool_srv);
+    ctx->VSSetConstantBuffers(1, 1, &cb1);
     ctx->IASetIndexBuffer(ib, DXGI_FORMAT_R16_UINT, 0);
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     ctx->PSSetShader(ps, nullptr, 0);
@@ -144,7 +186,7 @@ int main()
     ctx->Unmap(cb, 0);
     ctx->VSSetConstantBuffers(0, 1, &cb);
     ctx->VSSetShader(panel_vs, nullptr, 0);
-    ctx->DrawIndexedInstanced(6, 1, 0, 0, 0);
+    ctx->DrawIndexedInstanced(6, 1, 0, 0, 3);
 
     // The same buffer rewritten for an unwatched draw: the panel's copy must still hold the panel's rows.
     float junk[12][4];
@@ -176,11 +218,22 @@ int main()
   edworld::panel_t const & p{s.panels[0]};
   check(p.surface_width == 512 and p.surface_height == 128, "surface size from PS t2");
   check(p.surface_format == DXGI_FORMAT_R8G8B8A8_UNORM, "surface format");
-  check(p.index_count == 6 and p.instance_count == 1, "draw arguments");
+  check(p.index_count == 6 and p.instance_count == 1 and p.start_instance == 3, "draw arguments");
+  check(p.flags == 1u and p.record_index == 2u, "instance entry -> record 2");
+  check(near_eq(p.scale, 1.5f) and near_eq(p.position[0], 0.5f) and near_eq(p.position[1], 1.5f) and near_eq(p.position[2], 2.5f),
+        "record position minus the rebase origin, scale");
+  check(near_eq(s.rebase[0], 0.5f) and s.pool_bytes == 4 * 336, "rebase row and pool size");
   check(p.vs_index == 0, "watched list index");
   check(near_eq(p.cb0[4][0], 0.8f) and near_eq(p.cb0[7][2], 0.2f), "cb0 rows are the panel's, not the later draw's");
+  // anchor = rows 4..7 . (0.5, 1.5, 2.5, 1): x 0.8*.5+0.1*2.5+0.5 = 1.15, y 0.9*1.5-0.25 = 1.1, w 0.2*2.5+2 = 2.5
   auto const ndc{edworld::clip_to_ndc(p.anchor_clip)};
-  check(ndc and near_eq(ndc->x, 0.25f) and near_eq(ndc->y, -0.125f) and near_eq(ndc->w, 2.0f), "anchor ndc (0.25, -0.125), w 2");
+  check(ndc and near_eq(ndc->x, 1.15f / 2.5f) and near_eq(ndc->y, 1.1f / 2.5f) and near_eq(ndc->w, 2.5f), "anchor from the record's position");
+  WIN32_FIND_DATAW found{};
+  HANDLE const dumps{FindFirstFileW((dir + L"\\edworld_dumps\\*_512x128_f28_*.raw").c_str(), &found)};
+  check(dumps != INVALID_HANDLE_VALUE, "the panel's surface dumped (512x128)");
+  if(dumps != INVALID_HANDLE_VALUE)
+    FindClose(dumps);
+  check(GetFileAttributesW((dir + L"\\edworld_dump").c_str()) == INVALID_FILE_ATTRIBUTES, "dump trigger removed");
   std::printf("frame %llu source %llu panels %u anchor clip %.4f %.4f %.4f %.4f\n",
               static_cast<unsigned long long>(s.frame), static_cast<unsigned long long>(s.source_frame), s.panel_count,
               p.anchor_clip[0], p.anchor_clip[1], p.anchor_clip[2], p.anchor_clip[3]);

@@ -6,9 +6,9 @@ arguments and where the panel's local origin lands on screen (NDC, x right, y up
 Usage: edworld_watch.py [path] [--once]"""
 import mmap, struct, sys, time
 
-PANEL = struct.Struct("<Q 10I 48f 4f")  # surface_id, 10 u32/i32 fields, cb0[12][4], anchor_clip[4]
-HEAD = struct.Struct("<4I Q Q q 2I")
-MAGIC, VERSION, MAX_PANELS = 0x44575745, 1, 64
+PANEL = struct.Struct("<Q 10I 48f 4f 3f f 4f 2I")  # id, 10 u32/i32, cb0[12][4], anchor_clip[4], position, scale, orientation, record, flags
+HEAD = struct.Struct("<4I Q Q q 2I 4f 2I")
+MAGIC, VERSION, MAX_PANELS = 0x44575745, 2, 64
 
 def read(buf):
     for _ in range(100):
@@ -37,7 +37,9 @@ def main():
                 sid, w, h, fmt, vs, n, inst, si, bv, sinst, ordinal = p[:11]
                 clip = p[59:63]
                 where = f"ndc {clip[0]/clip[3]:+.4f} {clip[1]/clip[3]:+.4f} w {clip[3]:.3f}" if clip[3] > 1e-4 else "behind"
-                print(f"  #{ordinal:2} vs{vs} surf {sid & 0xffffffff:08x} {w}x{h} f{fmt} n{n} x{inst} inst{sinst} {where}")
+                pos, rec, flags = p[63:66], p[71], p[72]
+                at = f"rec {rec} pos {pos[0]:+.3f} {pos[1]:+.3f} {pos[2]:+.3f}" if flags & 1 else "no record"
+                print(f"  #{ordinal:2} vs{vs} surf {sid & 0xffffffff:08x} {w}x{h} n{n} inst{sinst} {at} {where}")
         if "--once" in sys.argv:
             return
         time.sleep(0.25)

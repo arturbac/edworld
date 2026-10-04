@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <optional>
 #include <string_view>
 
@@ -49,6 +50,31 @@ namespace edworld
     {
     for(int r{}; r != 4; ++r)
       clip[r] = cb0[4 + r][0] * x + cb0[4 + r][1] * y + cb0[4 + r][2] * z + cb0[4 + r][3];
+    }
+
+  ///\brief the instance record the panel family reads at VS t33 (stride 336): uniform scale @4, orientation as
+  /// 4 x unorm16 @8, position (float3) @16 - EDVR's decode (fss_panel_rect.cpp, fss_panel_vs.h)
+  struct record_t
+    {
+    float scale;
+    float orientation[4];
+    float position[3];
+    };
+
+  [[nodiscard]]
+  inline auto decode_record(std::uint8_t const * r) noexcept -> record_t
+    {
+    record_t out{};
+    std::uint32_t xy{}, zw{};
+    std::memcpy(&out.scale, r + 4, 4);
+    std::memcpy(&xy, r + 8, 4);
+    std::memcpy(&zw, r + 12, 4);
+    std::memcpy(out.position, r + 16, 12);
+    out.orientation[0] = static_cast<float>(xy & 0xFFFFu) * 0.000031f - 1.0f;
+    out.orientation[1] = static_cast<float>(xy >> 16u) * 0.000031f - 1.0f;
+    out.orientation[2] = static_cast<float>(zw & 0xFFFFu) * 0.000031f - 1.0f;
+    out.orientation[3] = static_cast<float>(zw >> 16u) * 0.000031f - 1.0f;
+    return out;
     }
 
   ///\brief "81216C77F90DEDD6" -> value; hex only, 1..16 digits
