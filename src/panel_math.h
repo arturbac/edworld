@@ -319,4 +319,26 @@ namespace edworld
     {
     return static_cast<float>(r.row_top + r.row_bottom) / 2.f + static_cast<float>(superpower_row_pitch);
     }
+  // ---- the factions list's rows ----
+  struct list_lines_t
+    {
+    std::uint32_t factions;  ///< faction rows shown
+    std::uint32_t source;    ///< 1: a last row naming the source (EDSM's list, the test's placeholder)
+    };
+
+  ///\brief the list's rows: up to max_factions of count (or that many placeholder rows in test mode with nothing to
+  /// list), and a row more for the source when the list is EDSM's - never taken from the factions
+  [[nodiscard]]
+  constexpr auto list_lines(std::uint32_t count, bool from_edsm, bool placeholder, std::uint32_t max_factions) noexcept -> list_lines_t
+    {
+    std::uint32_t const most{std::max(max_factions, 1u)};
+    return {placeholder ? most : std::min(count, most), from_edsm or placeholder ? 1u : 0u};
+    }
+
+  ///\brief the list box's height for those rows, in pixels
+  [[nodiscard]]
+  constexpr auto list_height(list_lines_t const & l, float line, float pad) noexcept -> float
+    {
+    return static_cast<float>(l.factions + l.source) * line + 2.f * pad;
+    }
   }  // namespace edworld

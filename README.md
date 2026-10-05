@@ -170,7 +170,7 @@ independent_colour = F2C14E
 edsm = 1
 ; the factions list under the panel: 0 = off
 list = 1
-; its box in the panel surface's pixels, past the panel's edge: horizontal centre, top edge, width; rows at most (EDSM's line among them)
+; its box in the panel surface's pixels, past the panel's edge: horizontal centre, top edge, widest; faction rows at most (EDSM's line comes on top)
 list_x = 1540
 list_top = 500
 list_width = 2200

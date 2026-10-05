@@ -414,9 +414,10 @@ namespace edworld
       float const line{std::round(size * 1.15f)};
       float const pad{std::round(size * 0.3f)};
       bool const placeholder{test and list.count == 0};
-      std::uint32_t const source_rows{list.source == list_source_e::edsm or placeholder ? 1u : 0u};
-      std::uint32_t const rows{std::max(s.list_rows, source_rows + 1u)};
-      std::uint32_t const shown{placeholder ? rows - source_rows : std::min(list.count, rows - source_rows)};
+      list_lines_t const lines{list_lines(list.count, list.source == list_source_e::edsm, placeholder, s.list_rows)};
+      std::uint32_t const source_rows{lines.source};
+      std::uint32_t const rows{lines.factions};
+      std::uint32_t const shown{lines.factions};
       if(shown == 0)
         return 0.f;
       auto const width = [&](char const * text) { return r.font->CalcTextSizeA(size, FLT_MAX, 0.f, text).x; };
@@ -451,7 +452,7 @@ namespace edworld
         inner = std::max(inner, 2.f * cw + width(source));
       float const box_w{std::min(inner + 2.f * pad, s.list_width)};
       float const left{std::round(centre_x - box_w / 2.f)}, right{left + box_w};
-      float const bottom{top + static_cast<float>(shown + source_rows) * line + 2.f * pad};
+      float const bottom{top + list_height(lines, line, pad)};
       dl->AddRectFilled(ImVec2{left, top}, ImVec2{right, bottom}, IM_COL32(0, 0, 0, 255));
       if(test)
         dl->AddRect(ImVec2{left, top}, ImVec2{right, bottom}, im_colour(0xff00ffu), 0.f, 0, 2.f);
@@ -1040,7 +1041,8 @@ namespace edworld
       {
       float const line{std::round(r.font->FontSize * 1.15f)};
       auto const w{static_cast<std::uint32_t>(std::clamp(s.list_width, 64.f, 4096.f))};
-      auto const h{static_cast<std::uint32_t>(line * static_cast<float>(std::max(s.list_rows, 2u)) + 2.f * std::round(r.font->FontSize * 0.3f) + 1.f)};
+      // room for the most faction rows and the source's row
+      auto const h{static_cast<std::uint32_t>(list_height(list_lines_t{std::max(s.list_rows, 1u), 1u}, line, std::round(r.font->FontSize * 0.3f)) + 1.f)};
       if(list_target(w, h))
         {
         io.DisplaySize = ImVec2{static_cast<float>(w), static_cast<float>(h)};

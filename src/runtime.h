@@ -73,7 +73,7 @@ namespace edworld
     ///\brief 0 off, 1 on: by influence, from EHT's `target` in edworld_eht when it has them, else from EDSM (marked so)
     std::uint32_t list{1};
     ///\brief the list's box in the panel surface's pixels, carried past its edge: horizontal centre, top edge, widest
-    /// (the box is as wide as its rows); rows at most (EDSM's source line among them). The panel shows rows 2-493 of 3072x660 (its vertices, 2026-10-05);
+    /// (the box is as wide as its rows); faction rows at most (EDSM's source line comes on top of them). The panel shows rows 2-493 of 3072x660 (its vertices, 2026-10-05);
     /// the list is a quad of its own under it in the panel's plane, not drawn on the surface (rows below 493 belong to
     /// other panels: a one-pixel strip at 519 is stretched over the jump panel)
     float list_x{1540.f};

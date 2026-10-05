@@ -109,6 +109,18 @@ int main()
         "superpower: ALLIANCE told by its width, its row found");
   check(std::fabs(edworld::emblem_centre_y(found) - 322.f) < 0.6f, "superpower: the emblem 40 px under its row's centre");
   }
+  // the list's rows: as many as the factions, up to seven, EDSM's source row on top of them, never instead of one
+  {
+  using edworld::list_lines;
+  auto const one{list_lines(1u, false, false, 7u)}, seven{list_lines(7u, false, false, 7u)};
+  auto const seven_edsm{list_lines(7u, true, false, 7u)}, many{list_lines(12u, false, false, 7u)};
+  check(one.factions == 1u and one.source == 0u and seven.factions == 7u, "list: one row per faction, up to seven");
+  check(seven_edsm.factions == 7u and seven_edsm.source == 1u, "list: EDSM's source row comes on top of seven factions");
+  check(many.factions == 7u, "list: seven rows at most");
+  check(std::fabs(edworld::list_height(one, 58.f, 15.f) - 88.f) < 0.01f and
+          std::fabs(edworld::list_height(seven_edsm, 58.f, 15.f) - 494.f) < 0.01f,
+        "list: the box as high as its rows");
+  }
   wchar_t exe[MAX_PATH]{};
   GetModuleFileNameW(nullptr, exe, MAX_PATH);
   std::wstring dir{exe};
