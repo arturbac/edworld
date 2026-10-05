@@ -380,32 +380,87 @@ namespace edworld
     ///\brief the destination's factions in a box under the panel: the trend at the last tick, the controlling one
     /// starred, name, influence, states; EDSM's list says so in its last row, with the age of its data. In test mode
     /// with nothing to list, placeholder rows show where the box goes
-    auto draw_list(ImDrawList * dl, settings_t const & s, faction_list_t const & list, bool test, float left, float top) -> float
+    ///\brief the EDSM source line (and the test's), empty when the list is the data source's
+    auto source_line(faction_list_t const & list, bool placeholder, std::uint32_t rows, float size, char (&buf)[128]) -> bool
+      {
+      if(placeholder)
+        std::snprintf(buf, sizeof buf, "list test: %u rows at most, text %.0f px", rows, static_cast<double>(size));
+      else if(list.source != list_source_e::edsm)
+        return false;
+      else if(list.updated_unix_s <= 0)
+        std::snprintf(buf, sizeof buf, "from EDSM");
+      else
+        {
+        std::int64_t const age{std::max<std::int64_t>(0, unix_now() - list.updated_unix_s)};
+        if(age < 3600)
+          std::snprintf(buf, sizeof buf, "from EDSM, updated %lld min ago", static_cast<long long>(age / 60));
+        else if(age < 48 * 3600)
+          std::snprintf(buf, sizeof buf, "from EDSM, updated %lld h ago", static_cast<long long>(age / 3600));
+        else
+          std::snprintf(buf, sizeof buf, "from EDSM, updated %lld days ago", static_cast<long long>(age / 86400));
+        }
+      return true;
+      }
+
+    ///\brief the destination's factions in a black box, as wide as its rows and centred on centre_x: the trend at the
+    /// last tick, the controlling one starred, name, influence, states; EDSM's list says so in its last row, with the
+    /// age of its data. In test mode with nothing to list, placeholder rows show where the box goes. The box is at
+    /// most s.list_width wide. Returns its height
+    auto draw_list(ImDrawList * dl, settings_t const & s, faction_list_t const & list, bool test, float centre_x, float top) -> float
       {
       if(not r.font)
         return 0.f;
       float const size{r.font->FontSize};
       float const line{std::round(size * 1.15f)};
-      float const pad{4.f};
-      float const right{left + s.list_width};
+      float const pad{std::round(size * 0.3f)};
       bool const placeholder{test and list.count == 0};
       std::uint32_t const source_rows{list.source == list_source_e::edsm or placeholder ? 1u : 0u};
       std::uint32_t const rows{std::max(s.list_rows, source_rows + 1u)};
       std::uint32_t const shown{placeholder ? rows - source_rows : std::min(list.count, rows - source_rows)};
       if(shown == 0)
         return 0.f;
+      auto const width = [&](char const * text) { return r.font->CalcTextSizeA(size, FLT_MAX, 0.f, text).x; };
+      float const cw{width("0")};
+      char buf[128];
+
+      // the columns as wide as what they hold: names (at most 32 characters), influence, states (at most 32)
+      float name_w{}, influence_w{}, states_w{};
+      for(std::uint32_t i{}; i != shown; ++i)
+        {
+        if(placeholder)
+          {
+          std::snprintf(buf, sizeof buf, "list test row %u of %u", i + 1u, shown);
+          name_w = std::max(name_w, width(buf));
+          continue;
+          }
+        faction_row_t const & row{list.rows[i]};
+        name_w = std::max(name_w, std::min(width(row.name), 32.f * cw));
+        std::snprintf(buf, sizeof buf, "%.1f%%", static_cast<double>(row.influence) * 100.0);
+        influence_w = std::max(influence_w, width(buf));
+        if(row.states[0] != '\0')
+          states_w = std::max(states_w, std::min(width(row.states), 32.f * cw));
+        }
+      float inner{2.f * cw + name_w};
+      if(influence_w > 0.f)
+        inner += 2.f * cw + influence_w;
+      if(states_w > 0.f)
+        inner += 2.f * cw + states_w;
+      char source[128];
+      bool const with_source{source_line(list, placeholder, rows, size, source) and source_rows != 0};
+      if(with_source)
+        inner = std::max(inner, 2.f * cw + width(source));
+      float const box_w{std::min(inner + 2.f * pad, s.list_width)};
+      float const left{std::round(centre_x - box_w / 2.f)}, right{left + box_w};
       float const bottom{top + static_cast<float>(shown + source_rows) * line + 2.f * pad};
-      dl->AddRectFilled(ImVec2{left, top}, ImVec2{right, bottom}, im_colour(s.patch_ground));
+      dl->AddRectFilled(ImVec2{left, top}, ImVec2{right, bottom}, IM_COL32(0, 0, 0, 255));
       if(test)
         dl->AddRect(ImVec2{left, top}, ImVec2{right, bottom}, im_colour(0xff00ffu), 0.f, 0, 2.f);
 
-      float const cw{r.font->CalcTextSizeA(size, FLT_MAX, 0.f, "0").x};
       float const x_star{left + pad + cw};
       float const x_name{left + pad + 2.f * cw};
-      float const x_influence{x_name + 39.f * cw};  // right edge: a name of 32, a space, "100.0%"
+      float const x_influence{x_name + name_w + 2.f * cw + influence_w};  // the influence's right edge
       float const x_states{x_influence + 2.f * cw};
       ImU32 const grey{im_colour(0x9aa0a6u)};
-      char buf[128];
       for(std::uint32_t i{}; i != shown; ++i)
         {
         float const y{top + pad + static_cast<float>(i) * line};
@@ -422,40 +477,22 @@ namespace edworld
         else if(row.trend == 3u)
           dl->AddTriangleFilled(ImVec2{cx - half, mid - half}, ImVec2{cx, mid + half}, ImVec2{cx + half, mid - half}, im_colour(0xff6060u));
         else if(row.trend == 2u)
-          dl->AddRectFilled(ImVec2{cx - half, mid - 1.f}, ImVec2{cx + half, mid + 1.f}, grey);
+          dl->AddRectFilled(ImVec2{cx - half, mid - std::max(1.f, size * 0.05f)}, ImVec2{cx + half, mid + std::max(1.f, size * 0.05f)}, grey);
         if(row.controlling)
           dl->AddText(r.font, size, ImVec2{x_star, y}, im_colour(0xe0e0e0u), "*");
         std::uint32_t const tint{row.allegiance >= 1u and row.allegiance <= 3u ? colour_of(static_cast<allegiance_e>(row.allegiance)) : 0xc8c8c8u};
-        ImVec4 const name_clip{x_name, y, x_influence - 7.f * cw, y + line};
+        ImVec4 const name_clip{x_name, y, x_name + name_w, y + line};
         dl->AddText(r.font, size, ImVec2{x_name, y}, im_colour(tint), row.name, nullptr, 0.f, &name_clip);
         std::snprintf(buf, sizeof buf, "%.1f%%", static_cast<double>(row.influence) * 100.0);
-        float const w{r.font->CalcTextSizeA(size, FLT_MAX, 0.f, buf).x};
-        dl->AddText(r.font, size, ImVec2{x_influence - w, y}, im_colour(0xe0e0e0u), buf);
+        dl->AddText(r.font, size, ImVec2{x_influence - width(buf), y}, im_colour(0xe0e0e0u), buf);
         if(row.states[0] != '\0')
           {
           ImVec4 const states_clip{x_states, y, right - pad, y + line};
           dl->AddText(r.font, size, ImVec2{x_states, y}, grey, row.states, nullptr, 0.f, &states_clip);
           }
         }
-      if(source_rows != 0)
-        {
-        float const y{top + pad + static_cast<float>(shown) * line};
-        if(placeholder)
-          std::snprintf(buf, sizeof buf, "list test: %u rows at most, text %.0f px", rows, static_cast<double>(size));
-        else if(list.updated_unix_s <= 0)
-          std::snprintf(buf, sizeof buf, "from EDSM");
-        else
-          {
-          std::int64_t const age{std::max<std::int64_t>(0, unix_now() - list.updated_unix_s)};
-          if(age < 3600)
-            std::snprintf(buf, sizeof buf, "from EDSM, updated %lld min ago", static_cast<long long>(age / 60));
-          else if(age < 48 * 3600)
-            std::snprintf(buf, sizeof buf, "from EDSM, updated %lld h ago", static_cast<long long>(age / 3600));
-          else
-            std::snprintf(buf, sizeof buf, "from EDSM, updated %lld days ago", static_cast<long long>(age / 86400));
-          }
-        dl->AddText(r.font, size, ImVec2{x_name, y}, grey, buf);
-        }
+      if(with_source)
+        dl->AddText(r.font, size, ImVec2{x_name, top + pad + static_cast<float>(shown) * line}, grey, source);
       return bottom - top;
       }
 
@@ -492,7 +529,8 @@ namespace edworld
       bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
       ok = ok and SUCCEEDED(r.device->CreateBuffer(&bd, nullptr, &r.list_cb));
       D3D11_SAMPLER_DESC sd{};
-      sd.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+      sd.Filter = D3D11_FILTER_ANISOTROPIC;
+      sd.MaxAnisotropy = 8;
       sd.AddressU = sd.AddressV = sd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
       sd.MaxLOD = D3D11_FLOAT32_MAX;
       ok = ok and SUCCEEDED(r.device->CreateSamplerState(&sd, &r.list_sampler));
@@ -557,13 +595,16 @@ namespace edworld
       r.list_srv = nullptr;
       r.list_rtv = nullptr;
       r.list_tex = nullptr;
+      // a full mip chain: the cockpit shows the list smaller than it is drawn, and without mips its text breaks up
       D3D11_TEXTURE2D_DESC d{};
       d.Width = w;
       d.Height = h;
-      d.MipLevels = d.ArraySize = 1;
+      d.MipLevels = 0;
+      d.ArraySize = 1;
       d.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
       d.SampleDesc.Count = 1;
       d.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+      d.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
       if(FAILED(r.device->CreateTexture2D(&d, nullptr, &r.list_tex)) or not r.list_tex
          or FAILED(r.device->CreateRenderTargetView(r.list_tex, nullptr, &r.list_rtv))
          or FAILED(r.device->CreateShaderResourceView(r.list_tex, nullptr, &r.list_srv)))
@@ -996,13 +1037,13 @@ namespace edworld
       {
       float const line{std::round(r.font->FontSize * 1.15f)};
       auto const w{static_cast<std::uint32_t>(std::clamp(s.list_width, 64.f, 4096.f))};
-      auto const h{static_cast<std::uint32_t>(line * static_cast<float>(std::max(s.list_rows, 2u)) + 8.f + 1.f)};
+      auto const h{static_cast<std::uint32_t>(line * static_cast<float>(std::max(s.list_rows, 2u)) + 2.f * std::round(r.font->FontSize * 0.3f) + 1.f)};
       if(list_target(w, h))
         {
         io.DisplaySize = ImVec2{static_cast<float>(w), static_cast<float>(h)};
         ImGui_ImplDX11_NewFrame();
         ImGui::NewFrame();
-        float const used{draw_list(ImGui::GetBackgroundDrawList(), s, list, test, 0.f, 0.f)};
+        float const used{draw_list(ImGui::GetBackgroundDrawList(), s, list, test, static_cast<float>(w) / 2.f, 0.f)};
         ImGui::Render();
         backup_t lb;
         save(ctx, lb);
@@ -1013,6 +1054,7 @@ namespace edworld
         ctx->PSSetConstantBuffers(0, 1, &r.white_gate);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
         restore(ctx, lb);
+        ctx->GenerateMips(r.list_srv);
         list_used = std::min(used, static_cast<float>(h));
         list_frame = used > 0.f ? frame : ~0ull;
         }
@@ -1162,6 +1204,27 @@ namespace edworld
     ctx->OMGetDepthStencilState(&b.depth, &b.stencil_ref);
     ctx->RSGetState(&b.raster);
 
+    if(not told_list_quad)
+      {
+      // what the quad is drawn into, and how the game blends its panel there (the list's ground looked grey)
+      ID3D11RenderTargetView * rtv{};
+      ID3D11DepthStencilView * dsv{};
+      ctx->OMGetRenderTargets(1, &rtv, &dsv);
+      D3D11_RENDER_TARGET_VIEW_DESC rd{};
+      if(rtv)
+        rtv->GetDesc(&rd);
+      D3D11_BLEND_DESC bd{};
+      if(b.blend)
+        b.blend->GetDesc(&bd);
+      D3D11_RENDER_TARGET_BLEND_DESC const & t{bd.RenderTarget[0]};
+      log_line("list: drawn into format %u%s; the game's blend %s: src %u dest %u op %u, alpha src %u dest %u op %u, mask %x",
+               static_cast<unsigned>(rd.Format), dsv ? " (with depth)" : "", b.blend ? (t.BlendEnable ? "on" : "off") : "default",
+               t.SrcBlend, t.DestBlend, t.BlendOp, t.SrcBlendAlpha, t.DestBlendAlpha, t.BlendOpAlpha, t.RenderTargetWriteMask);
+      if(rtv)
+        rtv->Release();
+      if(dsv)
+        dsv->Release();
+      }
     ID3D11ShaderResourceView * const srvs[2]{r.list_srv, surface};
     ctx->VSSetShader(r.list_vs, nullptr, 0);
     ctx->PSSetShader(r.list_ps, nullptr, 0);

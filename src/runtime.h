@@ -72,16 +72,16 @@ namespace edworld
     // ---- the destination's factions, listed under the jump panel on the same surface ----
     ///\brief 0 off, 1 on: by influence, from EHT's `target` in edworld_eht when it has them, else from EDSM (marked so)
     std::uint32_t list{1};
-    ///\brief the list's box in the panel surface's pixels, carried past its edge: horizontal centre, top edge, width;
-    /// rows at most (EDSM's source line among them). The panel shows rows 2-493 of 3072x660 (its vertices, 2026-10-05);
+    ///\brief the list's box in the panel surface's pixels, carried past its edge: horizontal centre, top edge, widest
+    /// (the box is as wide as its rows); rows at most (EDSM's source line among them). The panel shows rows 2-493 of 3072x660 (its vertices, 2026-10-05);
     /// the list is a quad of its own under it in the panel's plane, not drawn on the surface (rows below 493 belong to
     /// other panels: a one-pixel strip at 519 is stretched over the jump panel)
     float list_x{1540.f};
     float list_top{500.f};
-    float list_width{860.f};
+    float list_width{2200.f};
     std::uint32_t list_rows{7};
     ///\brief the text's height in surface pixels; the font is made at the first patch, so a change needs a restart
-    float list_text{20.f};
+    float list_text{50.f};
     ///\brief the list's colours times this in the cockpit (its target may be HDR, brighter than 1)
     float list_gain{1.f};
     };

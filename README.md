@@ -88,7 +88,10 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   record, the world-rebase origin, its clip rows, still bound from the game's draw). It shows while the game shows
   the panel (the surface's alpha at the patch's centre). A system without factions (uninhabited, or unknown to
   EDSM) gets no list. Text in Noto Sans Mono (SIL OFL 1.1, the font of EHT's overlay), made once at the first patch
-  at `list_text` pixels; `list_gain` scales its colours (the cockpit's target may be HDR). In test mode
+  at `list_text` pixels (50: two and a half times the panel's own text, at which the factions' names read in the
+  cockpit), in a black box as wide as its rows and centred under the panel (`list_width` the widest it gets); its
+  texture has a full mip chain, as the cockpit shows it smaller than drawn. `list_gain` scales its colours (the
+  cockpit's target may be HDR). The first quad drawn logs the target's format and the game's blend for the panel. In test mode
   (`patch = 2`) the box is drawn with placeholder rows when there is nothing to list, to see where it goes.
   The panel's vertex (stride 40): the packed local position in bytes 0..15 (EDVR's decode), the surface
   coordinate in bytes 16..19 as two unorm16 halves, `(h / 32767 - 1) * 16`.
@@ -169,10 +172,10 @@ list = 1
 ; its box in the panel surface's pixels, past the panel's edge: horizontal centre, top edge, width; rows at most (EDSM's line among them)
 list_x = 1540
 list_top = 500
-list_width = 860
+list_width = 2200
 list_rows = 7
 ; text height in pixels; read once, at the first patch
-list_text = 20
+list_text = 50
 ; the list's colours times this in the cockpit
 list_gain = 1
 ```
@@ -198,13 +201,16 @@ default `/dev/shm/eht`).
    box is a one-pixel strip (row 519) stretched over the panel. Hence the list's quad of its own.
 7. **2026-10-05, ed-lab clone, the list's quad (test mode).** The test rows under the panel, edge to edge with it,
    following it; the jump panel's draw found by its vertices; no faults.
+8. **2026-10-05, a Steam install, the list's quad and the superpower read from the panel.** The Alliance read from
+   the panel's text (label 231 px, word 155 px), the emblem beside its rows; the list under the panel and riding it,
+   but its text too small and blurred (20 px, no mips), the box twice too wide, its ground grey instead of black.
 
 ## Not known yet
 
 - Cost in the game (expected: a pointer compare per draw plus a few copies per frame; the patch only while charging).
 - Loading through edloader, in the game.
 - The patch masked by the game's own drawing (hidden panel while aligning), in the game; tested under wine.
-- The list's quad in the game: placement under the panel, brightness (`list_gain`), readability at `list_text = 20`.
+- The list's quad in the game: placement under the panel, brightness (`list_gain`), readability at `list_text = 50`.
   Under wine only the pure arithmetic (the panel's vertex decode and map, from the game's own vertices) is tested;
   the test's draw has no stride-40 vertices, so the quad is not drawn there.
 - The superpower read from the panel in the game: EMPIRE, FEDERATION and INDEPENDENT are known from screenshots
