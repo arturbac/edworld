@@ -44,6 +44,41 @@ namespace
 
 int main()
   {
+  // the jump panel's four vertices as the game drew them on 2026-10-05 (ed-lab, geometry dump g10): local
+  // x +-0.1196, y +-0.0588, shown at surface pixels x 1031..2045, y 2..493 of 3072x660
+  {
+  std::uint32_t const words[4][5]{
+    {0xf2af0b26u, 0x3ffff9f0u, 0x01007e7fu, 0x007f7ffeu, 0x85fa82aeu},
+    {0x0ccf0b26u, 0x3ffffa0fu, 0x01007e7fu, 0x007f7ffeu, 0x800582aeu},
+    {0x0cd0f4d5u, 0x3ffffa0fu, 0x01007e7fu, 0x007f7ffeu, 0x80058552u},
+    {0xf2b0f4d5u, 0x3ffff9f0u, 0x01007e7fu, 0x007f7ffeu, 0x85fa8552u}};
+  edworld::vec3_t p[4];
+  float px[4][2];
+  for(int i{}; i != 4; ++i)
+    {
+    p[i] = edworld::decode_local(words[i][0], words[i][1], words[i][2]);
+    float u, v;
+    edworld::decode_uv(words[i][4], u, v);
+    px[i][0] = u * 3072.f;
+    px[i][1] = v * 660.f;
+    }
+  auto const near_px = [](float a, float b) { return std::fabs(a - b) < 1.f; };
+  check(std::fabs(p[0].x + 0.1196f) < 1e-3f and std::fabs(p[0].y + 0.0588f) < 1e-3f and std::fabs(p[2].x - 0.1196f) < 1e-3f,
+        "panel vertex: local position decoded");
+  check(near_px(px[0][0], 1030.5f) and near_px(px[0][1], 493.4f) and near_px(px[2][0], 2044.6f) and near_px(px[2][1], 1.9f),
+        "panel vertex: surface pixel decoded");
+  auto const map{edworld::map_from({p[0], p[1], p[2]}, {{px[0][0], px[0][1]}, {px[1][0], px[1][1]}, {px[2][0], px[2][1]}})};
+  check(map.has_value(), "panel map from three corners");
+  if(map)
+    {
+    auto const back{edworld::local_of(*map, px[3][0], px[3][1])};
+    check(back and std::fabs(back->x - p[3].x) < 1e-4f and std::fabs(back->y - p[3].y) < 1e-4f, "panel map: the fourth corner back");
+    // below the panel the local y keeps falling: the list's bottom edge lands under the panel's
+    auto const below{edworld::local_of(*map, 1540.f, 571.f)};
+    check(below and below->y < p[0].y and below->x > p[0].x and below->x < p[2].x, "panel map: a pixel under the panel");
+    }
+  check(not edworld::map_from({p[0], p[0], p[2]}, {{0.f, 0.f}, {0.f, 0.f}, {1.f, 1.f}}).has_value(), "no map through a line");
+  }
   wchar_t exe[MAX_PATH]{};
   GetModuleFileNameW(nullptr, exe, MAX_PATH);
   std::wstring dir{exe};
@@ -355,21 +390,14 @@ int main()
   check(pixel(256 - 45, 64) == 0x020304u, "patch ground drawn beside the emblem");
   check(pixel(208, 64) == 0xff00ffu, "test frame drawn at the patch's edge");
   check(pixel(10, 10) == 0u, "surface untouched outside the patch");
-  // the list under the panel, where the game drew nothing: shown because the game drew the panel at the gate
-  auto const lit{[&](int x0, int y0, int x1, int y1, bool blue) -> std::uint32_t
-    {
-    std::uint32_t n{};
-    for(int y{y0}; y != y1; ++y)
-      for(int x{x0}; x != x1; ++x)
-        if(std::uint32_t const c{pixel(x, y)}; blue ? (c & 0xffu) > 0x80u and ((c >> 16) & 0xffu) < 0x80u : (c & 0xf0f0f0u) != 0u and c != 0x020304u and c != 0xff00ffu)
-          ++n;
-    return n;
-    }};
-  std::uint32_t const list_text{lit(160, 98, 352, 128, false)};
-  std::printf("list: lit pixels under the panel %u, Empire-blue %u\n", list_text, lit(160, 98, 352, 128, true));
-  check(list_text > 60, with_eht ? "the data source's factions listed under the panel" : "the list's test rows under the panel");
-  if constexpr(with_eht)
-    check(lit(160, 98, 352, 128, true) > 10, "a faction's name in its allegiance's colour");
+  // the list is no longer drawn on the surface: there the rows under the panel belong to other panels; it is a quad of
+  // its own drawn after the panel's draw, placed by the panel's vertices (stride 40, which this test's draw lacks)
+  std::uint32_t lit_under{};
+  for(int y{98}; y != 128; ++y)
+    for(int x{160}; x != 352; ++x)
+      if(pixel(x, y) != 0u)
+        ++lit_under;
+  check(lit_under == 0, "nothing drawn on the surface under the panel (the list is a quad of its own)");
   ctx->Unmap(readback, 0);
 
   // StartJump: Flags bit 30 (FSD jump) set while Flags2 bit 19 still is; the panel is gone, nothing may be drawn.

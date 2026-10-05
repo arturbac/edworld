@@ -21,6 +21,9 @@ python3 tools/gen_exports_from_release.py --source "$RELEASE_DLL" --tag d3d11 --
 # Dear ImGui's D3D11 backend shaders, compiled here so the game needs no d3dcompiler_XX.dll (third_party/imgui/README.md)
 WINEDEBUG=-all wine "$FXC" /nologo /O3 /T vs_4_0 /E vs_main /Vn g_imgui_vs /Fh build/gen/imgui_vs.h shaders/imgui.hlsl >/dev/null
 WINEDEBUG=-all wine "$FXC" /nologo /O3 /T ps_4_0 /E ps_main /Vn g_imgui_ps /Fh build/gen/imgui_ps.h shaders/imgui.hlsl >/dev/null
+# the list's quad under the jump panel (SM5: it reads the game's structured record buffer)
+WINEDEBUG=-all wine "$FXC" /nologo /O3 /T vs_5_0 /E vs_main /Vn g_list_vs /Fh build/gen/list_vs.h shaders/list.hlsl >/dev/null
+WINEDEBUG=-all wine "$FXC" /nologo /O3 /T ps_5_0 /E ps_main /Vn g_list_ps /Fh build/gen/list_ps.h shaders/list.hlsl >/dev/null
 python3 tools/gen_font.py build/gen/list_font.h
 ml64 /nologo /c /Fo$OBJ/thunks.obj build/gen/edvr_thunks_d3d11.asm
 IMGUI=third_party/imgui

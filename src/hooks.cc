@@ -1055,6 +1055,24 @@ namespace edworld
         }
       }
 
+    // the list under the jump panel, right after the game's draw of it; SEH as around the observation
+    auto guarded_after(
+      ID3D11DeviceContext * ctx, std::uint32_t index_count, std::uint32_t start_index, std::int32_t base_vertex, std::uint32_t start_instance
+    ) noexcept -> void
+      {
+      if(not settings().patch or not settings().list)
+        return;
+      __try
+        {
+        panel_list_after(ctx, frame, index_count, start_index, base_vertex, start_instance);
+        }
+      __except(EXCEPTION_EXECUTE_HANDLER)
+        {
+        if(++faults >= 8)
+          disabled.store(true);
+        }
+      }
+
     auto watched_draw(ID3D11DeviceContext * ctx) noexcept -> bool
       {
       return current_watched >= 0 and ctx == immediate.load(std::memory_order_relaxed)
@@ -1310,9 +1328,13 @@ namespace edworld
         seen_hash[at] = hash;
         verdict[at].store(verdict_e::pending, std::memory_order_relaxed);
         verdict_looked[at] = 0;
+        // edworld's own (ImGui's, the list's) are judged at once: they draw from copies of a panel's surface
+        verdict[at].store(creating_own.load() ? verdict_e::not_panel : verdict_e::pending, std::memory_order_relaxed);
         seen_ptr[at].store(*shader, std::memory_order_release);
         table_put(*shader, at);
         }
+      if(creating_own.load())
+        return hr;
       if(settings().log_all_vs)
         log_line("vs %016llX %zu bytes", static_cast<unsigned long long>(hash), static_cast<std::size_t>(length));
       auto const & listed{settings().watch_vs};
@@ -1362,7 +1384,8 @@ namespace edworld
 
     void STDMETHODCALLTYPE hook_draw_indexed(ID3D11DeviceContext * self, UINT index_count, UINT start_index, INT base_vertex)
       {
-      if(watched_draw(self))
+      bool const watched{watched_draw(self)};
+      if(watched)
         guarded_observe(self, index_count, 1, start_index, base_vertex, 0);
       else
         {
@@ -1372,6 +1395,8 @@ namespace edworld
           guarded_probe(self, index_count, 1);
         }
       orig_draw_indexed(self, index_count, start_index, base_vertex);
+      if(watched)
+        guarded_after(self, index_count, start_index, base_vertex, 0);
       }
 
     void STDMETHODCALLTYPE hook_draw(ID3D11DeviceContext * self, UINT vertex_count, UINT start_vertex)
@@ -1397,7 +1422,8 @@ namespace edworld
       UINT start_instance
     )
       {
-      if(watched_draw(self))
+      bool const watched{watched_draw(self)};
+      if(watched)
         guarded_observe(self, index_count, instance_count, start_index, base_vertex, start_instance);
       else
         {
@@ -1407,6 +1433,8 @@ namespace edworld
           guarded_probe(self, index_count, instance_count);
         }
       orig_draw_indexed_instanced(self, index_count, instance_count, start_index, base_vertex, start_instance);
+      if(watched)
+        guarded_after(self, index_count, start_index, base_vertex, start_instance);
       }
 
     void STDMETHODCALLTYPE hook_draw_instanced(

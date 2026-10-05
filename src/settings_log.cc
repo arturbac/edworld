@@ -130,6 +130,8 @@ namespace edworld
         current.list_rows = to_uint(value, current.list_rows);
       else if(key == "list_text")
         current.list_text = to_float(value, current.list_text);
+      else if(key == "list_gain")
+        current.list_gain = to_float(value, current.list_gain);
       else if(key == "edsm")
         current.edsm = value == "1" or value == "true";
       else if(key == "log_all_vs")

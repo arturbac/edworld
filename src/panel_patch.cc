@@ -6,9 +6,13 @@
 // alpha under each pixel, copied just before): when the game hides the panel while the ship still aligns, Status.json
 // still says charging, and the patch must go with the panel.
 //
-// Under the panel, on the same surface, the destination's factions are listed (from EHT's target in edworld_eht when
-// it has them, else from EDSM, said so in the list's last row), so they too ride the panel. The game draws nothing
-// there, so the list shows while the game draws the panel at one point of it (the gate, the patch's centre).
+// Under the panel the destination's factions are listed (from EHT's target in edworld_eht when it has them, else from
+// EDSM, said so in the list's last row). Not on the surface: the panel shows only its own rectangle of it (rows 2-493
+// of 3072x660), and the rows below belong to other panels. The list is drawn into a texture of its own, and right
+// after the game's draw of the jump panel a quad of edworld's own carries it under the panel, in the panel's plane:
+// the panel's local-to-surface map (read once from its vertices) takes the list's box, given in the surface's pixels
+// past its edge, back to local points, which the list's vertex shader places as the game's shader places the panel.
+// It shows while the game shows the panel (the surface's alpha at one point of it, the gate).
 //
 // The only place edworld changes what the game draws. The patch is a Dear ImGui draw list rendered by ImGui's
 // D3D11 backend (its own context, no input, no files). Everything the game had bound is read back first and put
@@ -18,6 +22,9 @@
 #include "emblems.h"
 #include "game_state.h"
 #include "list_font.h"
+#include "list_ps.h"
+#include "list_vs.h"
+#include "panel_math.h"
 
 #include <imgui.h>
 #include <backends/imgui_impl_dx11.h>
@@ -28,6 +35,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 #include <vector>
 
 namespace edworld
@@ -56,6 +64,22 @@ namespace edworld
       ID3D11Buffer * gate{};
       ///\brief the list's font; none when it could not be made (no list then, the emblem still)
       ImFont * font{};
+      // the list: its texture (premultiplied, drawn by ImGui), and what carries it under the panel
+      ID3D11Texture2D * list_tex{};
+      ID3D11RenderTargetView * list_rtv{};
+      ID3D11ShaderResourceView * list_srv{};
+      std::uint32_t list_width{}, list_height{};
+      ID3D11ShaderResourceView * white{};  ///< 1x1 opaque: the ImGui shader's gate texture when drawing the list's
+      ID3D11Buffer * white_gate{};
+      ID3D11VertexShader * list_vs{};
+      ID3D11PixelShader * list_ps{};
+      ID3D11InputLayout * list_layout{};
+      ID3D11Buffer * list_cb{};
+      ID3D11SamplerState * list_sampler{};
+      ID3D11BlendState * list_blend{};
+      ID3D11DepthStencilState * list_depth{};
+      ID3D11RasterizerState * list_raster{};
+      bool list_failed{};
       bool failed{};
       };
 
@@ -78,6 +102,7 @@ namespace edworld
     std::uint64_t patched_frame{~0ull};
     bool told_drawing{};
     std::uint64_t told_list_for{};
+    bool told_list_quad{};
 
     ///\brief the emblem as white with its coverage as alpha, so ImGui's colour x texture tints it
     auto make_emblem(std::uint8_t const * mask, std::uint32_t w, std::uint32_t h, std::uint32_t slot) -> bool
@@ -125,6 +150,11 @@ namespace edworld
         r.mask->Release();
       if(r.gate)
         r.gate->Release();
+      for(IUnknown * u: std::initializer_list<IUnknown *>{r.list_tex, r.list_rtv, r.list_srv, r.white, r.white_gate, r.list_vs, r.list_ps,
+                                                         r.list_layout, r.list_cb, r.list_sampler, r.list_blend, r.list_depth,
+                                                         r.list_raster})
+        if(u)
+          u->Release();
       r = resources_t{};
       r.device = device;
       r.imgui = ImGui::CreateContext();
@@ -142,8 +172,10 @@ namespace edworld
       if(not r.font)
         log_line("patch: the list's font could not be made; no list");
       }
+      creating_own.store(true);
       bool ok{ImGui_ImplDX11_Init(device, ctx)};
       ok = ok and ImGui_ImplDX11_CreateDeviceObjects();
+      creating_own.store(false);
       ok = ok and make_emblem(emblems::federation_mask, emblems::federation_width, emblems::federation_height, 0);
       ok = ok and make_emblem(emblems::empire_mask, emblems::empire_width, emblems::empire_height, 1);
       ok = ok and make_emblem(emblems::alliance_mask, emblems::alliance_width, emblems::alliance_height, 2);
@@ -342,21 +374,20 @@ namespace edworld
     ///\brief the destination's factions in a box under the panel: the trend at the last tick, the controlling one
     /// starred, name, influence, states; EDSM's list says so in its last row, with the age of its data. In test mode
     /// with nothing to list, placeholder rows show where the box goes
-    auto draw_list(ImDrawList * dl, settings_t const & s, faction_list_t const & list, bool test) -> void
+    auto draw_list(ImDrawList * dl, settings_t const & s, faction_list_t const & list, bool test, float left, float top) -> float
       {
       if(not r.font)
-        return;
+        return 0.f;
       float const size{r.font->FontSize};
       float const line{std::round(size * 1.15f)};
       float const pad{4.f};
-      float const left{s.list_x - s.list_width / 2.f}, right{s.list_x + s.list_width / 2.f};
+      float const right{left + s.list_width};
       bool const placeholder{test and list.count == 0};
       std::uint32_t const source_rows{list.source == list_source_e::edsm or placeholder ? 1u : 0u};
       std::uint32_t const rows{std::max(s.list_rows, source_rows + 1u)};
       std::uint32_t const shown{placeholder ? rows - source_rows : std::min(list.count, rows - source_rows)};
       if(shown == 0)
-        return;
-      float const top{s.list_top};
+        return 0.f;
       float const bottom{top + static_cast<float>(shown + source_rows) * line + 2.f * pad};
       dl->AddRectFilled(ImVec2{left, top}, ImVec2{right, bottom}, im_colour(s.patch_ground));
       if(test)
@@ -419,7 +450,276 @@ namespace edworld
           }
         dl->AddText(r.font, size, ImVec2{x_name, y}, grey, buf);
         }
+      return bottom - top;
       }
+
+    // ---- the list under the panel: its texture, the panel's map, the quad ----
+    struct list_cb_t
+      {
+      float corner[4][4];
+      float uv_extent[4];
+      std::int32_t gate[4];
+      float gain[4];
+      };
+
+    std::uint64_t list_frame{~0ull};  ///< the frame the list's texture was drawn in
+    float list_used{};                ///< its height in that frame, in pixels
+
+    ///\brief the list's shaders and states, once per device; none = no list (logged once)
+    auto make_list_objects() -> bool
+      {
+      if(r.list_vs)
+        return true;
+      if(r.list_failed)
+        return false;
+      creating_own.store(true);
+      bool ok{SUCCEEDED(r.device->CreateVertexShader(g_list_vs, sizeof g_list_vs, nullptr, &r.list_vs))};
+      ok = ok and SUCCEEDED(r.device->CreatePixelShader(g_list_ps, sizeof g_list_ps, nullptr, &r.list_ps));
+      creating_own.store(false);
+      // the instance index from the game's own instance stream (VB0), as its panel shader reads it
+      D3D11_INPUT_ELEMENT_DESC const element{"INSTANCEINDEX", 0, DXGI_FORMAT_R32G32_UINT, 0, 0, D3D11_INPUT_PER_INSTANCE_DATA, 1};
+      ok = ok and SUCCEEDED(r.device->CreateInputLayout(&element, 1, g_list_vs, sizeof g_list_vs, &r.list_layout));
+      D3D11_BUFFER_DESC bd{};
+      bd.ByteWidth = sizeof(list_cb_t);
+      bd.Usage = D3D11_USAGE_DYNAMIC;
+      bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+      bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+      ok = ok and SUCCEEDED(r.device->CreateBuffer(&bd, nullptr, &r.list_cb));
+      D3D11_SAMPLER_DESC sd{};
+      sd.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+      sd.AddressU = sd.AddressV = sd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+      sd.MaxLOD = D3D11_FLOAT32_MAX;
+      ok = ok and SUCCEEDED(r.device->CreateSamplerState(&sd, &r.list_sampler));
+      D3D11_BLEND_DESC blend{};
+      blend.RenderTarget[0].BlendEnable = TRUE;
+      blend.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;  // the texture is premultiplied
+      blend.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+      blend.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+      blend.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+      blend.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+      blend.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+      blend.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+      ok = ok and SUCCEEDED(r.device->CreateBlendState(&blend, &r.list_blend));
+      D3D11_DEPTH_STENCIL_DESC depth{};
+      depth.DepthEnable = FALSE;
+      depth.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+      depth.DepthFunc = D3D11_COMPARISON_ALWAYS;
+      ok = ok and SUCCEEDED(r.device->CreateDepthStencilState(&depth, &r.list_depth));
+      D3D11_RASTERIZER_DESC raster{};
+      raster.FillMode = D3D11_FILL_SOLID;
+      raster.CullMode = D3D11_CULL_NONE;
+      raster.DepthClipEnable = TRUE;
+      ok = ok and SUCCEEDED(r.device->CreateRasterizerState(&raster, &r.list_raster));
+      // the ImGui shader multiplies by a gate texture's alpha: for the list's own texture, an opaque pixel
+      std::uint32_t const white{0xffffffffu};
+      D3D11_TEXTURE2D_DESC td{};
+      td.Width = td.Height = 1;
+      td.MipLevels = td.ArraySize = 1;
+      td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+      td.SampleDesc.Count = 1;
+      td.Usage = D3D11_USAGE_IMMUTABLE;
+      td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+      D3D11_SUBRESOURCE_DATA const init{&white, 4u, 0};
+      ID3D11Texture2D * tex{};
+      ok = ok and SUCCEEDED(r.device->CreateTexture2D(&td, &init, &tex)) and tex;
+      ok = ok and SUCCEEDED(r.device->CreateShaderResourceView(tex, nullptr, &r.white));
+      if(tex)
+        tex->Release();
+      gate_t const zero{};
+      D3D11_BUFFER_DESC gd{};
+      gd.ByteWidth = sizeof(gate_t);
+      gd.Usage = D3D11_USAGE_IMMUTABLE;
+      gd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+      D3D11_SUBRESOURCE_DATA const gate_init{&zero, 0, 0};
+      ok = ok and SUCCEEDED(r.device->CreateBuffer(&gd, &gate_init, &r.white_gate));
+      if(not ok)
+        {
+        r.list_failed = true;
+        log_line("list: its shaders or states could not be made; no list (the emblem still)");
+        }
+      return ok;
+      }
+
+    ///\brief the list's texture, made again when its size changes
+    auto list_target(std::uint32_t w, std::uint32_t h) -> bool
+      {
+      if(r.list_tex and r.list_width == w and r.list_height == h)
+        return true;
+      for(IUnknown * u: std::initializer_list<IUnknown *>{r.list_srv, r.list_rtv, r.list_tex})
+        if(u)
+          u->Release();
+      r.list_srv = nullptr;
+      r.list_rtv = nullptr;
+      r.list_tex = nullptr;
+      D3D11_TEXTURE2D_DESC d{};
+      d.Width = w;
+      d.Height = h;
+      d.MipLevels = d.ArraySize = 1;
+      d.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+      d.SampleDesc.Count = 1;
+      d.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+      if(FAILED(r.device->CreateTexture2D(&d, nullptr, &r.list_tex)) or not r.list_tex
+         or FAILED(r.device->CreateRenderTargetView(r.list_tex, nullptr, &r.list_rtv))
+         or FAILED(r.device->CreateShaderResourceView(r.list_tex, nullptr, &r.list_srv)))
+        return false;
+      r.list_width = w;
+      r.list_height = h;
+      return true;
+      }
+
+    ///\brief one panel draw as the list knows it: which rectangle of the surface it shows, read once from its vertices
+    struct panel_draw_t
+      {
+      enum struct state_e : std::uint8_t
+        {
+        empty,
+        pending,
+        other,
+        jump_panel
+        };
+      void * ib;
+      UINT ib_offset;
+      std::uint32_t start_index;
+      void * vb;
+      UINT vb_offset;
+      std::int32_t base_vertex;
+      state_e state;
+      std::uint32_t index_bytes;
+      ID3D11Buffer * staged_ib;
+      ID3D11Buffer * staged_vb;
+      LONGLONG queued;
+      panel_map_t map;
+      };
+
+    constexpr std::uint32_t max_panel_draws{32};
+    constexpr std::uint32_t staged_vertices{16};
+    panel_draw_t panel_draws[max_panel_draws]{};
+    std::uint32_t panel_draw_next{};
+
+    auto qpc() -> LONGLONG
+      {
+      LARGE_INTEGER t{};
+      QueryPerformanceCounter(&t);
+      return t.QuadPart;
+      }
+
+    auto staging_copy(ID3D11DeviceContext * ctx, ID3D11Buffer * source, std::uint64_t from, std::uint32_t bytes) -> ID3D11Buffer *
+      {
+      D3D11_BUFFER_DESC bd{};
+      source->GetDesc(&bd);
+      if(from + bytes > bd.ByteWidth)
+        return nullptr;
+      D3D11_BUFFER_DESC sd{};
+      sd.ByteWidth = (bytes + 15u) & ~15u;
+      sd.Usage = D3D11_USAGE_STAGING;
+      sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+      ID3D11Buffer * staging{};
+      if(FAILED(r.device->CreateBuffer(&sd, nullptr, &staging)) or not staging)
+        return nullptr;
+      D3D11_BOX const box{static_cast<UINT>(from), 0, 0, static_cast<UINT>(from + bytes), 1, 1};
+      ctx->CopySubresourceRegion(staging, 0, 0, 0, 0, source, 0, &box);
+      return staging;
+      }
+
+    auto drop_staged(panel_draw_t & e) -> void
+      {
+      if(e.staged_ib)
+        e.staged_ib->Release();
+      if(e.staged_vb)
+        e.staged_vb->Release();
+      e.staged_ib = nullptr;
+      e.staged_vb = nullptr;
+      }
+
+    ///\brief the copied vertices read: the draw's map, and whether its rectangle holds the patch's centre (the jump panel)
+    auto judge(ID3D11DeviceContext * ctx, panel_draw_t & e, settings_t const & s) -> void
+      {
+      D3D11_MAPPED_SUBRESOURCE mi{}, mv{};
+      HRESULT const hi{ctx->Map(e.staged_ib, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mi)};
+      if(hi == DXGI_ERROR_WAS_STILL_DRAWING)
+        return;
+      HRESULT const hv{SUCCEEDED(hi) ? ctx->Map(e.staged_vb, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mv) : hi};
+      if(hv == DXGI_ERROR_WAS_STILL_DRAWING)
+        {
+        ctx->Unmap(e.staged_ib, 0);
+        return;
+        }
+      e.state = panel_draw_t::state_e::other;
+      if(SUCCEEDED(hi) and SUCCEEDED(hv) and mi.pData and mv.pData)
+        {
+        std::uint32_t const size{e.index_bytes};
+        std::uint32_t idx[3]{};
+        for(std::uint32_t i{}; i != 3; ++i)
+          {
+          if(size == 2u)
+            {
+            std::uint16_t v{};
+            std::memcpy(&v, static_cast<std::uint8_t const *>(mi.pData) + i * 2u, 2);
+            idx[i] = v;
+            }
+          else
+            std::memcpy(&idx[i], static_cast<std::uint8_t const *>(mi.pData) + i * 4u, 4);
+          }
+        if(idx[0] < staged_vertices and idx[1] < staged_vertices and idx[2] < staged_vertices)
+          {
+          vec3_t p[3];
+          float px[3][2];
+          for(std::uint32_t i{}; i != 3; ++i)
+            {
+            std::uint32_t w[5];
+            std::memcpy(w, static_cast<std::uint8_t const *>(mv.pData) + idx[i] * vertex_stride, sizeof w);
+            p[i] = decode_local(w[0], w[1], w[2]);
+            float u, v;
+            decode_uv(w[4], u, v);
+            px[i][0] = u * static_cast<float>(s.patch_surface_width);
+            px[i][1] = v * static_cast<float>(s.patch_surface_height);
+            }
+          if(auto const m{map_from(p, px)}; m)
+            {
+            e.map = *m;
+            // the rectangle the draw shows: the first triangle's box (a quad's two triangles share it)
+            float const x0{std::min({px[0][0], px[1][0], px[2][0]})}, x1{std::max({px[0][0], px[1][0], px[2][0]})};
+            float const y0{std::min({px[0][1], px[1][1], px[2][1]})}, y1{std::max({px[0][1], px[1][1], px[2][1]})};
+            bool const holds{s.patch_x >= x0 and s.patch_x <= x1 and s.patch_y >= y0 and s.patch_y <= y1};
+            if(holds)
+              e.state = panel_draw_t::state_e::jump_panel;
+            log_line("list: a draw (base vertex %d) shows x %.0f..%.0f, y %.0f..%.0f of the surface%s", e.base_vertex,
+                     static_cast<double>(x0), static_cast<double>(x1), static_cast<double>(y0), static_cast<double>(y1),
+                     holds ? ": the jump panel" : "");
+            }
+          }
+        }
+      if(SUCCEEDED(hi))
+        ctx->Unmap(e.staged_ib, 0);
+      if(SUCCEEDED(hv))
+        ctx->Unmap(e.staged_vb, 0);
+      drop_staged(e);
+      }
+
+    ///\brief everything the list's quad sets, as the game left it (the game's buffers and records stay bound)
+    struct list_backup_t
+      {
+      ID3D11VertexShader * vs{};
+      ID3D11ClassInstance * vs_instances[256]{};
+      UINT vs_instance_count{256};
+      ID3D11PixelShader * ps{};
+      ID3D11ClassInstance * ps_instances[256]{};
+      UINT ps_instance_count{256};
+      ID3D11InputLayout * layout{};
+      D3D11_PRIMITIVE_TOPOLOGY topology{};
+      ID3D11Buffer * vs_cb{};
+      ID3D11Buffer * ps_cb{};
+      ID3D11ShaderResourceView * ps_srv[2]{};
+      ID3D11SamplerState * ps_sampler{};
+      ID3D11BlendState * blend{};
+      float blend_factor[4]{};
+      UINT sample_mask{};
+      ID3D11DepthStencilState * depth{};
+      UINT stencil_ref{};
+      ID3D11RasterizerState * raster{};
+      };
+
+    constexpr UINT list_cb_slot{4};
     }  // namespace
 
   auto panel_patch(ID3D11DeviceContext * ctx, ID3D11Device * device, std::uint64_t frame) noexcept -> void
@@ -548,8 +848,6 @@ namespace edworld
         im_colour(colour_of(allegiance))
       );
       }
-    if(s.list != 0 and (listing or test))
-      draw_list(dl, s, list, test);
     ImGui::Render();
 
     // the backend puts back what it binds itself; the targets and the surface's own slots are ours to put back
@@ -560,6 +858,33 @@ namespace edworld
     ctx->PSSetConstantBuffers(0, 1, &r.gate);
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
     restore(ctx, b);
+
+    // the list into its own texture, for the quad drawn after the game's draw of the panel (panel_list_after)
+    if(s.list != 0 and (listing or test) and r.font and make_list_objects())
+      {
+      float const line{std::round(r.font->FontSize * 1.15f)};
+      auto const w{static_cast<std::uint32_t>(std::clamp(s.list_width, 64.f, 4096.f))};
+      auto const h{static_cast<std::uint32_t>(line * static_cast<float>(std::max(s.list_rows, 2u)) + 8.f + 1.f)};
+      if(list_target(w, h))
+        {
+        io.DisplaySize = ImVec2{static_cast<float>(w), static_cast<float>(h)};
+        ImGui_ImplDX11_NewFrame();
+        ImGui::NewFrame();
+        float const used{draw_list(ImGui::GetBackgroundDrawList(), s, list, test, 0.f, 0.f)};
+        ImGui::Render();
+        backup_t lb;
+        save(ctx, lb);
+        float const clear[4]{0.f, 0.f, 0.f, 0.f};
+        ctx->ClearRenderTargetView(r.list_rtv, clear);
+        ctx->OMSetRenderTargets(1, &r.list_rtv, nullptr);
+        ctx->PSSetShaderResources(1, 1, &r.white);
+        ctx->PSSetConstantBuffers(0, 1, &r.white_gate);
+        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+        restore(ctx, lb);
+        list_used = std::min(used, static_cast<float>(h));
+        list_frame = used > 0.f ? frame : ~0ull;
+        }
+      }
     if(listing and list.system != told_list_for)
       {
       told_list_for = list.system;
@@ -573,6 +898,177 @@ namespace edworld
                s.patch_force ? " forced" : "", d.Width, d.Height,
                list.source == list_source_e::data_source ? "from the data source" : list.source == list_source_e::edsm ? "from EDSM" : "none",
                list.count);
+      }
+    }
+
+  auto panel_list_after(ID3D11DeviceContext * ctx, std::uint64_t frame, std::uint32_t index_count, std::uint32_t start_index,
+                        std::int32_t base_vertex, std::uint32_t start_instance) noexcept -> void
+    {
+    settings_t const & s{settings()};
+    if(frame != list_frame or not r.list_vs or index_count < 3 or index_count > 64)
+      return;
+    // only the panel surface's draws: PS t2 (the panel family), t1 (near a war settlement)
+    ID3D11ShaderResourceView * surface{};
+    for(UINT const slot: {2u, 1u})
+      {
+      ID3D11ShaderResourceView * srv{};
+      ctx->PSGetShaderResources(slot, 1, &srv);
+      if(not srv)
+        continue;
+      ID3D11Resource * res{};
+      srv->GetResource(&res);
+      ID3D11Texture2D * t{};
+      if(res)
+        {
+        res->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void **>(&t));
+        res->Release();
+        }
+      D3D11_TEXTURE2D_DESC d{};
+      if(t)
+        {
+        t->GetDesc(&d);
+        t->Release();
+        }
+      if(t and d.Width == s.patch_surface_width and d.Height == s.patch_surface_height)
+        {
+        surface = srv;
+        break;
+        }
+      srv->Release();
+      }
+    if(not surface)
+      return;
+
+    ID3D11Buffer * ib{};
+    DXGI_FORMAT ib_format{};
+    UINT ib_offset{};
+    ctx->IAGetIndexBuffer(&ib, &ib_format, &ib_offset);
+    ID3D11Buffer * vb{};
+    UINT vb_stride{}, vb_offset{};
+    ctx->IAGetVertexBuffers(1, 1, &vb, &vb_stride, &vb_offset);
+    panel_draw_t * entry{};
+    if(ib and vb and vb_stride == vertex_stride)
+      {
+      for(panel_draw_t & e: panel_draws)
+        if(e.state != panel_draw_t::state_e::empty and e.ib == ib and e.ib_offset == ib_offset and e.start_index == start_index
+           and e.vb == vb and e.vb_offset == vb_offset and e.base_vertex == base_vertex)
+          {
+          entry = &e;
+          break;
+          }
+      if(not entry and base_vertex >= 0)
+        {
+        // a draw not seen yet: its first triangle's indices and the vertices after its base, copied for judge()
+        panel_draw_t & e{panel_draws[panel_draw_next++ % max_panel_draws]};
+        drop_staged(e);
+        std::uint32_t const size{ib_format == DXGI_FORMAT_R16_UINT ? 2u : 4u};
+        e = panel_draw_t{ib, ib_offset, start_index, vb, vb_offset, base_vertex, panel_draw_t::state_e::pending, size};
+        e.staged_ib = staging_copy(ctx, ib, ib_offset + std::uint64_t{start_index} * size, 3u * size);
+        e.staged_vb = staging_copy(ctx, vb, vb_offset + static_cast<std::uint64_t>(base_vertex) * vertex_stride,
+                                   staged_vertices * vertex_stride);
+        e.queued = qpc();
+        if(not e.staged_ib or not e.staged_vb)
+          {
+          drop_staged(e);
+          e.state = panel_draw_t::state_e::other;
+          }
+        }
+      else if(entry and entry->state == panel_draw_t::state_e::pending)
+        judge(ctx, *entry, s);
+      }
+    if(ib)
+      ib->Release();
+    if(vb)
+      vb->Release();
+    if(not entry or entry->state != panel_draw_t::state_e::jump_panel)
+      {
+      surface->Release();
+      return;
+      }
+
+    // the list's box, in the surface's pixels past the panel's edge, back to the panel's local plane
+    float const left{s.list_x - s.list_width / 2.f}, right{left + s.list_width};
+    float const top{s.list_top}, bottom{top + list_used};
+    float const pxs[4][2]{{left, top}, {right, top}, {right, bottom}, {left, bottom}};
+    list_cb_t cb{};
+    for(int i{}; i != 4; ++i)
+      {
+      auto const local{local_of(entry->map, pxs[i][0], pxs[i][1])};
+      if(not local)
+        {
+        surface->Release();
+        return;
+        }
+      cb.corner[i][0] = local->x;
+      cb.corner[i][1] = local->y;
+      cb.corner[i][2] = local->z;
+      }
+    cb.uv_extent[0] = 1.f;
+    cb.uv_extent[1] = list_used / static_cast<float>(r.list_height);
+    cb.gate[0] = static_cast<std::int32_t>(s.patch_x);
+    cb.gate[1] = static_cast<std::int32_t>(s.patch_y);
+    cb.gain[0] = s.list_gain;
+    D3D11_MAPPED_SUBRESOURCE m{};
+    if(FAILED(ctx->Map(r.list_cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &m)))
+      {
+      surface->Release();
+      return;
+      }
+    std::memcpy(m.pData, &cb, sizeof cb);
+    ctx->Unmap(r.list_cb, 0);
+
+    list_backup_t b;
+    ctx->VSGetShader(&b.vs, b.vs_instances, &b.vs_instance_count);
+    ctx->PSGetShader(&b.ps, b.ps_instances, &b.ps_instance_count);
+    ctx->IAGetInputLayout(&b.layout);
+    ctx->IAGetPrimitiveTopology(&b.topology);
+    ctx->VSGetConstantBuffers(list_cb_slot, 1, &b.vs_cb);
+    ctx->PSGetConstantBuffers(list_cb_slot, 1, &b.ps_cb);
+    ctx->PSGetShaderResources(0, 2, b.ps_srv);
+    ctx->PSGetSamplers(0, 1, &b.ps_sampler);
+    ctx->OMGetBlendState(&b.blend, b.blend_factor, &b.sample_mask);
+    ctx->OMGetDepthStencilState(&b.depth, &b.stencil_ref);
+    ctx->RSGetState(&b.raster);
+
+    ID3D11ShaderResourceView * const srvs[2]{r.list_srv, surface};
+    ctx->VSSetShader(r.list_vs, nullptr, 0);
+    ctx->PSSetShader(r.list_ps, nullptr, 0);
+    ctx->IASetInputLayout(r.list_layout);
+    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ctx->VSSetConstantBuffers(list_cb_slot, 1, &r.list_cb);
+    ctx->PSSetConstantBuffers(list_cb_slot, 1, &r.list_cb);
+    ctx->PSSetShaderResources(0, 2, srvs);
+    ctx->PSSetSamplers(0, 1, &r.list_sampler);
+    float const factor[4]{};
+    ctx->OMSetBlendState(r.list_blend, factor, 0xffffffffu);
+    ctx->OMSetDepthStencilState(r.list_depth, 0);
+    ctx->RSSetState(r.list_raster);
+    ctx->DrawInstanced(6, 1, 0, start_instance);
+
+    ctx->VSSetShader(b.vs, b.vs_instances, b.vs_instance_count);
+    ctx->PSSetShader(b.ps, b.ps_instances, b.ps_instance_count);
+    ctx->IASetInputLayout(b.layout);
+    ctx->IASetPrimitiveTopology(b.topology);
+    ctx->VSSetConstantBuffers(list_cb_slot, 1, &b.vs_cb);
+    ctx->PSSetConstantBuffers(list_cb_slot, 1, &b.ps_cb);
+    ctx->PSSetShaderResources(0, 2, b.ps_srv);
+    ctx->PSSetSamplers(0, 1, &b.ps_sampler);
+    ctx->OMSetBlendState(b.blend, b.blend_factor, b.sample_mask);
+    ctx->OMSetDepthStencilState(b.depth, b.stencil_ref);
+    ctx->RSSetState(b.raster);
+    for(IUnknown * u: std::initializer_list<IUnknown *>{b.vs, b.ps, b.layout, b.vs_cb, b.ps_cb, b.ps_srv[0], b.ps_srv[1], b.ps_sampler,
+                                                       b.blend, b.depth, b.raster})
+      if(u)
+        u->Release();
+    for(UINT i{}; i != b.vs_instance_count; ++i)
+      b.vs_instances[i]->Release();
+    for(UINT i{}; i != b.ps_instance_count; ++i)
+      b.ps_instances[i]->Release();
+    surface->Release();
+    if(not told_list_quad)
+      {
+      told_list_quad = true;
+      log_line("list: first drawn under the jump panel as a quad of its own (%.0f px of %u)", static_cast<double>(list_used), r.list_height);
       }
     }
   }  // namespace edworld

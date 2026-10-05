@@ -81,7 +81,7 @@ def main():
         cb0 = f("cb0.bin").read_bytes() if f("cb0.bin").exists() else None
         cb1 = f("cb1.bin").read_bytes() if f("cb1.bin").exists() else None
         cb2 = f("cb2.bin").read_bytes() if f("cb2.bin").exists() else None
-        if cb2 is None or len(cb2) < 128 or stride < 48:
+        if cb2 is None or len(cb2) < 128 or stride < 32:
             print(f"  vertex stride {stride}, cb2 {'missing' if cb2 is None else len(cb2)} - not a panel family draw")
             continue
         a6, a7 = floats(cb2, 6), floats(cb2, 7)

@@ -2,12 +2,12 @@
 
 A d3d11.dll proxy for Elite Dangerous that tells other programs where the cockpit panels are on screen, and
 draws the right superpower emblem onto the panel of a hyperspace jump being charged (the game shows a wrong
-one for the Federation, the Empire and the Alliance), with the destination's factions listed under it. Drawn onto
-the panel's own interface surface, the emblem and the list move with the panel when the cockpit camera swings
-(ship inertia, head look).
+one for the Federation, the Empire and the Alliance), with the destination's factions listed under it. The emblem
+is drawn onto the panel's own interface surface, the list as a quad of its own in the panel's plane; both move with
+the panel when the cockpit camera swings (ship inertia, head look).
 
 Proof of concept. Observing is read-only: every hook calls the game's call through unchanged. The jump panel
-patch is the only place edworld changes what the game draws.
+patch and its list are the only places edworld changes what the game draws.
 
 Checked in the game: the observer (ed-lab clone, chained in front of EDHM) and the jump panel patch, first drawn by
 hand-written shaders, now by Dear ImGui (one commander's Steam install, chained in front of EDHM, without edloader).
@@ -62,22 +62,33 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   (`api-system-v1/factions`, only the destination's id64, once per new destination). The patch is a Dear ImGui
   draw list rendered by ImGui's D3D11 backend into the surface (own ImGui context, no input, no files);
   everything the game had bound is read back first and put back after.
-- **Factions list** (`list = 1`): with the patch, in a box under the panel on the same surface (the game draws the
-  panel in rows 122-488 of 3072x660 and nothing below), the destination's factions by influence: the trend at the
-  last tick (up, flat, down; none when not known), a star for the controlling faction, the name in its
-  superpower's colour, the influence and what goes on in the faction (active states, else the recovering ones). The
-  list comes whole from one source, never a mix: in edworld_eht from `target` when EHT has influence readings of
+- **Factions list** (`list = 1`): with the patch, a box under the panel with the destination's factions by influence:
+  the trend at the last tick (up, flat, down; none when not known), a star for the controlling faction, the name in
+  its superpower's colour, the influence and what goes on in the faction (active states, else the recovering ones).
+  The list comes whole from one source, never a mix: in edworld_eht from `target` when EHT has influence readings of
   the system (with the pushes on the economy and security bars EHT counts from the missions handed in); otherwise,
   and always in edworld, from EDSM's answer to the same question as the emblem's, with a last row "from EDSM,
   updated ... ago" (the newest `lastUpdate` of its factions; EDSM keeps no tick, so its rows have no trend).
-  The game draws nothing under the panel, so the list cannot be masked pixel by pixel as the emblem is: it shows
-  while the game draws the panel at the patch's centre in that frame, and goes with the panel. A system without
-  factions (uninhabited, or unknown to EDSM) gets no list. Text in Noto Sans Mono (SIL OFL 1.1, the font of EHT's
-  overlay), made once at the first patch at `list_text` pixels. In test mode (`patch = 2`) the box is drawn with
-  placeholder rows when there is nothing to list, to see where it goes.
+  It is not drawn on the surface: the surface is an atlas, the jump panel shows only its own rectangle of it (x
+  1031-2045, y 2-493 of 3072x660, read from the panel's vertices), and the rows below belong to other panels (a
+  one-pixel strip at row 519 is stretched over the jump panel; a list drawn there turned it into a black box). The
+  list is drawn by ImGui into a texture of its own, and right after the game's draw of the jump panel edworld draws
+  a quad of its own: the panel's vertices (read once per draw, see below) give its local-to-surface map, the list's
+  box (`list_x`, `list_top`, `list_width`, in the surface's pixels past the panel's edge) goes back through it to
+  local points, and the list's vertex shader places them as the game's shader places the panel (its instance
+  record, the world-rebase origin, its clip rows, still bound from the game's draw). It shows while the game shows
+  the panel (the surface's alpha at the patch's centre). A system without factions (uninhabited, or unknown to
+  EDSM) gets no list. Text in Noto Sans Mono (SIL OFL 1.1, the font of EHT's overlay), made once at the first patch
+  at `list_text` pixels; `list_gain` scales its colours (the cockpit's target may be HDR). In test mode
+  (`patch = 2`) the box is drawn with placeholder rows when there is nothing to list, to see where it goes.
+  The panel's vertex (stride 40): the packed local position in bytes 0..15 (EDVR's decode), the surface
+  coordinate in bytes 16..19 as two unorm16 halves, `(h / 32767 - 1) * 16`.
 - On request, dumps every panel's interface surface: create an empty file `edworld_dump` in the log folder; at
   the next frame each surface is copied and written to `edworld_dumps\<stamp>_<id>_<w>x<h>_f<fmt>_pitch<n>.raw`
-  and the trigger file is removed. `tools/dump_to_png.py <dir>` makes PNGs.
+  and the trigger file is removed. `tools/dump_to_png.py <dir>` makes PNGs. With the surfaces, each panel draw of
+  that frame has its index range, vertex buffers, VS constant buffers 0..3 and record pool written beside them
+  (`<stamp>_g<draw>_<what>.bin`, the draw's arguments in the log); `tools/geometry_dump.py <log> <dir>` says which
+  rectangle of its surface each draw shows and where its corners land.
 - Logs to `<plugin>.log` in the log folder: chain, attach, watched shaders, the patch's first draw and the
   destination's allegiance and factions (how many, from which source), and once a second (`log_interval_ms`) a summary: in edworld_eht the frame's panel draws
   with surface size and anchor in NDC, in edworld the draw and fault totals. A fault in edworld's own work is caught; eight of them switch the observer off, never the game call.
@@ -144,13 +155,15 @@ patch_force = 0
 edsm = 1
 ; the factions list under the panel: 0 = off
 list = 1
-; its box on the panel's surface, in its pixels: horizontal centre, top edge, width; rows at most (EDSM's line among them)
+; its box in the panel surface's pixels, past the panel's edge: horizontal centre, top edge, width; rows at most (EDSM's line among them)
 list_x = 1540
-list_top = 494
+list_top = 500
 list_width = 860
 list_rows = 7
 ; text height in pixels; read once, at the first patch
 list_text = 20
+; the list's colours times this in the cockpit
+list_gain = 1
 ```
 
 The values above are the defaults. `shm_dir` is where EHT writes `target` (`edworld.dir` in its settings,
@@ -166,16 +179,21 @@ default `/dev/shm/eht`).
 3. **2026-10-04, a Steam install, jump panel patch (hand-written shaders), in front of EDHM.** At `patch_y = 280`
    the Federation emblem sits on the panel in place of the wrong one; allegiance from EHT's `target`; no faults
    over the session.
-4. **2026-10-05, the same Steam install, jump panel patch drawn by Dear ImGui (the current code).** The Federation
+4. **2026-10-05, the same Steam install, jump panel patch drawn by Dear ImGui.** The Federation
    emblem drawn in the same place as by the hand-written shaders; allegiance from EHT's `target`; no faults.
+5. **2026-10-05, the same Steam install, factions list on the surface under the panel.** Not seen under the panel;
+   a black box over the panel instead. Off (`list = 0`): the box gone.
+6. **2026-10-05, ed-lab clone, geometry dumps.** The jump panel shows x 1031-2045, y 2-493 of 3072x660; the black
+   box is a one-pixel strip (row 519) stretched over the panel. Hence the list's quad of its own.
 
 ## Not known yet
 
 - Cost in the game (expected: a pointer compare per draw plus a few copies per frame; the patch only while charging).
 - Loading through edloader, in the game.
 - The patch masked by the game's own drawing (hidden panel while aligning), in the game; tested under wine.
-- Whether the cockpit shows the part of the panel's surface the game leaves empty (where the list is drawn), and
-  whether text at `list_text = 20` is readable there; `patch = 2` draws the list's box with placeholder rows to see.
+- The list's quad in the game: placement under the panel, brightness (`list_gain`), readability at `list_text = 20`.
+  Under wine only the pure arithmetic (the panel's vertex decode and map, from the game's own vertices) is tested;
+  the test's draw has no stride-40 vertices, so the quad is not drawn there.
 - edworld_eht reading a `target` of the first layout (an EHT without the factions): written for, not tested.
 
 ## Credits
