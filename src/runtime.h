@@ -47,7 +47,7 @@ namespace edworld
     // ---- the jump panel patch: drawn by the proxy onto the panel's interface surface while a jump charges ----
     ///\brief 0 off, 1 on: the right superpower emblem over the panel's wrong one (destination from Status.json,
     /// its allegiance from EHT's `target` in edworld_eht, else from EDSM), 2 test: a bright frame where the patch goes, whatever the destination
-    std::uint32_t patch{0};
+    std::uint32_t patch{1};
     ///\brief the interface surface that carries the jump panel
     std::uint32_t patch_surface_width{3072};
     std::uint32_t patch_surface_height{660};

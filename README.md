@@ -110,8 +110,8 @@ log_interval_ms = 1000
 frame_gap_us = 2500
 ; 1 = log every vertex shader hash the game creates
 log_all_vs = 0
-; 1 = the jump panel patch; 2 = a test frame where the patch goes, whatever the destination
-patch = 0
+; 0 = observe only; 1 = the jump panel patch; 2 = a test frame where the patch goes, whatever the destination
+patch = 1
 ; the interface surface that carries the jump panel
 patch_surface = 3072x660
 ; the patch's centre and size on that surface, in its pixels
