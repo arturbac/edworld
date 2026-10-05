@@ -2,12 +2,12 @@
 // edworld alone only finds the panels' draws (for the patch); edworld_eht also copies what each carries and
 // publishes it to EHT (`panels`).
 //
-// Read-only by construction: every hook calls the game's call through unchanged, and what we add is our own
-// copies into our own staging buffers. Lessons taken from EDVR (MIT) and its Proton issue 65:
+// Read-only by construction: every hook calls the game's call through unchanged, and what edworld adds is its own
+// copies into its own staging buffers. Lessons taken from EDVR (MIT) and its Proton issue 65:
 //  - per-draw work is a pointer compare; Get* calls only for the few matched draws;
 //  - never read a mapped dynamic buffer on the CPU (write-combined under DXVK); copy on the GPU into staging
 //    and map it frames later with DO_NOT_WAIT;
-//  - GetType before GetDesc; a fault in our code disables us, never the game call.
+//  - GetType before GetDesc; a fault in edworld's code disables edworld, never the game call.
 #include "edworld_share.h"
 #include "game_state.h"
 #include "panel_math.h"
@@ -1034,7 +1034,7 @@ namespace edworld
       };
       }
 
-    // SEH around our own work only: a fault counts against us and, past a few, switches us off.
+    // SEH around edworld's own work only: a fault counts against it and, past a few, switches it off.
     auto guarded_observe(
       ID3D11DeviceContext * ctx,
       std::uint32_t index_count,
@@ -1085,7 +1085,7 @@ namespace edworld
       std::uint32_t const at{watched_count.fetch_add(1)};
       if(at >= max_watched)
         return false;
-      static_cast<IUnknown *>(shader)->AddRef();  // pinned: a released pointer must never be reused for another shader we would match
+      static_cast<IUnknown *>(shader)->AddRef();  // pinned: a released pointer must never be reused for another shader that would be matched
       watched_index[at] = index;
       watched_found[at] = found;
       watched_ptr[at].store(shader, std::memory_order_release);

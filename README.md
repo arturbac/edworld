@@ -6,6 +6,12 @@ panel's own text), the independents' phoenix in gold, and the destination's fact
 ride the panel when the cockpit camera swings. With Elite Help Tool it also tells EHT's overlay where the cockpit
 panels are on screen.
 
+![The jump panel with edworld: a Federation destination (left), an independent one (right)](doc/images/jump-panel.jpg)
+
+Left, a Federation destination: its emblem drawn by edworld in place of the wrong one the game shows. Right, an
+independent one: the phoenix in gold. Under each panel the destination's factions by influence, the controlling one
+starred, with the trend at the last tick and their states.
+
 - Players: [doc/users.md](doc/users.md): what it shows, which dll, install (alone, through edloader, with EHT),
   settings, checking it works, after a verification of the game's files, removing it.
 - Developers: [doc/developers.md](doc/developers.md): how it works in the game process, build and test, what was
@@ -13,7 +19,7 @@ panels are on screen.
 
 Version 1.0.0 ([CHANGELOG.md](CHANGELOG.md)). Observing is read-only: every hook calls the game's call through
 unchanged; the jump panel's emblem and list are the only things edworld changes in what the game draws. Checked in
-the game alone in front of EDHM; through edloader not yet. MIT licence (LICENSE).
+the game alone in front of EDHM, and through edloader together with EDHM. MIT licence (LICENSE).
 
 ## Credits
 

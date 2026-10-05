@@ -4,7 +4,7 @@
 // The chaining discipline is EDVR's (MIT, characterecho-sean/edvr-unofficial-patch, src/d3d11/d3d11_proxy.cpp):
 //  - DllMain loads only the system copy (already mapped, no foreign DllMain under the loader lock);
 //  - the next proxy is loaded on the first export call;
-//  - a chained 3Dmigoto asks for "d3d11.dll" by name, which is us: the second entry on the same thread
+//  - a chained 3Dmigoto asks for "d3d11.dll" by name, which is this proxy: the second entry on the same thread
 //    goes to the system copy, or the chain recurses until the stack runs out.
 #include "runtime.h"
 

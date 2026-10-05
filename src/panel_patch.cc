@@ -16,7 +16,7 @@
 //
 // The only place edworld changes what the game draws. The patch is a Dear ImGui draw list rendered by ImGui's
 // D3D11 backend (its own context, no input, no files). Everything the game had bound is read back first and put
-// back after, and our own draws go through our own objects.
+// back after, and edworld's own draws go through its own objects.
 #include "panel_patch.h"
 
 #include "emblems.h"
@@ -261,7 +261,7 @@ namespace edworld
       return rtv;
       }
 
-    ///\brief everything our draws touch, as the game left it
+    ///\brief everything edworld's draws touch, as the game left it
     struct backup_t
       {
       UINT viewports{D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE};
