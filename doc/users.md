@@ -20,6 +20,8 @@ Both move with the panel when the cockpit camera swings. Nothing else in the gam
 
 ## Install
 
+Both dlls are in `edworld-<version>.zip` on the [Releases](https://github.com/arturbac/edworld/releases) page.
+
 ### On its own
 
 1. Find the game's folder: `Products/elite-dangerous-odyssey-64`, the one with `EliteDangerous64.exe`.
