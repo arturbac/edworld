@@ -2,15 +2,16 @@
 
 A d3d11.dll proxy for Elite Dangerous that tells other programs where the cockpit panels are on screen, and
 draws the right superpower emblem onto the panel of a hyperspace jump being charged (the game shows a wrong
-one for the Federation, the Empire and the Alliance). Drawn onto the panel's own interface surface, the emblem
-moves with the panel when the cockpit camera swings (ship inertia, head look).
+one for the Federation, the Empire and the Alliance), with the destination's factions listed under it. Drawn onto
+the panel's own interface surface, the emblem and the list move with the panel when the cockpit camera swings
+(ship inertia, head look).
 
 Proof of concept. Observing is read-only: every hook calls the game's call through unchanged. The jump panel
 patch is the only place edworld changes what the game draws.
 
 Checked in the game: the observer (ed-lab clone, chained in front of EDHM) and the jump panel patch, first drawn by
 hand-written shaders, now by Dear ImGui (one commander's Steam install, chained in front of EDHM, without edloader).
-Not checked in the game yet: edworld loaded through edloader.
+Not checked in the game yet: edworld loaded through edloader; the factions list under the panel.
 
 ## Two builds
 
@@ -18,8 +19,8 @@ One source, two dlls (`tools/build.sh` makes both; the difference is `EDWORLD_EH
 
 | Build | For | Files beside it |
 |---|---|---|
-| `build/edworld/edworld.dll` | anyone: works on its own; the allegiance comes from EDSM; publishes nothing, so it copies nothing of the panel draws | `edworld.ini`, `edworld.log` |
-| `build/edworld_eht/edworld_eht.dll` | EHT users: also publishes the panels' anchors to `panels` (EHT's overlay follows them) and takes the allegiance from EHT's `target` before EDSM | `edworld_eht.ini`, `edworld_eht.log` |
+| `build/edworld/edworld.dll` | anyone: works on its own; the allegiance and the factions come from EDSM; publishes nothing, so it copies nothing of the panel draws | `edworld.ini`, `edworld.log` |
+| `build/edworld_eht/edworld_eht.dll` | EHT users: also publishes the panels' anchors to `panels` (EHT's overlay follows them) and takes the allegiance and the factions from EHT's `target` before EDSM | `edworld_eht.ini`, `edworld_eht.log` |
 
 The ini and log names are fixed by the build, not taken from the dll's file name: installed alone as the game's
 `d3d11.dll`, either build still reads its own ini. Below, "edworld_eht only" marks what the plain build lacks;
@@ -61,11 +62,24 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   (`api-system-v1/factions`, only the destination's id64, once per new destination). The patch is a Dear ImGui
   draw list rendered by ImGui's D3D11 backend into the surface (own ImGui context, no input, no files);
   everything the game had bound is read back first and put back after.
+- **Factions list** (`list = 1`): with the patch, in a box under the panel on the same surface (the game draws the
+  panel in rows 122-488 of 3072x660 and nothing below), the destination's factions by influence: the trend at the
+  last tick (up, flat, down; none when not known), a star for the controlling faction, the name in its
+  superpower's colour, the influence and what goes on in the faction (active states, else the recovering ones). The
+  list comes whole from one source, never a mix: in edworld_eht from `target` when EHT has influence readings of
+  the system (with the pushes on the economy and security bars EHT counts from the missions handed in); otherwise,
+  and always in edworld, from EDSM's answer to the same question as the emblem's, with a last row "from EDSM,
+  updated ... ago" (the newest `lastUpdate` of its factions; EDSM keeps no tick, so its rows have no trend).
+  The game draws nothing under the panel, so the list cannot be masked pixel by pixel as the emblem is: it shows
+  while the game draws the panel at the patch's centre in that frame, and goes with the panel. A system without
+  factions (uninhabited, or unknown to EDSM) gets no list. Text in Noto Sans Mono (SIL OFL 1.1, the font of EHT's
+  overlay), made once at the first patch at `list_text` pixels. In test mode (`patch = 2`) the box is drawn with
+  placeholder rows when there is nothing to list, to see where it goes.
 - On request, dumps every panel's interface surface: create an empty file `edworld_dump` in the log folder; at
   the next frame each surface is copied and written to `edworld_dumps\<stamp>_<id>_<w>x<h>_f<fmt>_pitch<n>.raw`
   and the trigger file is removed. `tools/dump_to_png.py <dir>` makes PNGs.
 - Logs to `<plugin>.log` in the log folder: chain, attach, watched shaders, the patch's first draw and the
-  destination's allegiance, and once a second (`log_interval_ms`) a summary: in edworld_eht the frame's panel draws
+  destination's allegiance and factions (how many, from which source), and once a second (`log_interval_ms`) a summary: in edworld_eht the frame's panel draws
   with surface size and anchor in NDC, in edworld the draw and fault totals. A fault in edworld's own work is caught; eight of them switch the observer off, never the game call.
   One file per game session: at start, the last session's `<plugin>.log` is renamed `<plugin>.<UTC>.log` (the time it
   was last written); EHT's backup compresses those into its own directory and removes them from the game's folder.
@@ -76,16 +90,18 @@ The ini and log names are fixed by the build, not taken from the dll's file name
 |---|---|
 | `src/proxy.cc` | exports, chaining, wrapped `D3D11CreateDevice(AndSwapChain)` |
 | `src/hooks.cc` | the observer: hooks, staging ring, readback, publishing (edworld_eht), log summary |
-| `src/panel_patch.cc` | the jump panel patch (ImGui draw list, state saved and restored) |
+| `src/panel_patch.cc` | the jump panel patch and the factions list (ImGui draw list, state saved and restored) |
 | `src/game_state.cc` | `Status.json`, EHT's `target` (edworld_eht), EDSM |
+| `src/faction_list.h` | the factions list from either source: `target` or EDSM's answer (a small JSON reader) |
 | `src/runtime.h` | settings, the build's name (`EDWORLD_EHT`) |
 | `src/settings_log.cc` | `<plugin>.ini`, `<plugin>.log` |
 | `src/edworld_share.h` | the published layout (plain C++, shared with the Linux side) |
 | `src/panel_math.h` | FNV-1a, anchor and projection arithmetic |
 | `src/emblems.h`, `tools/gen_emblems.py`, `assets/*.svg` | the emblems as coverage masks, generated from EDAssets |
 | `src/imgui_config.h`, `shaders/imgui.hlsl`, `third_party/imgui/` | Dear ImGui build options, backend shaders, the vendored sources |
+| `third_party/fonts/`, `tools/gen_font.py` | the list's font (Noto Sans Mono, SIL OFL 1.1), embedded at build time as `build/gen/list_font.h` |
 | `tools/build.sh` | build through msvc-wine; exports read from a released EDVR d3d11.dll (environment: `MSVC_WINE_ENV`, `FXC`, `RELEASE_DLL`) |
-| `tools/test.sh <scratch>` | smoke test under wine without the game, both builds (each as `d3d11.dll`), plain and chained, patch pixels checked (environment: `MSVC_WINE_ENV`, `FXC`, `EDWORLD_WINEPREFIX`) |
+| `tools/test.sh <scratch>` | smoke test under wine without the game, both builds (each as `d3d11.dll`), plain and chained, patch and list pixels checked, EDSM's answer read from a saved one (`test/data/`) (environment: `MSVC_WINE_ENV`, `FXC`, `EDWORLD_WINEPREFIX`) |
 | `tools/edworld_watch.py [path]` | live view of the shared file |
 | `tools/dump_to_png.py <dir>` | surface dumps to PNG |
 | `tools/gen_exports.py`, `tools/EDVR-LICENSE.txt` | EDVR's export thunk generator (MIT) |
@@ -126,6 +142,15 @@ patch_ground = 020304
 patch_force = 0
 ; 0 = never ask EDSM
 edsm = 1
+; the factions list under the panel: 0 = off
+list = 1
+; its box on the panel's surface, in its pixels: horizontal centre, top edge, width; rows at most (EDSM's line among them)
+list_x = 1540
+list_top = 494
+list_width = 860
+list_rows = 7
+; text height in pixels; read once, at the first patch
+list_text = 20
 ```
 
 The values above are the defaults. `shm_dir` is where EHT writes `target` (`edworld.dir` in its settings,
@@ -149,12 +174,16 @@ default `/dev/shm/eht`).
 - Cost in the game (expected: a pointer compare per draw plus a few copies per frame; the patch only while charging).
 - Loading through edloader, in the game.
 - The patch masked by the game's own drawing (hidden panel while aligning), in the game; tested under wine.
+- Whether the cockpit shows the part of the panel's surface the game leaves empty (where the list is drawn), and
+  whether text at `list_text = 20` is readable there; `patch = 2` draws the list's box with placeholder rows to see.
+- edworld_eht reading a `target` of the first layout (an EHT without the factions): written for, not tested.
 
 ## Credits
 
 edworld builds on the work of the [EDVR unofficial patch](https://github.com/characterecho-sean/edvr-unofficial-patch)
 team (MIT): the proxy chaining discipline, the export thunk generator (`tools/gen_exports.py`, unchanged), the
 shader hash and EDVR's decode of the cockpit panels' constant buffers and instance records. It also uses
-[Dear ImGui](https://github.com/ocornut/imgui) (MIT) and the emblems of
-[EDAssets](https://github.com/Venefilyn/EDAssets) (MIT; artwork of Frontier Developments). What comes from where,
+[Dear ImGui](https://github.com/ocornut/imgui) (MIT), the emblems of
+[EDAssets](https://github.com/Venefilyn/EDAssets) (MIT; artwork of Frontier Developments) and the
+[Noto Sans Mono](https://github.com/notofonts/latin-greek-cyrillic) font (SIL OFL 1.1). What comes from where,
 file by file, with the licence texts: `NOTICE`.

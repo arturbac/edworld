@@ -39,7 +39,7 @@ rc=0
 run_variant() {  # $1 = edworld | edworld_eht; sets rc on failure
   local V=$1 RUN r
   RUN=$(mktemp -d "$SCR/$V-test.XXXXXX")
-  cp build/test/$V/test_app.exe build/test/fake_next.dll "$RUN/"
+  cp build/test/$V/test_app.exe build/test/fake_next.dll test/data/edsm_factions_shinrarta.json "$RUN/"
   cp build/$V/$V.dll "$RUN/d3d11.dll"
   echo "=== $V ($RUN)"
   pushd "$RUN" >/dev/null

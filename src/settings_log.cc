@@ -118,6 +118,18 @@ namespace edworld
         }
       else if(key == "patch_force")
         current.patch_force = to_uint(value, current.patch_force);
+      else if(key == "list")
+        current.list = to_uint(value, current.list);
+      else if(key == "list_x")
+        current.list_x = to_float(value, current.list_x);
+      else if(key == "list_top")
+        current.list_top = to_float(value, current.list_top);
+      else if(key == "list_width")
+        current.list_width = to_float(value, current.list_width);
+      else if(key == "list_rows")
+        current.list_rows = to_uint(value, current.list_rows);
+      else if(key == "list_text")
+        current.list_text = to_float(value, current.list_text);
       else if(key == "edsm")
         current.edsm = value == "1" or value == "true";
       else if(key == "log_all_vs")

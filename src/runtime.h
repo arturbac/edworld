@@ -61,8 +61,20 @@ namespace edworld
     ///\brief 0 = the destination's own; 1 Federation, 2 Empire, 3 Alliance = draw that emblem whatever the
     /// destination (placing the patch where the game shows no emblem, e.g. in deep space)
     std::uint32_t patch_force{0};
-    ///\brief ask EDSM for the destination's allegiance (only the system's id goes out)
+    ///\brief ask EDSM for the destination's allegiance and factions (only the system's id goes out)
     bool edsm{true};
+
+    // ---- the destination's factions, listed under the jump panel on the same surface ----
+    ///\brief 0 off, 1 on: by influence, from EHT's `target` in edworld_eht when it has them, else from EDSM (marked so)
+    std::uint32_t list{1};
+    ///\brief the list's box on the surface, in its pixels: horizontal centre, top edge, width; rows at most (EDSM's
+    /// source line among them). Measured on 3072x660: the game draws the panel in rows 122-488, nothing below
+    float list_x{1540.f};
+    float list_top{494.f};
+    float list_width{860.f};
+    std::uint32_t list_rows{7};
+    ///\brief the text's height in surface pixels; the font is made at the first patch, so a change needs a restart
+    float list_text{20.f};
     };
 
   auto settings() noexcept -> settings_t const &;

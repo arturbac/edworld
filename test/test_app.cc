@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "../src/edworld_share.h"
+#include "../src/faction_list.h"
 #include "../src/panel_math.h"
 #include "found_vs.h"
 #include "other_vs.h"
@@ -61,6 +62,28 @@ int main()
     CreateDirectoryW(output_dir.c_str(), nullptr);
     }
 
+  // EDSM's answer read into the list (pure code, no d3d11): a saved answer for Shinrarta Dezhra
+  {
+  std::string body;
+  if(std::FILE * f{_wfopen((dir + L"\\edsm_factions_shinrarta.json").c_str(), L"rb")})
+    {
+    char buf[4096];
+    for(std::size_t n; (n = std::fread(buf, 1, sizeof buf, f)) > 0;)
+      body.append(buf, n);
+    std::fclose(f);
+    }
+  edworld::faction_list_t l{};
+  check(edworld::list_from_edsm(body, 3932277478106ull, l) and l.source == edworld::list_source_e::edsm, "EDSM's answer read");
+  check(l.count == 6, "six factions with influence (the one at none left out)");
+  check(std::strcmp(l.rows[0].name, "The Dark Wheel") == 0 and l.rows[0].allegiance == 4u, "highest influence first");
+  check(l.rows[1].controlling and not l.rows[0].controlling, "the controlling faction marked");
+  check(l.rows[2].allegiance == 1u and std::strcmp(l.rows[5].states, "Boom") == 0, "allegiance and active states");
+  check(l.updated_unix_s == 1791114047 and l.rows[0].trend == 0u, "EDSM's update time; no trend from EDSM");
+  edworld::faction_list_t bad{};
+  check(not edworld::list_from_edsm("{\"factions\":[", 1ull, bad) and not edworld::list_from_edsm("", 1ull, bad), "a broken answer is no list");
+  check(edworld::list_from_edsm("[]", 1ull, bad) == false and edworld::list_from_edsm("{}", 1ull, bad) and bad.count == 0, "no factions, empty list");
+  }
+
   // The settings must be in place before the first d3d11 export call.
   std::uint64_t const watched{edworld::fnv1a64(g_panel_vs, sizeof g_panel_vs)};
   {
@@ -69,7 +92,8 @@ int main()
   GetEnvironmentVariableW(L"EDWORLD_TEST_NEXT", next, MAX_PATH);
   if(next[0])
     std::fprintf(ini, "next = %ls\n", next);
-  std::fprintf(ini, "patch = 2\npatch_surface = 512x128\npatch_x = 256\npatch_y = 64\npatch_width = 100\npatch_height = 50\npatch_emblem_height = 40\nedsm = %d\n", GetEnvironmentVariableW(L"EDWORLD_TEST_EDSM", nullptr, 0) ? 1 : 0);
+  std::fprintf(ini, "patch = 2\npatch_surface = 512x128\npatch_x = 256\npatch_y = 64\npatch_width = 100\npatch_height = 50\npatch_emblem_height = 40\nedsm = %d\n"
+                    "list_x = 256\nlist_top = 96\nlist_width = 200\nlist_rows = 3\nlist_text = 10\n", GetEnvironmentVariableW(L"EDWORLD_TEST_EDSM", nullptr, 0) ? 1 : 0);
   std::fprintf(ini, "watch_vs = %016llX, 1989E6D3B405FDE0\nlog_interval_ms = 1\nlog_all_vs = 1\n",
                static_cast<unsigned long long>(watched));
   if constexpr(with_eht)
@@ -93,6 +117,18 @@ int main()
   t.known = 1;
   t.allegiance = 2;
   std::strcpy(t.name, "Shinrarta Dezhra");
+  t.factions_known = 1;
+  t.faction_count = 2;
+  std::strcpy(t.factions[0].name, "Imperial Faction");
+  std::strcpy(t.factions[0].states, "Boom");
+  t.factions[0].influence = 0.6f;
+  t.factions[0].allegiance = 2;
+  t.factions[0].trend = 1;
+  t.factions[0].controlling = 1;
+  std::strcpy(t.factions[1].name, "Second Faction");
+  t.factions[1].influence = 0.4f;
+  t.factions[1].allegiance = 4;
+  t.factions[1].trend = 3;
   std::FILE * tf{_wfopen((shm_dir + L"\\target").c_str(), L"wb")};
   std::fwrite(&t, sizeof t, 1, tf);
   std::fclose(tf);
@@ -319,6 +355,21 @@ int main()
   check(pixel(256 - 45, 64) == 0x020304u, "patch ground drawn beside the emblem");
   check(pixel(208, 64) == 0xff00ffu, "test frame drawn at the patch's edge");
   check(pixel(10, 10) == 0u, "surface untouched outside the patch");
+  // the list under the panel, where the game drew nothing: shown because the game drew the panel at the gate
+  auto const lit{[&](int x0, int y0, int x1, int y1, bool blue) -> std::uint32_t
+    {
+    std::uint32_t n{};
+    for(int y{y0}; y != y1; ++y)
+      for(int x{x0}; x != x1; ++x)
+        if(std::uint32_t const c{pixel(x, y)}; blue ? (c & 0xffu) > 0x80u and ((c >> 16) & 0xffu) < 0x80u : (c & 0xf0f0f0u) != 0u and c != 0x020304u and c != 0xff00ffu)
+          ++n;
+    return n;
+    }};
+  std::uint32_t const list_text{lit(160, 98, 352, 128, false)};
+  std::printf("list: lit pixels under the panel %u, Empire-blue %u\n", list_text, lit(160, 98, 352, 128, true));
+  check(list_text > 60, with_eht ? "the data source's factions listed under the panel" : "the list's test rows under the panel");
+  if constexpr(with_eht)
+    check(lit(160, 98, 352, 128, true) > 10, "a faction's name in its allegiance's colour");
   ctx->Unmap(readback, 0);
 
   // StartJump: Flags bit 30 (FSD jump) set while Flags2 bit 19 still is; the panel is gone, nothing may be drawn.
@@ -358,6 +409,13 @@ int main()
   ctx->CopyResource(readback, surface);
   ctx->Map(readback, 0, D3D11_MAP_READ, 0, &m);
   check(pixel(256 - 45, 64) == 0u and pixel(208, 64) == 0u, "no patch where the game drew no panel (hidden while aligning)");
+  {
+  std::uint32_t n{};
+  for(int y{98}; y != 128; ++y)
+    for(int x{160}; x != 352; ++x)
+      n += pixel(x, y) != 0u ? 1u : 0u;
+  check(n == 0u, "no list either while the game hides the panel (the gate)");
+  }
   ctx->Unmap(readback, 0);
   D3D11_TEXTURE2D_DESC bd{td};
   bd.Width = 3072;

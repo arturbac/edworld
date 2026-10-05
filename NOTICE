@@ -26,5 +26,10 @@ EDAssets — https://github.com/Venefilyn/EDAssets
   - assets/*.svg, and src/emblems.h generated from them by tools/gen_emblems.py: the superpower emblems.
     The artwork is Frontier Developments'.
 
+Noto Sans Mono — https://github.com/notofonts/latin-greek-cyrillic
+  SIL Open Font License 1.1, Copyright 2022 The Noto Project Authors. Full text: third_party/fonts/OFL.txt
+  - third_party/fonts/NotoSansMono-Regular.ttf, unchanged; embedded by tools/gen_font.py as build/gen/list_font.h:
+    the factions list's font.
+
 Elite Dangerous is a trademark of Frontier Developments plc. edworld is not affiliated with or endorsed by
 Frontier Developments.

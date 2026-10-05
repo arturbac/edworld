@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#include <exception>
 #include <string>
 #include <string_view>
 
@@ -25,6 +26,16 @@ namespace edworld
     std::atomic<bool> charging{};
     std::atomic<std::uint64_t> destination{};
     std::atomic<std::uint8_t> allegiance{};
+    // the list is written by the state thread, read by the patch on the render thread
+    SRWLOCK list_lock = SRWLOCK_INIT;
+    faction_list_t list{};
+
+    auto set_list(faction_list_t const & value) -> void
+      {
+      AcquireSRWLockExclusive(&list_lock);
+      list = value;
+      ReleaseSRWLockExclusive(&list_lock);
+      }
 
     auto status_path() -> std::wstring
       {
@@ -142,6 +153,7 @@ namespace edworld
     // ---- the data source's target (EHT): read before EDSM is asked ----
 #if defined(EDWORLD_EHT)
     target_t const * target_view{};
+    std::uint32_t target_mapped{};  ///< bytes of the view: the writer's layout, the first one or this one
     DWORD next_target_try{};
 
     auto map_target() -> void
@@ -159,24 +171,32 @@ namespace edworld
         return;
       LARGE_INTEGER size{};
       GetFileSizeEx(file, &size);
-      if(size.QuadPart < static_cast<LONGLONG>(sizeof(target_t)))
+      // a writer of the first layout (no factions) is read as far as it goes
+      if(size.QuadPart < static_cast<LONGLONG>(target_size_first))
         {
         CloseHandle(file);
         return;
         }
-      HANDLE const mapping{CreateFileMappingW(file, nullptr, PAGE_READONLY, 0, sizeof(target_t), nullptr)};
+      DWORD const bytes{size.QuadPart < static_cast<LONGLONG>(sizeof(target_t)) ? static_cast<DWORD>(size.QuadPart)
+                                                                                 : static_cast<DWORD>(sizeof(target_t))};
+      HANDLE const mapping{CreateFileMappingW(file, nullptr, PAGE_READONLY, 0, bytes, nullptr)};
       CloseHandle(file);
       if(not mapping)
         return;
       // the view keeps the mapping alive; neither handle is needed past this point
-      target_view = static_cast<target_t const *>(MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, sizeof(target_t)));
+      target_view = static_cast<target_t const *>(MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, bytes));
       CloseHandle(mapping);
       if(target_view)
-        log_line("state: reading the data source's target from %S", path.c_str());
+        {
+        target_mapped = bytes;
+        log_line("state: reading the data source's target from %S (%lu bytes%s)", path.c_str(), bytes,
+                 bytes < sizeof(target_t) ? ", without factions" : "");
+        }
       }
 
-    ///\brief a consistent copy of the target record; false when there is none or it is not one
-    auto read_target(target_t & copy) -> bool
+    ///\brief a consistent copy of the target record (what the view lacks left zero); false when there is none or
+    /// it is not one
+    auto read_target(target_t & copy, std::uint32_t & copied) -> bool
       {
       map_target();
       if(not target_view)
@@ -191,16 +211,29 @@ namespace edworld
         MemoryBarrier();
         if(before & 1u)
           continue;
-        std::memcpy(&copy, target_view, sizeof copy);
+        copy = target_t{};
+        std::memcpy(&copy, target_view, target_mapped);
         MemoryBarrier();
-        if(sequence() == before)
-          return copy.magic == target_magic and copy.version == target_version;
+        if(sequence() != before)
+          continue;
+        if(copy.magic != target_magic or copy.version != target_version)
+          return false;
+        // the writer grew to the layout with factions (the tool restarted in a newer version): mapped again
+        if(copy.size > target_mapped and target_mapped < sizeof(target_t))
+          {
+          UnmapViewOfFile(target_view);
+          target_view = nullptr;
+          next_target_try = GetTickCount();
+          log_line("state: the data source's target grew to %u bytes, mapping it again", copy.size);
+          }
+        copied = target_mapped;
+        return true;
         }
       return false;
       }
 #else
     ///\brief edworld alone has no data source: EDSM is asked at once
-    auto read_target(target_t &) -> bool { return false; }
+    auto read_target(target_t &, std::uint32_t &) -> bool { return false; }
 #endif
 
     DWORD WINAPI poll_thread(LPVOID)
@@ -212,6 +245,8 @@ namespace edworld
       std::uint64_t target_dest{};
       DWORD target_since{};
       bool target_answered{};
+      bool target_known{};
+      bool target_listed{};
       for(;;)
         {
         std::string const text{read_file(path)};
@@ -240,6 +275,9 @@ namespace edworld
             {
             destination.store(dest);
             allegiance.store(static_cast<std::uint8_t>(allegiance_e::unknown));
+            faction_list_t none{};
+            none.system = dest;
+            set_list(none);
             }
           if(now_charging != last_charging)
             {
@@ -257,23 +295,35 @@ namespace edworld
           target_answered = false;
           }
         target_t t{};
-        bool const have_target{read_target(t)};
+        std::uint32_t copied{};
+        bool const have_target{read_target(t, copied)};
         if(dest and have_target and t.system_address == dest and not target_answered)
           {
           target_answered = true;
+          target_known = t.known != 0u;
+          target_listed = false;
           if(t.known)
             {
             allegiance_e const a{t.allegiance <= 5 ? static_cast<allegiance_e>(t.allegiance) : allegiance_e::unknown};
             allegiance.store(static_cast<std::uint8_t>(a));
-            asked = dest;  // no EDSM for it
-            log_line("state: %llu (%.64s) -> %s, from the data source", static_cast<unsigned long long>(dest), t.name,
-                     allegiance_name(a));
+            faction_list_t const from_source{list_from_target(t, copied)};
+            target_listed = from_source.source == list_source_e::data_source;
+            if(target_listed)
+              {
+              set_list(from_source);
+              asked = dest;  // no EDSM for it
+              }
+            log_line("state: %llu (%.64s) -> %s, from the data source; factions %s", static_cast<unsigned long long>(dest),
+                     t.name, allegiance_name(a), target_listed ? "listed by it" : "not known to it, EDSM asked for them");
             }
           else
             log_line("state: %llu (%.64s) unknown to the data source", static_cast<unsigned long long>(dest), t.name);
           }
         bool const source_silent{not have_target or (not target_answered and GetTickCount() - target_since > 2000)};
-        if(dest and dest != asked and settings().edsm and (source_silent or (target_answered and t.system_address == dest and not t.known)))
+        // the list comes from one source whole: what the data source does not list, EDSM lists, the emblem stays the
+        // data source's when it knows the system
+        bool const source_lacks{target_answered and t.system_address == dest and not target_listed};
+        if(dest and dest != asked and settings().edsm and (source_silent or source_lacks))
           {
           asked = dest;
           std::string const body{edsm_factions(dest)};
@@ -282,9 +332,23 @@ namespace edworld
             controlling == std::string::npos ? std::string_view{} : string_after(body, "\"allegiance\"", controlling)
           };
           allegiance_e const a{to_allegiance(name)};
-          if(dest == destination.load())
+          bool const still{dest == destination.load()};
+          if(still and not(target_answered and target_known))
             allegiance.store(static_cast<std::uint8_t>(a));
-          log_line("edsm: %llu -> %s (%zu bytes)", static_cast<unsigned long long>(dest), allegiance_name(a), body.size());
+          faction_list_t from_edsm{};
+          bool parsed{};
+          try
+            {
+            parsed = not body.empty() and list_from_edsm(body, dest, from_edsm);
+            }
+          catch(std::exception const & e)
+            {
+            log_line("edsm: the answer for %llu could not be read (%s)", static_cast<unsigned long long>(dest), e.what());
+            }
+          if(still and parsed)
+            set_list(from_edsm);
+          log_line("edsm: %llu -> %s, %u faction(s)%s (%zu bytes)", static_cast<unsigned long long>(dest), allegiance_name(a),
+                   from_edsm.count, parsed ? "" : ", answer not read", body.size());
           }
         Sleep(100);
         }
@@ -306,6 +370,14 @@ namespace edworld
       destination.load(std::memory_order_relaxed),
       static_cast<allegiance_e>(allegiance.load(std::memory_order_relaxed))
     };
+    }
+
+  auto destination_factions() noexcept -> faction_list_t
+    {
+    AcquireSRWLockShared(&list_lock);
+    faction_list_t const copy{list};
+    ReleaseSRWLockShared(&list_lock);
+    return copy;
     }
 
   auto allegiance_name(allegiance_e a) noexcept -> char const *

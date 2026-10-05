@@ -6,18 +6,28 @@
 // alpha under each pixel, copied just before): when the game hides the panel while the ship still aligns, Status.json
 // still says charging, and the patch must go with the panel.
 //
+// Under the panel, on the same surface, the destination's factions are listed (from EHT's target in edworld_eht when
+// it has them, else from EDSM, said so in the list's last row), so they too ride the panel. The game draws nothing
+// there, so the list shows while the game draws the panel at one point of it (the gate, the patch's centre).
+//
 // The only place edworld changes what the game draws. The patch is a Dear ImGui draw list rendered by ImGui's
-// D3D11 backend (its own context, no input, no files), so text can join the emblem later. Everything the game had
-// bound is read back first and put back after, and our own draws go through our own objects.
+// D3D11 backend (its own context, no input, no files). Everything the game had bound is read back first and put
+// back after, and our own draws go through our own objects.
 #include "panel_patch.h"
 
 #include "emblems.h"
 #include "game_state.h"
+#include "list_font.h"
 
 #include <imgui.h>
 #include <backends/imgui_impl_dx11.h>
 
+#include <algorithm>
 #include <atomic>
+#include <cfloat>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
 #include <vector>
 
 namespace edworld
@@ -42,7 +52,17 @@ namespace edworld
       ID3D11Texture2D * mask{};
       ID3D11ShaderResourceView * mask_srv{};
       std::uint32_t mask_width{}, mask_height{};
+      ///\brief the pixel shader's b0: the patch's box (alpha from under the pixel) and the gate (alpha elsewhere)
+      ID3D11Buffer * gate{};
+      ///\brief the list's font; none when it could not be made (no list then, the emblem still)
+      ImFont * font{};
       bool failed{};
+      };
+
+    struct gate_t
+      {
+      std::int32_t box[4];
+      std::int32_t point[4];
       };
 
     resources_t r;
@@ -57,6 +77,7 @@ namespace edworld
     std::uint32_t rtv_next{};
     std::uint64_t patched_frame{~0ull};
     bool told_drawing{};
+    std::uint64_t told_list_for{};
 
     ///\brief the emblem as white with its coverage as alpha, so ImGui's colour x texture tints it
     auto make_emblem(std::uint8_t const * mask, std::uint32_t w, std::uint32_t h, std::uint32_t slot) -> bool
@@ -102,6 +123,8 @@ namespace edworld
         r.mask_srv->Release();
       if(r.mask)
         r.mask->Release();
+      if(r.gate)
+        r.gate->Release();
       r = resources_t{};
       r.device = device;
       r.imgui = ImGui::CreateContext();
@@ -109,11 +132,30 @@ namespace edworld
       io.IniFilename = nullptr;
       io.LogFilename = nullptr;
       io.ConfigFlags |= ImGuiConfigFlags_NoMouse | ImGuiConfigFlags_NoMouseCursorChange | ImGuiConfigFlags_NoKeyboard;
+      // the font before the backend makes its texture; Latin-1 and Latin Extended-A cover the factions' names
+      {
+      ImFontConfig cfg;
+      cfg.FontDataOwnedByAtlas = false;
+      static ImWchar const ranges[]{0x0020, 0x017F, 0};
+      r.font = io.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t *>(font::list_font), static_cast<int>(font::list_font_size),
+                                              std::clamp(settings().list_text, 8.f, 64.f), &cfg, ranges);
+      if(not r.font)
+        log_line("patch: the list's font could not be made; no list");
+      }
       bool ok{ImGui_ImplDX11_Init(device, ctx)};
       ok = ok and ImGui_ImplDX11_CreateDeviceObjects();
       ok = ok and make_emblem(emblems::federation_mask, emblems::federation_width, emblems::federation_height, 0);
       ok = ok and make_emblem(emblems::empire_mask, emblems::empire_width, emblems::empire_height, 1);
       ok = ok and make_emblem(emblems::alliance_mask, emblems::alliance_width, emblems::alliance_height, 2);
+      if(ok)
+        {
+        D3D11_BUFFER_DESC bd{};
+        bd.ByteWidth = sizeof(gate_t);
+        bd.Usage = D3D11_USAGE_DYNAMIC;
+        bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        ok = SUCCEEDED(device->CreateBuffer(&bd, nullptr, &r.gate)) and r.gate;
+        }
       r.failed = not ok;
       log_line(ok ? "patch: resources ready (imgui %s)" : "patch: resources could not be made (imgui %s); no patch", IMGUI_VERSION);
       return ok;
@@ -288,6 +330,96 @@ namespace edworld
         default:                       return 0xffffffu;
         }
       }
+
+    auto unix_now() -> std::int64_t
+      {
+      FILETIME ft{};
+      GetSystemTimeAsFileTime(&ft);
+      std::uint64_t const t{(std::uint64_t{ft.dwHighDateTime} << 32) | ft.dwLowDateTime};
+      return static_cast<std::int64_t>((t - 116444736000000000ull) / 10000000ull);
+      }
+
+    ///\brief the destination's factions in a box under the panel: the trend at the last tick, the controlling one
+    /// starred, name, influence, states; EDSM's list says so in its last row, with the age of its data. In test mode
+    /// with nothing to list, placeholder rows show where the box goes
+    auto draw_list(ImDrawList * dl, settings_t const & s, faction_list_t const & list, bool test) -> void
+      {
+      if(not r.font)
+        return;
+      float const size{r.font->FontSize};
+      float const line{std::round(size * 1.15f)};
+      float const pad{4.f};
+      float const left{s.list_x - s.list_width / 2.f}, right{s.list_x + s.list_width / 2.f};
+      bool const placeholder{test and list.count == 0};
+      std::uint32_t const source_rows{list.source == list_source_e::edsm or placeholder ? 1u : 0u};
+      std::uint32_t const rows{std::max(s.list_rows, source_rows + 1u)};
+      std::uint32_t const shown{placeholder ? rows - source_rows : std::min(list.count, rows - source_rows)};
+      if(shown == 0)
+        return;
+      float const top{s.list_top};
+      float const bottom{top + static_cast<float>(shown + source_rows) * line + 2.f * pad};
+      dl->AddRectFilled(ImVec2{left, top}, ImVec2{right, bottom}, im_colour(s.patch_ground));
+      if(test)
+        dl->AddRect(ImVec2{left, top}, ImVec2{right, bottom}, im_colour(0xff00ffu), 0.f, 0, 2.f);
+
+      float const cw{r.font->CalcTextSizeA(size, FLT_MAX, 0.f, "0").x};
+      float const x_star{left + pad + cw};
+      float const x_name{left + pad + 2.f * cw};
+      float const x_influence{x_name + 39.f * cw};  // right edge: a name of 32, a space, "100.0%"
+      float const x_states{x_influence + 2.f * cw};
+      ImU32 const grey{im_colour(0x9aa0a6u)};
+      char buf[128];
+      for(std::uint32_t i{}; i != shown; ++i)
+        {
+        float const y{top + pad + static_cast<float>(i) * line};
+        if(placeholder)
+          {
+          std::snprintf(buf, sizeof buf, "list test row %u of %u", i + 1u, shown);
+          dl->AddText(r.font, size, ImVec2{x_name, y}, im_colour(0xe0e0e0u), buf);
+          continue;
+          }
+        faction_row_t const & row{list.rows[i]};
+        float const cx{left + pad + cw * 0.5f}, mid{y + line * 0.5f}, half{cw * 0.4f};
+        if(row.trend == 1u)
+          dl->AddTriangleFilled(ImVec2{cx - half, mid + half}, ImVec2{cx + half, mid + half}, ImVec2{cx, mid - half}, im_colour(0x5cd65cu));
+        else if(row.trend == 3u)
+          dl->AddTriangleFilled(ImVec2{cx - half, mid - half}, ImVec2{cx, mid + half}, ImVec2{cx + half, mid - half}, im_colour(0xff6060u));
+        else if(row.trend == 2u)
+          dl->AddRectFilled(ImVec2{cx - half, mid - 1.f}, ImVec2{cx + half, mid + 1.f}, grey);
+        if(row.controlling)
+          dl->AddText(r.font, size, ImVec2{x_star, y}, im_colour(0xe0e0e0u), "*");
+        std::uint32_t const tint{row.allegiance >= 1u and row.allegiance <= 3u ? colour_of(static_cast<allegiance_e>(row.allegiance)) : 0xc8c8c8u};
+        ImVec4 const name_clip{x_name, y, x_influence - 7.f * cw, y + line};
+        dl->AddText(r.font, size, ImVec2{x_name, y}, im_colour(tint), row.name, nullptr, 0.f, &name_clip);
+        std::snprintf(buf, sizeof buf, "%.1f%%", static_cast<double>(row.influence) * 100.0);
+        float const w{r.font->CalcTextSizeA(size, FLT_MAX, 0.f, buf).x};
+        dl->AddText(r.font, size, ImVec2{x_influence - w, y}, im_colour(0xe0e0e0u), buf);
+        if(row.states[0] != '\0')
+          {
+          ImVec4 const states_clip{x_states, y, right - pad, y + line};
+          dl->AddText(r.font, size, ImVec2{x_states, y}, grey, row.states, nullptr, 0.f, &states_clip);
+          }
+        }
+      if(source_rows != 0)
+        {
+        float const y{top + pad + static_cast<float>(shown) * line};
+        if(placeholder)
+          std::snprintf(buf, sizeof buf, "list test: %u rows at most, text %.0f px", rows, static_cast<double>(size));
+        else if(list.updated_unix_s <= 0)
+          std::snprintf(buf, sizeof buf, "from EDSM");
+        else
+          {
+          std::int64_t const age{std::max<std::int64_t>(0, unix_now() - list.updated_unix_s)};
+          if(age < 3600)
+            std::snprintf(buf, sizeof buf, "from EDSM, updated %lld min ago", static_cast<long long>(age / 60));
+          else if(age < 48 * 3600)
+            std::snprintf(buf, sizeof buf, "from EDSM, updated %lld h ago", static_cast<long long>(age / 3600));
+          else
+            std::snprintf(buf, sizeof buf, "from EDSM, updated %lld days ago", static_cast<long long>(age / 86400));
+          }
+        dl->AddText(r.font, size, ImVec2{x_name, y}, grey, buf);
+        }
+      }
     }  // namespace
 
   auto panel_patch(ID3D11DeviceContext * ctx, ID3D11Device * device, std::uint64_t frame) noexcept -> void
@@ -308,7 +440,12 @@ namespace edworld
       case allegiance_e::alliance:   emblem = 2; break;
       default:                       break;
       }
-    if(not g.charging or (not test and emblem < 0))
+    if(not g.charging)
+      return;
+    // the list only for the destination it was made for, and only when it has something to say
+    faction_list_t const list{s.list != 0 ? destination_factions() : faction_list_t{}};
+    bool const listing{list.system == g.destination and list.source != list_source_e::none and list.count != 0};
+    if(not test and emblem < 0 and not listing)
       return;
 
     // the surface this composite draw samples, and whether it is the panel's: at PS t2 for the panel family,
@@ -358,6 +495,7 @@ namespace edworld
       }
     // what the game drew under the patch this frame: where it drew nothing (the panel hidden while the ship
     // still aligns, though Status.json still says charging), the patch's alpha goes to zero
+    // (the box's alpha also gates what is drawn beside the panel: the shader reads it at the patch's centre)
     {
     float const left{s.patch_x - s.patch_width / 2.f}, top{s.patch_y - s.patch_height / 2.f};
     UINT const x0{left > 0.f ? static_cast<UINT>(left) : 0u}, y0{top > 0.f ? static_cast<UINT>(top) : 0u};
@@ -365,6 +503,19 @@ namespace edworld
     D3D11_BOX const area{x0, y0, 0, x1 < d.Width ? x1 : d.Width, y1 < d.Height ? y1 : d.Height, 1};
     if(area.left < area.right and area.top < area.bottom)
       ctx->CopySubresourceRegion(r.mask, 0, area.left, area.top, 0, tex, 0, &area);
+    D3D11_MAPPED_SUBRESOURCE m{};
+    if(FAILED(ctx->Map(r.gate, 0, D3D11_MAP_WRITE_DISCARD, 0, &m)))
+      {
+      tex->Release();
+      return;
+      }
+    gate_t const gate{
+      {static_cast<std::int32_t>(area.left), static_cast<std::int32_t>(area.top), static_cast<std::int32_t>(area.right),
+       static_cast<std::int32_t>(area.bottom)},
+      {static_cast<std::int32_t>(s.patch_x), static_cast<std::int32_t>(s.patch_y), 0, 0}
+    };
+    std::memcpy(m.pData, &gate, sizeof gate);
+    ctx->Unmap(r.gate, 0);
     }
     tex->Release();
     patched_frame = frame;
@@ -382,7 +533,7 @@ namespace edworld
       box(dl, s.patch_x, s.patch_y, s.patch_width, s.patch_height, im_colour(0xff00ffu));  // magenta: where the patch goes
       box(dl, s.patch_x, s.patch_y, s.patch_width - 8.f, s.patch_height - 8.f, im_colour(s.patch_ground));
       }
-    else
+    else if(emblem >= 0)
       box(dl, s.patch_x, s.patch_y, s.patch_width, s.patch_height, im_colour(s.patch_ground));
     if(emblem >= 0)
       {
@@ -397,6 +548,8 @@ namespace edworld
         im_colour(colour_of(allegiance))
       );
       }
+    if(s.list != 0 and (listing or test))
+      draw_list(dl, s, list, test);
     ImGui::Render();
 
     // the backend puts back what it binds itself; the targets and the surface's own slots are ours to put back
@@ -404,13 +557,22 @@ namespace edworld
     save(ctx, b);
     ctx->OMSetRenderTargets(1, &rtv, nullptr);
     ctx->PSSetShaderResources(1, 1, &mask);
+    ctx->PSSetConstantBuffers(0, 1, &r.gate);
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
     restore(ctx, b);
+    if(listing and list.system != told_list_for)
+      {
+      told_list_for = list.system;
+      log_line("list: %u faction(s) of %llu drawn, from %s", std::min(list.count, std::max(s.list_rows, 1u)),
+               static_cast<unsigned long long>(list.system), list.source == list_source_e::data_source ? "the data source" : "EDSM");
+      }
     if(not told_drawing)
       {
       told_drawing = true;
-      log_line("patch: first drawn (%s, %s%s, surface %ux%u)", test ? "test" : "emblem", allegiance_name(allegiance),
-               s.patch_force ? " forced" : "", d.Width, d.Height);
+      log_line("patch: first drawn (%s, %s%s, surface %ux%u, list %s %u)", test ? "test" : "emblem", allegiance_name(allegiance),
+               s.patch_force ? " forced" : "", d.Width, d.Height,
+               list.source == list_source_e::data_source ? "from the data source" : list.source == list_source_e::edsm ? "from EDSM" : "none",
+               list.count);
       }
     }
   }  // namespace edworld

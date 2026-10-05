@@ -1,6 +1,8 @@
 // edworld — what the panel patch needs to know about the game, read from its own files and from EDSM.
 #pragma once
 
+#include "faction_list.h"
+
 #include <cstdint>
 
 namespace edworld
@@ -30,6 +32,11 @@ namespace edworld
 
   [[nodiscard]]
   auto game_state() noexcept -> game_state_t;
+
+  ///\brief the destination's factions for the list under the panel: from the data source when it has them
+  /// (edworld_eht), else from EDSM; source none until one answered
+  [[nodiscard]]
+  auto destination_factions() noexcept -> faction_list_t;
 
   [[nodiscard]]
   auto allegiance_name(allegiance_e a) noexcept -> char const *;
