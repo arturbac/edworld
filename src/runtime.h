@@ -11,6 +11,16 @@
 
 namespace edworld
   {
+  // Two builds of one source: edworld works on its own (Status.json, EDSM); edworld_eht (EDWORLD_EHT defined) also
+  // publishes the panels' anchors to EHT's overlay and takes the destination's allegiance from EHT's `target`.
+#if defined(EDWORLD_EHT)
+  inline constexpr bool with_eht{true};
+  inline constexpr wchar_t plugin_name[]{L"edworld_eht"};
+#else
+  inline constexpr bool with_eht{false};
+  inline constexpr wchar_t plugin_name[]{L"edworld"};
+#endif
+
   struct settings_t
     {
     ///\brief the next d3d11 in the chain (EDHM, EDVR renamed, ReShade); empty = the system copy
@@ -18,9 +28,11 @@ namespace edworld
     ///\brief vertex shaders whose draws are panels: the cockpit holo panel family, its "GUI effects off" twin, and
     /// the one the game switches the same panels to near a war settlement (surface at PS t1; seen 2026-10-05)
     std::vector<std::uint64_t> watch_vs{0x81216C77F90DEDD6ull, 0x1989E6D3B405FDE0ull, 0x925ACEDA0153AA5Bull};
-    ///\brief the tmpfs directory shared with the tools beside the game, one per data source: `panels` is
-    /// published there, `target` read from there (Z: is the Linux root under Wine); empty = neither
+#if defined(EDWORLD_EHT)
+    ///\brief the tmpfs directory shared with EHT: `panels` is published there, `target` read from there
+    /// (Z: is the Linux root under Wine); empty = neither
     std::wstring shm_dir{L"Z:\\dev\\shm\\eht"};
+#endif
     ///\brief a summary line of the frame's panels at most this often; 0 = never
     std::uint32_t log_interval_ms{1000};
     ///\brief a gap between two panel draws longer than this starts a new frame
@@ -34,7 +46,7 @@ namespace edworld
 
     // ---- the jump panel patch: drawn by the proxy onto the panel's interface surface while a jump charges ----
     ///\brief 0 off, 1 on: the right superpower emblem over the panel's wrong one (destination from Status.json,
-    /// its allegiance from EDSM), 2 test: a bright frame where the patch goes, whatever the destination
+    /// its allegiance from EHT's `target` in edworld_eht, else from EDSM), 2 test: a bright frame where the patch goes, whatever the destination
     std::uint32_t patch{0};
     ///\brief the interface surface that carries the jump panel
     std::uint32_t patch_surface_width{3072};

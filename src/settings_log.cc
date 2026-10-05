@@ -1,4 +1,5 @@
-// edworld — edworld.ini and edworld.log: in the directories edloader hands its plugins, else beside the dll.
+// edworld — <plugin>.ini and <plugin>.log (edworld or edworld_eht, by build): in the directories edloader hands its
+// plugins, else beside the dll; the names do not follow the dll's file name, which may be d3d11.dll.
 #include "panel_math.h"
 #include "runtime.h"
 
@@ -64,7 +65,7 @@ namespace edworld
   auto load_settings(std::wstring const & config_dir, std::wstring const & output_dir) -> void
     {
     current.dir = output_dir;
-    std::wstring const path{config_dir + L"\\edworld.ini"};
+    std::wstring const path{config_dir + L"\\" + plugin_name + L".ini"};
     std::FILE * f{_wfopen(path.c_str(), L"rb")};
     if(not f)
       return;
@@ -81,8 +82,10 @@ namespace edworld
       std::string_view const value{trim(text.substr(eq + 1))};
       if(key == "next")
         current.next = widen(value);
+#if defined(EDWORLD_EHT)
       else if(key == "shm_dir")
         current.shm_dir = widen(value);
+#endif
       else if(key == "log_interval_ms")
         current.log_interval_ms = to_uint(value, current.log_interval_ms);
       else if(key == "frame_gap_us")
@@ -138,10 +141,10 @@ namespace edworld
     }
 
   // One file per game session: the last session's log is set aside under the time it was last written,
-  // edworld.<UTC>.log, before this one starts - the tool beside the game takes those away (EHT's backup).
+  // <plugin>.<UTC>.log, before this one starts - the tool beside the game takes those away (EHT's backup).
   auto log_open(std::wstring const & dir) -> void
     {
-    std::wstring const path{dir + L"\\edworld.log"};
+    std::wstring const path{dir + L"\\" + plugin_name + L".log"};
     bool set_aside_failed{};
     WIN32_FILE_ATTRIBUTE_DATA a{};
     if(GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &a) and (a.nFileSizeHigh != 0 or a.nFileSizeLow != 0))
@@ -149,7 +152,7 @@ namespace edworld
       SYSTEMTIME t{};
       FileTimeToSystemTime(&a.ftLastWriteTime, &t);
       wchar_t aside[64];
-      std::swprintf(aside, 64, L"\\edworld.%04u%02u%02uT%02u%02u%02uZ.log", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
+      std::swprintf(aside, 64, L"\\%ls.%04u%02u%02uT%02u%02u%02uZ.log", plugin_name, t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
       set_aside_failed = not MoveFileExW(path.c_str(), (dir + aside).c_str(), 0);
       }
     log_file = _wfopen(path.c_str(), L"ab");

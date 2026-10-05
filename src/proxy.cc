@@ -138,7 +138,7 @@ namespace
     std::wstring const log_dir{directory_from(L"EDLOADER_LOG_DIR")};
     edworld::load_settings(directory_from(L"EDLOADER_CONFIG_DIR"), log_dir);
     edworld::log_open(log_dir);
-    edworld::log_line("edworld %s, read-only d3d11 observer", EDWORLD_VERSION);
+    edworld::log_line("%S %s, read-only d3d11 observer", edworld::plugin_name, EDWORLD_VERSION);
     chain_next();
     return TRUE;
     }

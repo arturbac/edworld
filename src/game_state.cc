@@ -1,5 +1,6 @@
-// edworld — Status.json says whether a jump is charging and to which system; EDSM says whose system it is.
-// Only the destination's id goes out (api-system-v1/factions?systemId64=), once per new destination.
+// edworld — Status.json says whether a jump is charging and to which system; EHT's `target` (edworld_eht only)
+// or EDSM says whose system it is. Only the destination's id goes out (api-system-v1/factions?systemId64=), once per
+// new destination.
 #include "game_state.h"
 
 #include "edworld_share.h"
@@ -139,6 +140,7 @@ namespace edworld
       }
 
     // ---- the data source's target (EHT): read before EDSM is asked ----
+#if defined(EDWORLD_EHT)
     target_t const * target_view{};
     DWORD next_target_try{};
 
@@ -196,6 +198,10 @@ namespace edworld
         }
       return false;
       }
+#else
+    ///\brief edworld alone has no data source: EDSM is asked at once
+    auto read_target(target_t &) -> bool { return false; }
+#endif
 
     DWORD WINAPI poll_thread(LPVOID)
       {

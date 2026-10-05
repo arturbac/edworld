@@ -1,4 +1,6 @@
 // edworld — the observer: which vertex shaders draw panels, and what each panel draw carries.
+// edworld alone only finds the panels' draws (for the patch); edworld_eht also copies what each carries and
+// publishes it to EHT (`panels`).
 //
 // Read-only by construction: every hook calls the game's call through unchanged, and what we add is our own
 // copies into our own staging buffers. Lessons taken from EDVR (MIT) and its Proton issue 65:
@@ -214,7 +216,8 @@ namespace edworld
       return true;
       }
 
-    // ---- the published record ----
+    // ---- the published record (edworld_eht) ----
+#if defined(EDWORLD_EHT)
     auto open_share() noexcept -> void
       {
       std::wstring const & dir{settings().shm_dir};
@@ -257,6 +260,7 @@ namespace edworld
       share->writer_pid = GetCurrentProcessId();
       log_line("share: publishing to %S (%zu bytes)", path.c_str(), sizeof(share_t));
       }
+#endif
 
     struct mapped_t
       {
@@ -600,10 +604,21 @@ namespace edworld
         ring[recording].filled = true;
       recording = -1;
       ++frame;
+      if constexpr(not with_eht)
+        {
+        if(settings().log_interval_ms and (now - last_log_qpc) * 1000 / qpc_frequency >= settings().log_interval_ms)
+          {
+          last_log_qpc = now;
+          log_line("frame %llu: totals draws %llu faults %u vs %llu", static_cast<unsigned long long>(frame),
+                   static_cast<unsigned long long>(stat_draws), faults, static_cast<unsigned long long>(vs_created.load()));
+          }
+        }
       drain(now);
       if(pending_count)
         write_dumps(now);
       check_trigger(now);
+      if constexpr(not with_eht)
+        return;
       for(int i{}; i != static_cast<int>(ring_slots); ++i)
         if(not ring[i].filled and ring[i].staging and ring[i].side)
           {
@@ -782,6 +797,15 @@ namespace edworld
         {
         // found in the game: its draws carry the panel surface, but whether its records decode like the family's
         // is not known, so it gets the patch and publishes nothing
+        if(settings().patch)
+          panel_patch(ctx, device, frame);
+        return;
+        }
+      if constexpr(not with_eht)
+        {
+        // nothing is published: no copies, the patch alone
+        if(dump_armed)
+          queue_dump(ctx);
         if(settings().patch)
           panel_patch(ctx, device, frame);
         return;
@@ -1267,6 +1291,8 @@ namespace edworld
 
     for(slot_t & s: ring)
       {
+      if constexpr(not with_eht)
+        break;
       s.filled = false;
       s.count = 0;
       D3D11_BUFFER_DESC d{};
@@ -1287,8 +1313,10 @@ namespace edworld
     device = dev;
     immediate1 = ctx1;
     immediate.store(ctx);  // the latest device wins; its context stays referenced for the process lifetime
+#if defined(EDWORLD_EHT)
     if(not share)
       open_share();
+#endif
     if(settings().patch)
       {
       start_game_state();
@@ -1298,7 +1326,8 @@ namespace edworld
           CloseHandle(t);
       }
     if(settings().patch and not settings().edsm)
-      log_line("patch: on, but edsm = 0 - no allegiance, only the test frame can be drawn");
+      log_line(with_eht ? "patch: on, edsm = 0 - allegiance from EHT's target only"
+                        : "patch: on, but edsm = 0 - no allegiance, only the test frame can be drawn");
     std::uint32_t const n{watched_count.load()};
     log_line(
       "attach: device %p context %p (context1 %s), %zu watched hash(es), %u already created",

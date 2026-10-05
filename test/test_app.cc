@@ -1,6 +1,7 @@
 // edworld smoke test without the game: a D3D11 program that draws one "panel" (a watched VS with a known
 // cb0 rows 4..7) and one other draw, through edworld's d3d11.dll, then checks what edworld published.
 // Exit code 0 = pass. Run from a directory holding test_app.exe and edworld's d3d11.dll (native override).
+// Built once per variant: EDWORLD_EHT = the edworld_eht build (EHT's target read, panels published).
 #include <windows.h>
 
 #include <d3d11.h>
@@ -30,6 +31,14 @@ namespace
     }
 
   auto near_eq(float a, float b) -> bool { return std::fabs(a - b) < 1e-5f; }
+
+#if defined(EDWORLD_EHT)
+  constexpr bool with_eht{true};
+  constexpr wchar_t plugin_name[]{L"edworld_eht"};
+#else
+  constexpr bool with_eht{false};
+  constexpr wchar_t plugin_name[]{L"edworld"};
+#endif
   }  // namespace
 
 int main()
@@ -55,20 +64,26 @@ int main()
   // The settings must be in place before the first d3d11 export call.
   std::uint64_t const watched{edworld::fnv1a64(g_panel_vs, sizeof g_panel_vs)};
   {
-  std::FILE * ini{_wfopen((config_dir + L"\\edworld.ini").c_str(), L"wb")};
+  std::FILE * ini{_wfopen((config_dir + L"\\" + plugin_name + L".ini").c_str(), L"wb")};
   wchar_t next[MAX_PATH]{};
   GetEnvironmentVariableW(L"EDWORLD_TEST_NEXT", next, MAX_PATH);
   if(next[0])
     std::fprintf(ini, "next = %ls\n", next);
   std::fprintf(ini, "patch = 2\npatch_surface = 512x128\npatch_x = 256\npatch_y = 64\npatch_width = 100\npatch_height = 50\npatch_emblem_height = 40\nedsm = %d\n", GetEnvironmentVariableW(L"EDWORLD_TEST_EDSM", nullptr, 0) ? 1 : 0);
-  std::fprintf(ini, "watch_vs = %016llX, 1989E6D3B405FDE0\nshm_dir = %ls\nlog_interval_ms = 1\nlog_all_vs = 1\n",
-               static_cast<unsigned long long>(watched), shm_dir.c_str());
+  std::fprintf(ini, "watch_vs = %016llX, 1989E6D3B405FDE0\nlog_interval_ms = 1\nlog_all_vs = 1\n",
+               static_cast<unsigned long long>(watched));
+  if constexpr(with_eht)
+    std::fprintf(ini, "shm_dir = %ls\n", shm_dir.c_str());
+  else
+    std::fprintf(ini, "patch_force = 2\n");  // no data source and no EDSM in the test: the Empire emblem by hand
   std::fclose(ini);
   }
   DeleteFileW(share_path.c_str());
+  std::wstring const log_path{output_dir + L"\\" + plugin_name + L".log"};
   // the data source's target, as EHT writes it: the destination is known, an Empire system
-  CreateDirectoryW(shm_dir.c_str(), nullptr);
+  if constexpr(with_eht)
   {
+  CreateDirectoryW(shm_dir.c_str(), nullptr);
   edworld::target_t t{};
   t.magic = edworld::target_magic;
   t.version = edworld::target_version;
@@ -298,7 +313,7 @@ int main()
           ++upper_half;
         }
   std::printf("empire-blue pixels in the emblem box: %u (upper half %u)\n", emblem_pixels, upper_half);
-  check(emblem_pixels > 150, "Empire emblem from the data source's target, in its colour");
+  check(emblem_pixels > 150, with_eht ? "Empire emblem from the data source's target, in its colour" : "Empire emblem (patch_force), in its colour");
   // the Empire's V is wide at the top and comes to a point at the bottom
   check(upper_half * 2 > emblem_pixels, "emblem upright, not flipped");
   check(pixel(256 - 45, 64) == 0x020304u, "patch ground drawn beside the emblem");
@@ -360,7 +375,7 @@ int main()
   ctx->Flush();
   Sleep(200);
   std::string log_text;
-  if(std::FILE * lf{_wfopen((output_dir + L"\\edworld.log").c_str(), L"rb")})
+  if(std::FILE * lf{_wfopen(log_path.c_str(), L"rb")})
     {
     char buf[4096];
     for(std::size_t got; (got = std::fread(buf, 1, sizeof buf, lf)) != 0;)
@@ -397,7 +412,7 @@ int main()
   ctx->Flush();
   Sleep(200);
   log_text.clear();
-  if(std::FILE * lf{_wfopen((output_dir + L"\\edworld.log").c_str(), L"rb")})
+  if(std::FILE * lf{_wfopen(log_path.c_str(), L"rb")})
     {
     char buf[4096];
     for(std::size_t got; (got = std::fread(buf, 1, sizeof buf, lf)) != 0;)
@@ -411,6 +426,34 @@ int main()
   big->Release();
   }
 
+  WIN32_FIND_DATAW found{};
+  HANDLE const dumps{FindFirstFileW((output_dir + L"\\edworld_dumps\\*_512x128_f27_*.raw").c_str(), &found)};
+  check(dumps != INVALID_HANDLE_VALUE, "the panel's surface dumped (512x128)");
+  if(dumps != INVALID_HANDLE_VALUE)
+    FindClose(dumps);
+  check(GetFileAttributesW((output_dir + L"\\edworld_dump").c_str()) == INVALID_FILE_ATTRIBUTES, "dump trigger removed");
+  if(HMODULE const fake{GetModuleHandleW(L"fake_next.dll")})
+    {
+    using calls_fn = LONG (*)();
+    auto const calls{reinterpret_cast<calls_fn>(GetProcAddress(fake, "fake_next_calls"))};
+    check(calls and calls() == 1, "chained proxy called once, its by-name call routed to the system copy");
+    }
+  if constexpr(not with_eht)
+    {
+    std::string log_text;
+    if(std::FILE * lf{_wfopen(log_path.c_str(), L"rb")})
+      {
+      char buf[4096];
+      for(std::size_t got; (got = std::fread(buf, 1, sizeof buf, lf)) != 0;)
+        log_text.append(buf, got);
+      std::fclose(lf);
+      }
+    check(log_text.find("share:") == std::string::npos and log_text.find("data source") == std::string::npos,
+          "edworld alone neither publishes nor reads a data source");
+    check(log_text.find(": totals draws ") != std::string::npos, "frame summary in the log");
+    std::printf("%s (%d failure(s))\n", failures ? "FAILED" : "PASSED", failures);
+    return failures ? 1 : 0;
+    }
   HANDLE const file{CreateFileW(share_path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr)};
   check(file != INVALID_HANDLE_VALUE, "share file exists");
   if(file == INVALID_HANDLE_VALUE)
@@ -437,21 +480,9 @@ int main()
   // anchor = rows 4..7 . (0.5, 1.5, 2.5, 1): x 0.8*.5+0.1*2.5+0.5 = 1.15, y 0.9*1.5-0.25 = 1.1, w 0.2*2.5+2 = 2.5
   auto const ndc{edworld::clip_to_ndc(p.anchor_clip)};
   check(ndc and near_eq(ndc->x, 1.15f / 2.5f) and near_eq(ndc->y, 1.1f / 2.5f) and near_eq(ndc->w, 2.5f), "anchor from the record's position");
-  WIN32_FIND_DATAW found{};
-  HANDLE const dumps{FindFirstFileW((output_dir + L"\\edworld_dumps\\*_512x128_f27_*.raw").c_str(), &found)};
-  check(dumps != INVALID_HANDLE_VALUE, "the panel's surface dumped (512x128)");
-  if(dumps != INVALID_HANDLE_VALUE)
-    FindClose(dumps);
-  check(GetFileAttributesW((output_dir + L"\\edworld_dump").c_str()) == INVALID_FILE_ATTRIBUTES, "dump trigger removed");
   std::printf("frame %llu source %llu panels %u anchor clip %.4f %.4f %.4f %.4f\n",
               static_cast<unsigned long long>(s.frame), static_cast<unsigned long long>(s.source_frame), s.panel_count,
               p.anchor_clip[0], p.anchor_clip[1], p.anchor_clip[2], p.anchor_clip[3]);
-  if(HMODULE const fake{GetModuleHandleW(L"fake_next.dll")})
-    {
-    using calls_fn = LONG (*)();
-    auto const calls{reinterpret_cast<calls_fn>(GetProcAddress(fake, "fake_next_calls"))};
-    check(calls and calls() == 1, "chained proxy called once, its by-name call routed to the system copy");
-    }
   if(GetEnvironmentVariableW(L"EDWORLD_TEST_EDSM", nullptr, 0))
     Sleep(3000);  // the state thread's question to EDSM
   std::printf("%s (%d failure(s))\n", failures ? "FAILED" : "PASSED", failures);
