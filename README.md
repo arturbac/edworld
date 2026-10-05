@@ -90,8 +90,9 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   EDSM) gets no list. Text in Noto Sans Mono (SIL OFL 1.1, the font of EHT's overlay), made once at the first patch
   at `list_text` pixels (50: two and a half times the panel's own text, at which the factions' names read in the
   cockpit), in a black box as wide as its rows and centred under the panel (`list_width` the widest it gets); its
-  texture has a full mip chain, as the cockpit shows it smaller than drawn. `list_gain` scales its colours (the
-  cockpit's target may be HDR). The first quad drawn logs the target's format and the game's blend for the panel. In test mode
+  texture has a full mip chain, sampled half a level sharp, as the cockpit shows it at about 0.7 of its size (the
+  game's supersampling below 1). `list_gain` (0.8) scales its colours: the cockpit's target is HDR
+  (R11G11B10_FLOAT), where white text blooms more than the panel's own. The first quad drawn logs the target's format and the game's blend for the panel. In test mode
   (`patch = 2`) the box is drawn with placeholder rows when there is nothing to list, to see where it goes.
   The panel's vertex (stride 40): the packed local position in bytes 0..15 (EDVR's decode), the surface
   coordinate in bytes 16..19 as two unorm16 halves, `(h / 32767 - 1) * 16`.
@@ -177,7 +178,7 @@ list_rows = 7
 ; text height in pixels; read once, at the first patch
 list_text = 50
 ; the list's colours times this in the cockpit
-list_gain = 1
+list_gain = 0.8
 ```
 
 The values above are the defaults. `shm_dir` is where EHT writes `target` (`edworld.dir` in its settings,
@@ -204,6 +205,9 @@ default `/dev/shm/eht`).
 8. **2026-10-05, a Steam install, the list's quad and the superpower read from the panel.** The Alliance read from
    the panel's text (label 231 px, word 155 px), the emblem beside its rows; the list under the panel and riding it,
    but its text too small and blurred (20 px, no mips), the box twice too wide, its ground grey instead of black.
+9. **2026-10-05, the same, the list at 50 px, mipmapped, centred, on black.** The list from the tool's record, centred
+   and as wide as its rows, on black; slightly soft. The target is R11G11B10_FLOAT and the game blends the panel
+   ONE / INV_SRC_ALPHA, RGB only, as the list does.
 
 ## Not known yet
 

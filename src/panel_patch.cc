@@ -531,6 +531,9 @@ namespace edworld
       D3D11_SAMPLER_DESC sd{};
       sd.Filter = D3D11_FILTER_ANISOTROPIC;
       sd.MaxAnisotropy = 8;
+      // the cockpit shows the list at about 0.7 of its texture (the game's supersampling below 1): half a mip level
+      // sharper than the filter would pick, so its letters do not go soft
+      sd.MipLODBias = -0.5f;
       sd.AddressU = sd.AddressV = sd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
       sd.MaxLOD = D3D11_FLOAT32_MAX;
       ok = ok and SUCCEEDED(r.device->CreateSamplerState(&sd, &r.list_sampler));

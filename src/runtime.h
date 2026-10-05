@@ -82,8 +82,9 @@ namespace edworld
     std::uint32_t list_rows{7};
     ///\brief the text's height in surface pixels; the font is made at the first patch, so a change needs a restart
     float list_text{50.f};
-    ///\brief the list's colours times this in the cockpit (its target may be HDR, brighter than 1)
-    float list_gain{1.f};
+    ///\brief the list's colours times this in the cockpit: its target is HDR (R11G11B10_FLOAT), and white text there
+    /// blooms more than the panel's own
+    float list_gain{0.8f};
     };
 
   auto settings() noexcept -> settings_t const &;
