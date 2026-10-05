@@ -6,12 +6,27 @@ one for the Federation, the Empire and the Alliance), with the destination's fac
 is drawn onto the panel's own interface surface, the list as a quad of its own in the panel's plane; both move with
 the panel when the cockpit camera swings (ship inertia, head look).
 
-Proof of concept. Observing is read-only: every hook calls the game's call through unchanged. The jump panel
-patch and its list are the only places edworld changes what the game draws.
+Version 1.0.0 (CHANGELOG.md). Observing is read-only: every hook calls the game's call through unchanged. The jump
+panel patch and its list are the only places edworld changes what the game draws. MIT licence (LICENSE); what
+comes from others: NOTICE.
 
-Checked in the game: the observer (ed-lab clone, chained in front of EDHM) and the jump panel patch, first drawn by
-hand-written shaders, now by Dear ImGui (one commander's Steam install, chained in front of EDHM, without edloader).
-Not checked in the game yet: edworld loaded through edloader; the factions list under the panel.
+Checked in the game: the observer (ed-lab clone, chained in front of EDHM), the jump panel patch and the factions
+list under the panel (one commander's Steam install, chained in front of EDHM, without edloader), the superpower
+read from the panel for the Alliance. Not checked in the game yet: edworld loaded through edloader; the Empire's,
+the Federation's and the independents' words read from the panel (their widths come from screenshots).
+
+## Install
+
+1. Build (`tools/build.sh`, below) or take the dll from a release: `edworld.dll` on its own, `edworld_eht.dll` with
+   EHT.
+2. Copy it into the game's folder `Products/elite-dangerous-odyssey-64` (beside `EliteDangerous64.exe`) as
+   `d3d11.dll`. If a `d3d11.dll` is there already (EDHM, ReShade, EDVR), rename that one first, for example to
+   `d3d11_edhm.dll`, and name it in `next` in `edworld.ini` (or `edworld_eht.ini`) beside it.
+3. Start the game; `edworld.log` (or `edworld_eht.log`) appears beside the dll.
+
+A verification of the game's files (Steam, the launcher) removes everything that is not the game's from its folder,
+edworld and its ini among them: copy them again after one. To remove edworld, put the renamed dll back as
+`d3d11.dll`, or delete edworld's `d3d11.dll` when there was none.
 
 ## Two builds
 
@@ -19,8 +34,8 @@ One source, two dlls (`tools/build.sh` makes both; the difference is `EDWORLD_EH
 
 | Build | For | Files beside it |
 |---|---|---|
-| `build/edworld/edworld.dll` | anyone: works on its own; the allegiance and the factions come from EDSM; publishes nothing, so it copies nothing of the panel draws | `edworld.ini`, `edworld.log` |
-| `build/edworld_eht/edworld_eht.dll` | EHT users: also publishes the panels' anchors to `panels` (EHT's overlay follows them) and takes the allegiance and the factions from EHT's `target` before EDSM | `edworld_eht.ini`, `edworld_eht.log` |
+| `build/edworld/edworld.dll` | anyone: works on its own; the superpower is read from the panel, the factions come from EDSM; publishes nothing, so it copies nothing of the panel draws | `edworld.ini`, `edworld.log` |
+| `build/edworld_eht/edworld_eht.dll` | EHT users: also publishes the panels' anchors to `panels` (EHT's overlay follows them) and takes the factions from EHT's `target` before EDSM | `edworld_eht.ini`, `edworld_eht.log` |
 
 The ini and log names are fixed by the build, not taken from the dll's file name: installed alone as the game's
 `d3d11.dll`, either build still reads its own ini. Below, "edworld_eht only" marks what the plain build lacks;
@@ -92,7 +107,9 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   cockpit), in a black box as wide as its rows and centred under the panel (`list_width` the widest it gets); its
   texture has a full mip chain, sampled half a level sharp, as the cockpit shows it at about 0.7 of its size (the
   game's supersampling below 1). `list_gain` (0.8) scales its colours: the cockpit's target is HDR
-  (R11G11B10_FLOAT), where white text blooms more than the panel's own. The first quad drawn logs the target's format and the game's blend for the panel. In test mode
+  (R11G11B10_FLOAT), where white text blooms more than the panel's own. The first quad drawn logs the target's
+  format and the game's blend for the panel. The box's footer names edworld and its version (`edworld v1.0.0`),
+  small and grey in its bottom right corner. In test mode
   (`patch = 2`) the box is drawn with placeholder rows when there is nothing to list, to see where it goes.
   The panel's vertex (stride 40): the packed local position in bytes 0..15 (EDVR's decode), the surface
   coordinate in bytes 16..19 as two unorm16 halves, `(h / 32767 - 1) * 16`.

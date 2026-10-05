@@ -117,9 +117,9 @@ int main()
   check(one.factions == 1u and one.source == 0u and seven.factions == 7u, "list: one row per faction, up to seven");
   check(seven_edsm.factions == 7u and seven_edsm.source == 1u, "list: EDSM's source row comes on top of seven factions");
   check(many.factions == 7u, "list: seven rows at most");
-  check(std::fabs(edworld::list_height(one, 58.f, 15.f) - 88.f) < 0.01f and
-          std::fabs(edworld::list_height(seven_edsm, 58.f, 15.f) - 494.f) < 0.01f,
-        "list: the box as high as its rows");
+  check(std::fabs(edworld::list_height(one, 58.f, 15.f, 28.f) - 116.f) < 0.01f and
+          std::fabs(edworld::list_height(seven_edsm, 58.f, 15.f, 28.f) - 522.f) < 0.01f,
+        "list: the box as high as its rows and its footer");
   }
   wchar_t exe[MAX_PATH]{};
   GetModuleFileNameW(nullptr, exe, MAX_PATH);

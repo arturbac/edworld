@@ -335,10 +335,10 @@ namespace edworld
     return {placeholder ? most : std::min(count, most), from_edsm or placeholder ? 1u : 0u};
     }
 
-  ///\brief the list box's height for those rows, in pixels
+  ///\brief the list box's height for those rows and its footer (edworld's name and version, smaller), in pixels
   [[nodiscard]]
-  constexpr auto list_height(list_lines_t const & l, float line, float pad) noexcept -> float
+  constexpr auto list_height(list_lines_t const & l, float line, float pad, float footer) noexcept -> float
     {
-    return static_cast<float>(l.factions + l.source) * line + 2.f * pad;
+    return static_cast<float>(l.factions + l.source) * line + footer + 2.f * pad;
     }
   }  // namespace edworld
