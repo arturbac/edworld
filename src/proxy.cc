@@ -92,17 +92,27 @@ namespace
       edworld::log_line("chain: next is the system d3d11.dll");
       return;
       }
-    if(path.find(L':') == std::wstring::npos and path.find(L'\\') == std::wstring::npos)
+    // `d3d11.dll` alone is asked for by name: under edloader that is edloader, which passes the call on down its
+    // list; another bare name is a file beside edworld
+    bool const by_name{_wcsicmp(path.c_str(), L"d3d11.dll") == 0};
+    if(not by_name and path.find(L':') == std::wstring::npos and path.find(L'\\') == std::wstring::npos)
       path = module_dir + L"\\" + path;
     wchar_t self[MAX_PATH]{};
     GetModuleFileNameW(self_module, self, MAX_PATH);
     wchar_t want[MAX_PATH]{};
-    if(GetFullPathNameW(path.c_str(), MAX_PATH, want, nullptr) and _wcsicmp(self, want) == 0)
+    if(not by_name and GetFullPathNameW(path.c_str(), MAX_PATH, want, nullptr) and _wcsicmp(self, want) == 0)
       {
       edworld::log_line("chain: next points at edworld itself, ignored; using the system d3d11.dll");
       return;
       }
     HMODULE const chained{LoadLibraryW(path.c_str())};
+    if(by_name and chained == self_module)
+      {
+      // edworld is the game's d3d11.dll itself: no loader in front of it
+      edworld::log_line("chain: next = d3d11.dll is edworld itself (no edloader); using the system d3d11.dll");
+      FreeLibrary(chained);
+      return;
+      }
     if(not chained)
       {
       edworld::log_line("chain: cannot load %S (error %lu); using the system d3d11.dll", path.c_str(), GetLastError());
@@ -161,6 +171,15 @@ namespace
     };
 
   bool loop_reported{};
+
+  ///\brief the first few device creations, to see which of them made the device edworld attaches to
+  auto log_create(char const * what, HRESULT hr, bool asked, bool made, bool nested) noexcept -> void
+    {
+    static int told{};
+    if(told++ < 8)
+      edworld::log_line("%s: hr 0x%08lX, device %s%s", what, static_cast<unsigned long>(hr),
+                        made ? "made" : asked ? "asked, none made" : "not asked", nested ? " (nested, not attached)" : "");
+    }
   }  // namespace
 
 extern "C" HRESULT WINAPI edvr_impl_D3D11CreateDevice(
@@ -191,7 +210,9 @@ extern "C" HRESULT WINAPI edvr_impl_D3D11CreateDevice(
   if(not target)
     return E_FAIL;
   HRESULT const hr{target(adapter, driver_type, software, flags, levels, level_count, sdk, device, level, context)};
-  if(SUCCEEDED(hr) and device and *device and not depth.reentrant())
+  bool const made{SUCCEEDED(hr) and device and *device};
+  log_create("D3D11CreateDevice", hr, device != nullptr, made, depth.reentrant());
+  if(made and not depth.reentrant())
     edworld::attach_to_device(*device);
   return hr;
   }
@@ -219,7 +240,9 @@ extern "C" HRESULT WINAPI edvr_impl_D3D11CreateDeviceAndSwapChain(
   HRESULT const hr{
     target(adapter, driver_type, software, flags, levels, level_count, sdk, swap_desc, swap, device, level, context)
   };
-  if(SUCCEEDED(hr) and device and *device and not depth.reentrant())
+  bool const made{SUCCEEDED(hr) and device and *device};
+  log_create("D3D11CreateDeviceAndSwapChain", hr, device != nullptr, made, depth.reentrant());
+  if(made and not depth.reentrant())
     edworld::attach_to_device(*device);
   return hr;
   }
