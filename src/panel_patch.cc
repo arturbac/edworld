@@ -2,37 +2,46 @@
 // interface surface that carries the charge panel into the cockpit, the panel's wrong superpower emblem is
 // painted over on that surface with the panel's own black and the right emblem. Drawn onto the surface, the
 // patch then rides the panel through the cockpit like the rest of its text: camera lag, head look, the
-// hologram's own effects.
+// hologram's own effects. The patch shows only where the game itself drew on the surface this frame (its
+// alpha under each pixel, copied just before): when the game hides the panel while the ship still aligns, Status.json
+// still says charging, and the patch must go with the panel.
 //
-// The only place edworld changes what the game draws. Everything the game had bound is read back first and
-// put back after (the ImGui D3D11 backend's discipline), and our own draws go through our own objects.
+// The only place edworld changes what the game draws. The patch is a Dear ImGui draw list rendered by ImGui's
+// D3D11 backend (its own context, no input, no files), so text can join the emblem later. Everything the game had
+// bound is read back first and put back after, and our own draws go through our own objects.
 #include "panel_patch.h"
 
 #include "emblems.h"
 #include "game_state.h"
-#include "patch_ps.h"
-#include "patch_vs.h"
 
-#include <cstring>
+#include <imgui.h>
+#include <backends/imgui_impl_dx11.h>
+
+#include <atomic>
+#include <vector>
 
 namespace edworld
   {
+  auto imgui_check_failed(char const * what, char const * file, int line) noexcept -> void
+    {
+    static std::atomic<std::uint32_t> failures{};
+    if(failures.fetch_add(1) == 0)  // the first one tells; a check failing every frame would flood the log
+      log_line("imgui: check failed: %s (%s:%d); later failures not logged", what, file, line);
+    }
+
   namespace
     {
     struct resources_t
       {
       ID3D11Device * device{};
-      ID3D11VertexShader * vs{};
-      ID3D11PixelShader * ps{};
-      ID3D11Buffer * cb{};
-      ID3D11SamplerState * sampler{};
-      ID3D11BlendState * opaque{};
-      ID3D11BlendState * over{};
-      ID3D11RasterizerState * raster{};
-      ID3D11DepthStencilState * no_depth{};
+      ImGuiContext * imgui{};
       ID3D11ShaderResourceView * emblem[3]{};
       std::uint32_t emblem_width[3]{};
       std::uint32_t emblem_height[3]{};
+      // a copy of the panel's surface, only the patch's box written: what the game drew there this frame
+      ID3D11Texture2D * mask{};
+      ID3D11ShaderResourceView * mask_srv{};
+      std::uint32_t mask_width{}, mask_height{};
       bool failed{};
       };
 
@@ -49,25 +58,22 @@ namespace edworld
     std::uint64_t patched_frame{~0ull};
     bool told_drawing{};
 
-    struct constants_t
+    ///\brief the emblem as white with its coverage as alpha, so ImGui's colour x texture tints it
+    auto make_emblem(std::uint8_t const * mask, std::uint32_t w, std::uint32_t h, std::uint32_t slot) -> bool
       {
-      float rect[4];
-      float colour[4];
-      float mode[4];
-      };
-
-    auto make_mask(std::uint8_t const * mask, std::uint32_t w, std::uint32_t h, std::uint32_t slot) -> bool
-      {
+      std::vector<std::uint32_t> rgba(std::size_t{w} * h);
+      for(std::size_t i{}; i != rgba.size(); ++i)
+        rgba[i] = 0x00ffffffu | (std::uint32_t{mask[i]} << 24);
       D3D11_TEXTURE2D_DESC d{};
       d.Width = w;
       d.Height = h;
       d.MipLevels = 1;
       d.ArraySize = 1;
-      d.Format = DXGI_FORMAT_R8_UNORM;
+      d.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
       d.SampleDesc.Count = 1;
       d.Usage = D3D11_USAGE_IMMUTABLE;
       d.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-      D3D11_SUBRESOURCE_DATA init{mask, w, 0};
+      D3D11_SUBRESOURCE_DATA init{rgba.data(), w * 4u, 0};
       ID3D11Texture2D * tex{};
       if(FAILED(r.device->CreateTexture2D(&d, &init, &tex)) or not tex)
         return false;
@@ -78,47 +84,75 @@ namespace edworld
       return SUCCEEDED(hr);
       }
 
-    auto create(ID3D11Device * device) -> bool
+    ///\brief ImGui (its own context, nothing but drawing) and the emblems, once per device
+    auto create(ID3D11Device * device, ID3D11DeviceContext * ctx) -> bool
       {
       if(r.device == device)
         return not r.failed;
+      if(r.imgui)
+        {
+        ImGui::SetCurrentContext(r.imgui);
+        ImGui_ImplDX11_Shutdown();
+        ImGui::DestroyContext(r.imgui);
+        }
+      for(auto & e: r.emblem)
+        if(e)
+          e->Release();
+      if(r.mask_srv)
+        r.mask_srv->Release();
+      if(r.mask)
+        r.mask->Release();
       r = resources_t{};
       r.device = device;
-      bool ok{SUCCEEDED(device->CreateVertexShader(g_patch_vs, sizeof g_patch_vs, nullptr, &r.vs))};
-      ok = ok and SUCCEEDED(device->CreatePixelShader(g_patch_ps, sizeof g_patch_ps, nullptr, &r.ps));
-      D3D11_BUFFER_DESC cbd{sizeof(constants_t), D3D11_USAGE_DYNAMIC, D3D11_BIND_CONSTANT_BUFFER, D3D11_CPU_ACCESS_WRITE, 0, 0};
-      ok = ok and SUCCEEDED(device->CreateBuffer(&cbd, nullptr, &r.cb));
-      D3D11_SAMPLER_DESC sd{};
-      sd.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
-      sd.AddressU = sd.AddressV = sd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
-      sd.MaxLOD = D3D11_FLOAT32_MAX;
-      ok = ok and SUCCEEDED(device->CreateSamplerState(&sd, &r.sampler));
-      D3D11_BLEND_DESC bd{};
-      bd.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
-      ok = ok and SUCCEEDED(device->CreateBlendState(&bd, &r.opaque));
-      bd.RenderTarget[0].BlendEnable = TRUE;
-      bd.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
-      bd.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
-      bd.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
-      bd.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
-      bd.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
-      bd.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
-      ok = ok and SUCCEEDED(device->CreateBlendState(&bd, &r.over));
-      D3D11_RASTERIZER_DESC rd{};
-      rd.FillMode = D3D11_FILL_SOLID;
-      rd.CullMode = D3D11_CULL_NONE;
-      rd.DepthClipEnable = TRUE;
-      ok = ok and SUCCEEDED(device->CreateRasterizerState(&rd, &r.raster));
-      D3D11_DEPTH_STENCIL_DESC dd{};
-      dd.DepthEnable = FALSE;
-      dd.StencilEnable = FALSE;
-      ok = ok and SUCCEEDED(device->CreateDepthStencilState(&dd, &r.no_depth));
-      ok = ok and make_mask(emblems::federation_mask, emblems::federation_width, emblems::federation_height, 0);
-      ok = ok and make_mask(emblems::empire_mask, emblems::empire_width, emblems::empire_height, 1);
-      ok = ok and make_mask(emblems::alliance_mask, emblems::alliance_width, emblems::alliance_height, 2);
+      r.imgui = ImGui::CreateContext();
+      ImGuiIO & io{ImGui::GetIO()};
+      io.IniFilename = nullptr;
+      io.LogFilename = nullptr;
+      io.ConfigFlags |= ImGuiConfigFlags_NoMouse | ImGuiConfigFlags_NoMouseCursorChange | ImGuiConfigFlags_NoKeyboard;
+      bool ok{ImGui_ImplDX11_Init(device, ctx)};
+      ok = ok and ImGui_ImplDX11_CreateDeviceObjects();
+      ok = ok and make_emblem(emblems::federation_mask, emblems::federation_width, emblems::federation_height, 0);
+      ok = ok and make_emblem(emblems::empire_mask, emblems::empire_width, emblems::empire_height, 1);
+      ok = ok and make_emblem(emblems::alliance_mask, emblems::alliance_width, emblems::alliance_height, 2);
       r.failed = not ok;
-      log_line(ok ? "patch: resources ready" : "patch: resources could not be made; no patch");
+      log_line(ok ? "patch: resources ready (imgui %s)" : "patch: resources could not be made (imgui %s); no patch", IMGUI_VERSION);
       return ok;
+      }
+
+    ///\brief the mask copy, as large as the surface and of its format, made again when the size changes
+    auto mask_for(D3D11_TEXTURE2D_DESC const & surface) -> ID3D11ShaderResourceView *
+      {
+      if(r.mask and r.mask_width == surface.Width and r.mask_height == surface.Height)
+        return r.mask_srv;
+      if(r.mask_srv)
+        r.mask_srv->Release();
+      if(r.mask)
+        r.mask->Release();
+      r.mask = nullptr;
+      r.mask_srv = nullptr;
+      D3D11_TEXTURE2D_DESC d{};
+      d.Width = surface.Width;
+      d.Height = surface.Height;
+      d.MipLevels = 1;
+      d.ArraySize = 1;
+      d.Format = surface.Format;
+      d.SampleDesc.Count = 1;
+      d.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+      if(FAILED(r.device->CreateTexture2D(&d, nullptr, &r.mask)) or not r.mask)
+        return nullptr;
+      D3D11_SHADER_RESOURCE_VIEW_DESC vd{};
+      vd.Format = d.Format == DXGI_FORMAT_R8G8B8A8_TYPELESS ? DXGI_FORMAT_R8G8B8A8_UNORM : d.Format;
+      vd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+      vd.Texture2D.MipLevels = 1;
+      if(FAILED(r.device->CreateShaderResourceView(r.mask, &vd, &r.mask_srv)))
+        {
+        r.mask->Release();
+        r.mask = nullptr;
+        return nullptr;
+        }
+      r.mask_width = surface.Width;
+      r.mask_height = surface.Height;
+      return r.mask_srv;
       }
 
     ///\brief the surface's render target view, made once per surface; the typeless surface is written as UNORM
@@ -232,29 +266,16 @@ namespace edworld
       release(b.layout);
       }
 
-    auto draw_rect(ID3D11DeviceContext * ctx, float const (&rect)[4], std::uint32_t rgb, float alpha, float mode) -> void
+    ///\brief 0xRRGGBB -> ImGui's packed colour, opaque
+    auto im_colour(std::uint32_t rgb) -> ImU32
       {
-      D3D11_MAPPED_SUBRESOURCE m{};
-      if(FAILED(ctx->Map(r.cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &m)) or not m.pData)
-        return;
-      constants_t c{
-        {rect[0], rect[1], rect[2], rect[3]},
-        {static_cast<float>((rgb >> 16) & 0xffu) / 255.f, static_cast<float>((rgb >> 8) & 0xffu) / 255.f,
-         static_cast<float>(rgb & 0xffu) / 255.f, alpha},
-        {mode, 0.f, 0.f, 0.f}
-      };
-      std::memcpy(m.pData, &c, sizeof c);
-      ctx->Unmap(r.cb, 0);
-      ctx->Draw(4, 0);
+      return IM_COL32((rgb >> 16) & 0xffu, (rgb >> 8) & 0xffu, rgb & 0xffu, 0xffu);
       }
 
-    ///\brief surface pixels -> the surface's normalised device coordinates (y up)
-    auto to_ndc(float cx, float cy, float w, float h, float sw, float sh, float (&rect)[4]) -> void
+    ///\brief a w x h box centred on (cx, cy), in surface pixels
+    auto box(ImDrawList * dl, float cx, float cy, float w, float h, ImU32 colour) -> void
       {
-      rect[0] = (cx - w / 2.f) / sw * 2.f - 1.f;
-      rect[2] = (cx + w / 2.f) / sw * 2.f - 1.f;
-      rect[1] = 1.f - (cy + h / 2.f) / sh * 2.f;
-      rect[3] = 1.f - (cy - h / 2.f) / sh * 2.f;
+      dl->AddRectFilled(ImVec2{cx - w / 2.f, cy - h / 2.f}, ImVec2{cx + w / 2.f, cy + h / 2.f}, colour);
       }
 
     auto colour_of(allegiance_e a) -> std::uint32_t
@@ -290,74 +311,100 @@ namespace edworld
     if(not g.charging or (not test and emblem < 0))
       return;
 
-    // the surface this composite draw samples, and whether it is the panel's
-    ID3D11ShaderResourceView * srv{};
-    ctx->PSGetShaderResources(2, 1, &srv);
-    if(not srv)
-      ctx->PSGetShaderResources(1, 1, &srv);
-    if(not srv)
-      return;
-    ID3D11Resource * res{};
-    srv->GetResource(&res);
-    srv->Release();
-    if(not res)
-      return;
-    D3D11_RESOURCE_DIMENSION dim{};
-    res->GetType(&dim);
+    // the surface this composite draw samples, and whether it is the panel's: at PS t2 for the panel family,
+    // at t1 for the shader the game uses near a war settlement
     ID3D11Texture2D * tex{};
-    if(dim == D3D11_RESOURCE_DIMENSION_TEXTURE2D)
-      res->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void **>(&tex));
-    res->Release();
+    D3D11_TEXTURE2D_DESC d{};
+    for(UINT const slot: {2u, 1u})
+      {
+      ID3D11ShaderResourceView * srv{};
+      ctx->PSGetShaderResources(slot, 1, &srv);
+      if(not srv)
+        continue;
+      ID3D11Resource * res{};
+      srv->GetResource(&res);
+      srv->Release();
+      if(not res)
+        continue;
+      D3D11_RESOURCE_DIMENSION dim{};
+      res->GetType(&dim);
+      ID3D11Texture2D * t{};
+      if(dim == D3D11_RESOURCE_DIMENSION_TEXTURE2D)
+        res->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void **>(&t));
+      res->Release();
+      if(not t)
+        continue;
+      t->GetDesc(&d);
+      if(d.Width == s.patch_surface_width and d.Height == s.patch_surface_height)
+        {
+        tex = t;
+        break;
+        }
+      t->Release();
+      }
     if(not tex)
       return;
-    D3D11_TEXTURE2D_DESC d{};
-    tex->GetDesc(&d);
-    if(d.Width != s.patch_surface_width or d.Height != s.patch_surface_height or not create(device))
+    if(not create(device, ctx))
       {
       tex->Release();
       return;
       }
     ID3D11RenderTargetView * const rtv{rtv_for(tex)};
-    tex->Release();
-    if(not rtv)
+    ID3D11ShaderResourceView * const mask{rtv ? mask_for(d) : nullptr};
+    if(not rtv or not mask)
+      {
+      tex->Release();
       return;
+      }
+    // what the game drew under the patch this frame: where it drew nothing (the panel hidden while the ship
+    // still aligns, though Status.json still says charging), the patch's alpha goes to zero
+    {
+    float const left{s.patch_x - s.patch_width / 2.f}, top{s.patch_y - s.patch_height / 2.f};
+    UINT const x0{left > 0.f ? static_cast<UINT>(left) : 0u}, y0{top > 0.f ? static_cast<UINT>(top) : 0u};
+    UINT const x1{static_cast<UINT>(s.patch_x + s.patch_width / 2.f) + 1u}, y1{static_cast<UINT>(s.patch_y + s.patch_height / 2.f) + 1u};
+    D3D11_BOX const area{x0, y0, 0, x1 < d.Width ? x1 : d.Width, y1 < d.Height ? y1 : d.Height, 1};
+    if(area.left < area.right and area.top < area.bottom)
+      ctx->CopySubresourceRegion(r.mask, 0, area.left, area.top, 0, tex, 0, &area);
+    }
+    tex->Release();
     patched_frame = frame;
 
-    backup_t b;
-    save(ctx, b);
-    D3D11_VIEWPORT const vp{0.f, 0.f, static_cast<float>(d.Width), static_cast<float>(d.Height), 0.f, 1.f};
-    ctx->OMSetRenderTargets(1, &rtv, nullptr);
-    ctx->RSSetViewports(1, &vp);
-    ctx->RSSetState(r.raster);
-    ctx->OMSetDepthStencilState(r.no_depth, 0);
-    ctx->IASetInputLayout(nullptr);
-    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
-    ctx->VSSetShader(r.vs, nullptr, 0);
-    ctx->PSSetShader(r.ps, nullptr, 0);
-    ctx->VSSetConstantBuffers(0, 1, &r.cb);
-    ctx->PSSetConstantBuffers(0, 1, &r.cb);
-    ctx->PSSetSamplers(0, 1, &r.sampler);
-
     float const sw{static_cast<float>(d.Width)}, sh{static_cast<float>(d.Height)};
-    float rect[4];
-    to_ndc(s.patch_x, s.patch_y, s.patch_width, s.patch_height, sw, sh, rect);
-    float const no_factor[4]{};
-    ctx->OMSetBlendState(r.opaque, no_factor, 0xffffffffu);
+    ImGui::SetCurrentContext(r.imgui);
+    ImGuiIO & io{ImGui::GetIO()};
+    io.DisplaySize = ImVec2{sw, sh};
+    io.DeltaTime = 1.f / 60.f;  // nothing of ours animates; ImGui only needs it above zero
+    ImGui_ImplDX11_NewFrame();
+    ImGui::NewFrame();
+    ImDrawList * const dl{ImGui::GetBackgroundDrawList()};
     if(test)
       {
-      draw_rect(ctx, rect, 0xff00ffu, 1.f, 0.f);  // magenta: where the patch goes
-      to_ndc(s.patch_x, s.patch_y, s.patch_width - 8.f, s.patch_height - 8.f, sw, sh, rect);
+      box(dl, s.patch_x, s.patch_y, s.patch_width, s.patch_height, im_colour(0xff00ffu));  // magenta: where the patch goes
+      box(dl, s.patch_x, s.patch_y, s.patch_width - 8.f, s.patch_height - 8.f, im_colour(s.patch_ground));
       }
-    draw_rect(ctx, rect, s.patch_ground, 1.f, 0.f);
+    else
+      box(dl, s.patch_x, s.patch_y, s.patch_width, s.patch_height, im_colour(s.patch_ground));
     if(emblem >= 0)
       {
       float const eh{s.patch_emblem_height};
       float const ew{eh * static_cast<float>(r.emblem_width[emblem]) / static_cast<float>(r.emblem_height[emblem])};
-      to_ndc(s.patch_x, s.patch_y, ew, eh, sw, sh, rect);
-      ctx->OMSetBlendState(r.over, no_factor, 0xffffffffu);
-      ctx->PSSetShaderResources(0, 1, &r.emblem[emblem]);
-      draw_rect(ctx, rect, colour_of(allegiance), 1.f, 1.f);
+      dl->AddImage(
+        reinterpret_cast<ImTextureID>(r.emblem[emblem]),
+        ImVec2{s.patch_x - ew / 2.f, s.patch_y - eh / 2.f},
+        ImVec2{s.patch_x + ew / 2.f, s.patch_y + eh / 2.f},
+        ImVec2{0.f, 0.f},
+        ImVec2{1.f, 1.f},
+        im_colour(colour_of(allegiance))
+      );
       }
+    ImGui::Render();
+
+    // the backend puts back what it binds itself; the targets and the surface's own slots are ours to put back
+    backup_t b;
+    save(ctx, b);
+    ctx->OMSetRenderTargets(1, &rtv, nullptr);
+    ctx->PSSetShaderResources(1, 1, &mask);
+    ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
     restore(ctx, b);
     if(not told_drawing)
       {

@@ -51,14 +51,74 @@ namespace edworld
     constexpr std::uint32_t max_watched{32};
     std::atomic<void *> watched_ptr[max_watched]{};
     std::uint32_t watched_index[max_watched]{};
-    std::atomic<std::uint32_t> watched_count{};
+    bool watched_found[max_watched]{};  // found in the game, not listed: patched, not published
+    std::atomic<std::uint32_t> watched_count{};  // slots reserved; a slot counts once its pointer is set
     std::atomic<std::uint64_t> vs_created{};
+    // every vertex shader's hash by pointer, for the probe only (append-only; a released and reused pointer
+    // keeps its first hash: good enough for a diagnostic line)
+    constexpr std::uint32_t max_vs_seen{8192};
+    std::atomic<void *> seen_ptr[max_vs_seen]{};
+    std::uint64_t seen_hash[max_vs_seen]{};
+    std::atomic<std::uint32_t> seen_reserved{};
+
+    // ---- each shader's verdict: does it draw a panel's interface surface? (pointer -> seen slot, open addressing) ----
+    enum struct verdict_e : std::uint8_t
+      {
+      pending,
+      panel,
+      not_panel
+      };
+
+    constexpr std::uint32_t verdict_draws{64};  // draws looked at before a shader is judged no panel
+    constexpr std::uint32_t slot_table_size{16384};
+    std::atomic<void *> table_key[slot_table_size]{};
+    std::atomic<std::uint32_t> table_slot[slot_table_size]{};
+    std::atomic<verdict_e> verdict[max_vs_seen]{};
+    std::uint8_t verdict_looked[max_vs_seen]{};  // render thread only
+
+    auto table_home(void const * p) noexcept -> std::uint32_t
+      {
+      return static_cast<std::uint32_t>((reinterpret_cast<std::uintptr_t>(p) >> 4) * 0x9E3779B97F4A7C15ull >> 50) & (slot_table_size - 1);
+      }
+
+    auto table_put(void * p, std::uint32_t slot) noexcept -> void
+      {
+      for(std::uint32_t i{table_home(p)}, n{}; n != slot_table_size; ++n, i = (i + 1) & (slot_table_size - 1))
+        {
+        void * expected{};
+        if(table_key[i].compare_exchange_strong(expected, p) or expected == p)
+          {
+          table_slot[i].store(slot, std::memory_order_release);  // a reused pointer takes its new shader's slot
+          return;
+          }
+        }
+      }
+
+    ///\brief the seen slot of a shader, or max_vs_seen when unknown
+    auto table_get(void const * p) noexcept -> std::uint32_t
+      {
+      for(std::uint32_t i{table_home(p)}, n{}; n != slot_table_size; ++n, i = (i + 1) & (slot_table_size - 1))
+        {
+        void * const k{table_key[i].load(std::memory_order_acquire)};
+        if(k == p)
+          return table_slot[i].load(std::memory_order_acquire);
+        if(not k)
+          break;
+        }
+      return max_vs_seen;
+      }
+
+    // ---- the probe: a jump charges but no panel draw comes; log what is drawn instead ----
+    std::atomic<std::uint64_t> last_watched_ms{};  // GetTickCount64 of the latest panel draw
+    std::atomic<bool> probe_request{};             // set by the probe thread, cleared by the render thread
+    std::atomic<std::uint32_t> probe_draws{};
 
     // ---- render-thread state ----
     std::atomic<ID3D11DeviceContext *> immediate{};
     ID3D11Device * device{};
     ID3D11DeviceContext1 * immediate1{};
     int current_watched{-1};
+    std::uint32_t current_pending{max_vs_seen};  // the bound shader's seen slot while its verdict is pending
     std::atomic<bool> disabled{false};
     std::uint32_t faults{};
 
@@ -717,6 +777,15 @@ namespace edworld
         begin_frame(now);
       last_draw_qpc = now;
       ++stat_draws;
+      last_watched_ms.store(GetTickCount64(), std::memory_order_relaxed);
+      if(watched_found[current_watched])
+        {
+        // found in the game: its draws carry the panel surface, but whether its records decode like the family's
+        // is not known, so it gets the patch and publishes nothing
+        if(settings().patch)
+          panel_patch(ctx, device, frame);
+        return;
+        }
       if(recording < 0)
         return;
       slot_t & slot{ring[recording]};
@@ -795,6 +864,235 @@ namespace edworld
              and not disabled.load(std::memory_order_relaxed);
       }
 
+    ///\brief a shader into the watched list; `found` = not listed in watch_vs (any thread)
+    auto watch(void * shader, std::uint32_t index, bool found) noexcept -> bool
+      {
+      std::uint32_t const at{watched_count.fetch_add(1)};
+      if(at >= max_watched)
+        return false;
+      static_cast<IUnknown *>(shader)->AddRef();  // pinned: a released pointer must never be reused for another shader we would match
+      watched_index[at] = index;
+      watched_found[at] = found;
+      watched_ptr[at].store(shader, std::memory_order_release);
+      return true;
+      }
+
+    ///\brief the panel-sized surface at PS t1 or t2, if any: its slot and size
+    auto panel_surface_at(ID3D11DeviceContext * ctx, std::uint32_t & slot, std::uint32_t & w, std::uint32_t & h) noexcept -> bool;
+
+    ///\brief a shader found drawing a panel's surface though not listed: watched from now on, and said so once
+    auto adopt(void * vs, std::uint32_t seen, char const * how, std::uint32_t slot, std::uint32_t w, std::uint32_t h) noexcept -> void
+      {
+      if(seen < max_vs_seen)
+        verdict[seen].store(verdict_e::panel, std::memory_order_relaxed);
+      std::uint64_t const hash{seen < max_vs_seen ? seen_hash[seen] : 0};
+      bool const ok{watch(vs, static_cast<std::uint32_t>(settings().watch_vs.size()), true)};
+      log_line("vs %016llX (%p) draws a panel surface (PS t%u %ux%u) and is not in watch_vs: %s (%s)",
+               static_cast<unsigned long long>(hash), vs, slot, w, h, ok ? "watched from now on" : "watched list full", how);
+      }
+
+    ///\brief a draw of a shader whose verdict is pending: a panel surface makes it watched; enough draws without, no panel
+    auto classify(ID3D11DeviceContext * ctx, void * vs, std::uint32_t seen) noexcept -> void
+      {
+      std::uint32_t slot{}, w{}, h{};
+      if(panel_surface_at(ctx, slot, w, h))
+        {
+        adopt(vs, seen, "first draws", slot, w, h);
+        current_pending = max_vs_seen;
+        return;
+        }
+      if(++verdict_looked[seen] >= verdict_draws)
+        {
+        verdict[seen].store(verdict_e::not_panel, std::memory_order_relaxed);
+        current_pending = max_vs_seen;
+        }
+      }
+
+    auto guarded_classify(ID3D11DeviceContext * ctx) noexcept -> void
+      {
+      __try
+        {
+        ID3D11VertexShader * vs{};
+        ctx->VSGetShader(&vs, nullptr, nullptr);
+        if(vs)
+          {
+          classify(ctx, vs, current_pending);
+          vs->Release();
+          }
+        }
+      __except(EXCEPTION_EXECUTE_HANDLER)
+        {
+        current_pending = max_vs_seen;
+        if(++faults >= 8)
+          disabled.store(true);
+        }
+      }
+
+    // ---- the probe (render thread) ----
+    constexpr std::uint32_t probe_window_ms{250};
+    constexpr std::uint32_t probe_max_lines{40};
+    std::uint64_t probe_started_ms{};
+    std::uint32_t probe_lines{};
+    std::uint32_t probe_surface_draws{};
+    void * adopted_in_probe{};  // the probe sees the adopted shader's draws until the next VSSetShader
+
+    auto vs_hash_of(void * vs) noexcept -> std::uint64_t
+      {
+      std::uint32_t const reserved{seen_reserved.load(std::memory_order_relaxed)};
+      std::uint32_t const n{reserved < max_vs_seen ? reserved : max_vs_seen};
+      for(std::uint32_t i{}; i != n; ++i)
+        if(seen_ptr[i].load(std::memory_order_acquire) == vs)
+          return seen_hash[i];
+      return 0;
+      }
+
+    // the sizes of the panels' interface surfaces seen so far (measured in the game, 2026-10-04)
+    auto panel_sized(std::uint32_t w, std::uint32_t h) noexcept -> bool
+      {
+      return (w == 3072 and h == 660) or (w == 2048 and h == 1280) or (w == 2200 and h == 1800) or (w == 1024 and h == 1534);
+      }
+
+    auto panel_surface_at(ID3D11DeviceContext * ctx, std::uint32_t & slot, std::uint32_t & w, std::uint32_t & h) noexcept -> bool
+      {
+      ID3D11ShaderResourceView * srvs[2]{};
+      ctx->PSGetShaderResources(1, 2, srvs);
+      bool found{};
+      for(std::uint32_t i{2}; i-- != 0;)  // t2 first, the panel family's slot
+        {
+        if(not srvs[i])
+          continue;
+        if(not found)
+          {
+          ID3D11Resource * res{};
+          srvs[i]->GetResource(&res);
+          ID3D11Texture2D * tex{};
+          if(res and SUCCEEDED(res->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void **>(&tex))))
+            {
+            D3D11_TEXTURE2D_DESC d{};
+            tex->GetDesc(&d);
+            if(panel_sized(d.Width, d.Height))
+              {
+              found = true;
+              slot = i + 1;
+              w = d.Width;
+              h = d.Height;
+              }
+            tex->Release();
+            }
+          if(res)
+            res->Release();
+          }
+        srvs[i]->Release();
+        }
+      return found;
+      }
+
+    auto probe_draw(ID3D11DeviceContext * ctx, std::uint32_t count, std::uint32_t instances) noexcept -> void
+      {
+      std::uint64_t const now{GetTickCount64()};
+      std::uint32_t const n{probe_draws.fetch_add(1, std::memory_order_relaxed)};
+      if(n == 0)
+        {
+        probe_started_ms = now;
+        probe_lines = 0;
+        probe_surface_draws = 0;
+        log_line("probe: a jump charges, no panel draw for over 1 s; looking at the draws for %u ms", probe_window_ms);
+        }
+      ID3D11VertexShader * vs{};
+      ctx->VSGetShader(&vs, nullptr, nullptr);
+      ID3D11ShaderResourceView * srvs[16]{};
+      ctx->PSGetShaderResources(0, 16, srvs);
+      for(std::uint32_t slot{}; slot != 16; ++slot)
+        {
+        if(not srvs[slot])
+          continue;
+        ID3D11Resource * res{};
+        srvs[slot]->GetResource(&res);
+        ID3D11Texture2D * tex{};
+        if(res and SUCCEEDED(res->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void **>(&tex))))
+          {
+          D3D11_TEXTURE2D_DESC d{};
+          tex->GetDesc(&d);
+          if(panel_sized(d.Width, d.Height))
+            {
+            ++probe_surface_draws;
+            // not watched (the probe sees only unwatched draws), whatever its verdict: from now on it is
+            std::uint32_t const seen{vs ? table_get(vs) : max_vs_seen};
+            bool const judged_panel{seen < max_vs_seen and verdict[seen].load(std::memory_order_relaxed) == verdict_e::panel};
+            if(vs and (slot == 1 or slot == 2) and ctx == immediate.load(std::memory_order_relaxed) and adopted_in_probe != vs
+               and not judged_panel)
+              {
+              adopted_in_probe = vs;
+              adopt(vs, seen, "probe", slot, d.Width, d.Height);
+              }
+            if(probe_lines < probe_max_lines)
+              {
+              ++probe_lines;
+              log_line("probe: draw %u ctx %s vs %016llX (%p) PS t%u %ux%u surf %08llx count %u inst %u", n,
+                       ctx == immediate.load(std::memory_order_relaxed) ? "immediate" : "other",
+                       static_cast<unsigned long long>(vs_hash_of(vs)), static_cast<void *>(vs), slot, d.Width, d.Height,
+                       static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(res) & 0xffffffffull), count, instances);
+              }
+            }
+          tex->Release();
+          }
+        if(res)
+          res->Release();
+        srvs[slot]->Release();
+        }
+      if(vs)
+        vs->Release();
+      if(now - probe_started_ms > probe_window_ms)
+        {
+        log_line("probe: done, %u draw(s) seen, %u with a panel-sized surface at PS", n + 1, probe_surface_draws);
+        probe_request.store(false, std::memory_order_relaxed);
+        }
+      }
+
+    auto guarded_probe(ID3D11DeviceContext * ctx, std::uint32_t count, std::uint32_t instances) noexcept -> void
+      {
+      __try
+        {
+        probe_draw(ctx, count, instances);
+        }
+      __except(EXCEPTION_EXECUTE_HANDLER)
+        {
+        probe_request.store(false);
+        if(++faults >= 8)
+          disabled.store(true);
+        }
+      }
+
+    // ---- the probe (its own thread): arms it once per charge that sees no panel draw ----
+    DWORD WINAPI probe_thread(LPVOID)
+      {
+      bool armed_this_charge{};
+      std::uint64_t armed_at{};
+      for(;;)
+        {
+        Sleep(100);
+        std::uint64_t const now{GetTickCount64()};
+        if(not game_state().charging)
+          {
+          armed_this_charge = false;
+          continue;
+          }
+        if(not armed_this_charge and now - last_watched_ms.load(std::memory_order_relaxed) > 1000)
+          {
+          armed_this_charge = true;
+          armed_at = now;
+          probe_draws.store(0);
+          probe_request.store(true);
+          }
+        if(armed_at and now - armed_at > 2000 and probe_request.load() and probe_draws.load() == 0)
+          {
+          probe_request.store(false);
+          log_line("probe: a jump charges, no panel draw, and no draw at all reached the hooks in 2 s");
+          armed_at = 0;
+          }
+        }
+      }
+
     // ---- hooks ----
     HRESULT STDMETHODCALLTYPE hook_create_vs(
       ID3D11Device * self,
@@ -809,21 +1107,25 @@ namespace edworld
         return hr;
       vs_created.fetch_add(1, std::memory_order_relaxed);
       std::uint64_t const hash{fnv1a64(static_cast<std::uint8_t const *>(bytecode), length)};
+      if(std::uint32_t const at{seen_reserved.fetch_add(1, std::memory_order_relaxed)}; at < max_vs_seen)
+        {
+        // shaders may be created on several threads: a slot is reserved first, its pointer published last
+        seen_hash[at] = hash;
+        verdict[at].store(verdict_e::pending, std::memory_order_relaxed);
+        verdict_looked[at] = 0;
+        seen_ptr[at].store(*shader, std::memory_order_release);
+        table_put(*shader, at);
+        }
       if(settings().log_all_vs)
         log_line("vs %016llX %zu bytes", static_cast<unsigned long long>(hash), static_cast<std::size_t>(length));
-      auto const & watch{settings().watch_vs};
-      for(std::size_t i{}; i != watch.size(); ++i)
-        if(watch[i] == hash)
+      auto const & listed{settings().watch_vs};
+      for(std::size_t i{}; i != listed.size(); ++i)
+        if(listed[i] == hash)
           {
-          std::uint32_t const at{watched_count.load()};
-          if(at < max_watched)
-            {
-            (*shader)->AddRef();  // pinned: a released pointer must never be reused for another shader we would match
-            watched_index[at] = static_cast<std::uint32_t>(i);
-            watched_ptr[at].store(*shader, std::memory_order_release);
-            watched_count.store(at + 1, std::memory_order_release);
+          if(std::uint32_t const at{table_get(*shader)}; at < max_vs_seen)
+            verdict[at].store(verdict_e::panel, std::memory_order_relaxed);
+          if(watch(*shader, static_cast<std::uint32_t>(i), false))
             log_line("vs %016llX watched (list index %zu, pointer %p)", static_cast<unsigned long long>(hash), i, *shader);
-            }
           break;
           }
       return hr;
@@ -839,17 +1141,24 @@ namespace edworld
       if(self == immediate.load(std::memory_order_relaxed))
         {
         int found{-1};
+        std::uint32_t pending{max_vs_seen};
         if(shader)
           {
-          std::uint32_t const n{watched_count.load(std::memory_order_acquire)};
+          std::uint32_t const reserved{watched_count.load(std::memory_order_acquire)};
+          std::uint32_t const n{reserved < max_watched ? reserved : max_watched};
           for(std::uint32_t i{}; i != n; ++i)
-            if(watched_ptr[i].load(std::memory_order_relaxed) == shader)
+            if(watched_ptr[i].load(std::memory_order_acquire) == shader)
               {
               found = static_cast<int>(i);
               break;
               }
+          if(found < 0)
+            if(std::uint32_t const at{table_get(shader)};
+               at < max_vs_seen and verdict[at].load(std::memory_order_relaxed) == verdict_e::pending)
+              pending = at;
           }
         current_watched = found;
+        current_pending = pending;
         }
       orig_vs_set_shader(self, shader, instances, instance_count);
       }
@@ -858,6 +1167,13 @@ namespace edworld
       {
       if(watched_draw(self))
         guarded_observe(self, index_count, 1, start_index, base_vertex, 0);
+      else
+        {
+        if(current_pending < max_vs_seen and self == immediate.load(std::memory_order_relaxed))
+          guarded_classify(self);
+        if(probe_request.load(std::memory_order_relaxed))
+          guarded_probe(self, index_count, 1);
+        }
       orig_draw_indexed(self, index_count, start_index, base_vertex);
       }
 
@@ -865,6 +1181,13 @@ namespace edworld
       {
       if(watched_draw(self))
         guarded_observe(self, vertex_count, 1, start_vertex, 0, 0);
+      else
+        {
+        if(current_pending < max_vs_seen and self == immediate.load(std::memory_order_relaxed))
+          guarded_classify(self);
+        if(probe_request.load(std::memory_order_relaxed))
+          guarded_probe(self, vertex_count, 1);
+        }
       orig_draw(self, vertex_count, start_vertex);
       }
 
@@ -879,6 +1202,13 @@ namespace edworld
       {
       if(watched_draw(self))
         guarded_observe(self, index_count, instance_count, start_index, base_vertex, start_instance);
+      else
+        {
+        if(current_pending < max_vs_seen and self == immediate.load(std::memory_order_relaxed))
+          guarded_classify(self);
+        if(probe_request.load(std::memory_order_relaxed))
+          guarded_probe(self, index_count, instance_count);
+        }
       orig_draw_indexed_instanced(self, index_count, instance_count, start_index, base_vertex, start_instance);
       }
 
@@ -892,6 +1222,13 @@ namespace edworld
       {
       if(watched_draw(self))
         guarded_observe(self, vertex_count, instance_count, start_vertex, 0, start_instance);
+      else
+        {
+        if(current_pending < max_vs_seen and self == immediate.load(std::memory_order_relaxed))
+          guarded_classify(self);
+        if(probe_request.load(std::memory_order_relaxed))
+          guarded_probe(self, vertex_count, instance_count);
+        }
       orig_draw_instanced(self, vertex_count, instance_count, start_vertex, start_instance);
       }
     }  // namespace
@@ -953,7 +1290,13 @@ namespace edworld
     if(not share)
       open_share();
     if(settings().patch)
+      {
       start_game_state();
+      static std::atomic<bool> probe_started{};
+      if(not probe_started.exchange(true))
+        if(HANDLE const t{CreateThread(nullptr, 0, &probe_thread, nullptr, 0, nullptr)})
+          CloseHandle(t);
+      }
     if(settings().patch and not settings().edsm)
       log_line("patch: on, but edsm = 0 - no allegiance, only the test frame can be drawn");
     std::uint32_t const n{watched_count.load()};

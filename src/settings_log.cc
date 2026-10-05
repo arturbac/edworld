@@ -1,9 +1,10 @@
-// edworld — edworld.ini beside the dll, and edworld.log beside it.
+// edworld — edworld.ini and edworld.log: in the directories edloader hands its plugins, else beside the dll.
 #include "panel_math.h"
 #include "runtime.h"
 
 #include <cstdarg>
 #include <cstdio>
+#include <cwchar>
 #include <mutex>
 #include <cstdlib>
 #include <string>
@@ -60,10 +61,10 @@ namespace edworld
 
   auto settings() noexcept -> settings_t const & { return current; }
 
-  auto load_settings(std::wstring const & dir) -> void
+  auto load_settings(std::wstring const & config_dir, std::wstring const & output_dir) -> void
     {
-    current.dir = dir;
-    std::wstring const path{dir + L"\\edworld.ini"};
+    current.dir = output_dir;
+    std::wstring const path{config_dir + L"\\edworld.ini"};
     std::FILE * f{_wfopen(path.c_str(), L"rb")};
     if(not f)
       return;
@@ -136,10 +137,24 @@ namespace edworld
     std::fclose(f);
     }
 
+  // One file per game session: the last session's log is set aside under the time it was last written,
+  // edworld.<UTC>.log, before this one starts - the tool beside the game takes those away (EHT's backup).
   auto log_open(std::wstring const & dir) -> void
     {
     std::wstring const path{dir + L"\\edworld.log"};
+    bool set_aside_failed{};
+    WIN32_FILE_ATTRIBUTE_DATA a{};
+    if(GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &a) and (a.nFileSizeHigh != 0 or a.nFileSizeLow != 0))
+      {
+      SYSTEMTIME t{};
+      FileTimeToSystemTime(&a.ftLastWriteTime, &t);
+      wchar_t aside[64];
+      std::swprintf(aside, 64, L"\\edworld.%04u%02u%02uT%02u%02u%02uZ.log", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
+      set_aside_failed = not MoveFileExW(path.c_str(), (dir + aside).c_str(), 0);
+      }
     log_file = _wfopen(path.c_str(), L"ab");
+    if(set_aside_failed)
+      log_line("log: the last session's log could not be set aside (error %lu); appending to it", GetLastError());
     }
 
   auto log_line(char const * fmt, ...) noexcept -> void

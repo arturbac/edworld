@@ -124,10 +124,20 @@ namespace
 
   INIT_ONCE init_once = INIT_ONCE_STATIC_INIT;
 
+  ///\brief a directory edloader hands its plugins (EDLOADER_CONFIG_DIR, EDLOADER_LOG_DIR); without edloader,
+  /// the dll's own
+  auto directory_from(wchar_t const * variable) -> std::wstring
+    {
+    wchar_t value[MAX_PATH]{};
+    DWORD const n{GetEnvironmentVariableW(variable, value, MAX_PATH)};
+    return n != 0 and n < MAX_PATH ? std::wstring{value, n} : module_dir;
+    }
+
   BOOL CALLBACK init_callback(PINIT_ONCE, PVOID, PVOID *)
     {
-    edworld::load_settings(module_dir);
-    edworld::log_open(module_dir);
+    std::wstring const log_dir{directory_from(L"EDLOADER_LOG_DIR")};
+    edworld::load_settings(directory_from(L"EDLOADER_CONFIG_DIR"), log_dir);
+    edworld::log_open(log_dir);
     edworld::log_line("edworld %s, read-only d3d11 observer", EDWORLD_VERSION);
     chain_next();
     return TRUE;

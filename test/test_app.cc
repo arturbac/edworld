@@ -9,9 +9,11 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include "../src/edworld_share.h"
 #include "../src/panel_math.h"
+#include "found_vs.h"
 #include "other_vs.h"
 #include "panel_ps.h"
 #include "panel_vs.h"
@@ -38,11 +40,22 @@ int main()
   dir.resize(dir.find_last_of(L"\\/"));
   std::wstring const shm_dir{dir + L"\\shm"};
   std::wstring const share_path{shm_dir + L"\\panels"};
+  // edworld's own files: beside it, or under EDLOADER_DIR when the chain test runs it through edloader
+  std::wstring config_dir{dir};
+  std::wstring output_dir{dir};
+  if(wchar_t root[MAX_PATH]{}; GetEnvironmentVariableW(L"EDLOADER_DIR", root, MAX_PATH))
+    {
+    config_dir = std::wstring{root} + L"\\config";
+    output_dir = std::wstring{root} + L"\\logs";
+    CreateDirectoryW(root, nullptr);
+    CreateDirectoryW(config_dir.c_str(), nullptr);
+    CreateDirectoryW(output_dir.c_str(), nullptr);
+    }
 
   // The settings must be in place before the first d3d11 export call.
   std::uint64_t const watched{edworld::fnv1a64(g_panel_vs, sizeof g_panel_vs)};
   {
-  std::FILE * ini{_wfopen((dir + L"\\edworld.ini").c_str(), L"wb")};
+  std::FILE * ini{_wfopen((config_dir + L"\\edworld.ini").c_str(), L"wb")};
   wchar_t next[MAX_PATH]{};
   GetEnvironmentVariableW(L"EDWORLD_TEST_NEXT", next, MAX_PATH);
   if(next[0])
@@ -69,6 +82,7 @@ int main()
   std::fwrite(&t, sizeof t, 1, tf);
   std::fclose(tf);
   }
+  std::wstring status_file;
   {
   wchar_t profile[MAX_PATH]{};
   GetEnvironmentVariableW(L"USERPROFILE", profile, MAX_PATH);
@@ -78,9 +92,10 @@ int main()
   CreateDirectoryW(status_dir.c_str(), nullptr);
   status_dir += L"\\Elite Dangerous";
   CreateDirectoryW(status_dir.c_str(), nullptr);
-  std::FILE * status{_wfopen((status_dir + L"\\Status.json").c_str(), L"wb")};
+  status_file = status_dir + L"\\Status.json";
+  std::FILE * status{_wfopen(status_file.c_str(), L"wb")};
   std::fprintf(status, "{ \"timestamp\":\"2026-10-04T12:00:00Z\", \"event\":\"Status\", \"Flags\":16842760, \"Flags2\":524288, "
-                       "\"Destination\":{ \"System\":3932277478106, \"Body\":0, \"Name\":\"Shinrarta Dezhra\" } }");
+                       "\"Destination\":{ \"System\":3932277478106, \"Body\":0, \"Name\":\"Shinrarta Dezhra\" } }\r\n");  // the game's own line end
   std::fclose(status);
   }
   Sleep(300);  // the state thread polls every 100 ms
@@ -140,7 +155,7 @@ int main()
   dev->CreateBuffer(&c1d, &c1init, &cb1);
 
   // a dump of the panels' surfaces asked for before the first frame
-  std::FILE * trigger{_wfopen((dir + L"\\edworld_dump").c_str(), L"wb")};
+  std::FILE * trigger{_wfopen((output_dir + L"\\edworld_dump").c_str(), L"wb")};
   if(trigger)
     std::fclose(trigger);
 
@@ -177,6 +192,12 @@ int main()
   svd.Texture2D.MipLevels = 1;
   ID3D11ShaderResourceView * srv{};
   dev->CreateShaderResourceView(surface, &svd, &srv);
+  // the game's panel as the patch sees it: opaque (alpha 255) around the patch's box, nothing elsewhere
+  std::vector<std::uint32_t> drawn(512 * 128, 0u);
+  for(int y{34}; y != 95; ++y)
+    for(int x{200}; x != 313; ++x)
+      drawn[static_cast<std::size_t>(y) * 512 + x] = 0xff000000u;
+  ctx->UpdateSubresource(surface, 0, nullptr, drawn.data(), 512 * 4, 0);
 
   D3D11_TEXTURE2D_DESC rd{};
   rd.Width = 256;
@@ -267,16 +288,127 @@ int main()
     }};
   std::printf("surface pixels: centre %06x, frame %06x, outside %06x\n", pixel(256, 64), pixel(208, 64), pixel(10, 10));
   std::uint32_t emblem_pixels{};
+  std::uint32_t upper_half{};
   for(int y{44}; y != 84; ++y)
     for(int x{226}; x != 286; ++x)
       if(std::uint32_t const c{pixel(x, y)}; (c & 0xffu) > 0x80u and ((c >> 16) & 0xffu) < 0x80u)
+        {
         ++emblem_pixels;
-  std::printf("empire-blue pixels in the emblem box: %u\n", emblem_pixels);
+        if(y < 64)
+          ++upper_half;
+        }
+  std::printf("empire-blue pixels in the emblem box: %u (upper half %u)\n", emblem_pixels, upper_half);
   check(emblem_pixels > 150, "Empire emblem from the data source's target, in its colour");
+  // the Empire's V is wide at the top and comes to a point at the bottom
+  check(upper_half * 2 > emblem_pixels, "emblem upright, not flipped");
   check(pixel(256 - 45, 64) == 0x020304u, "patch ground drawn beside the emblem");
   check(pixel(208, 64) == 0xff00ffu, "test frame drawn at the patch's edge");
   check(pixel(10, 10) == 0u, "surface untouched outside the patch");
   ctx->Unmap(readback, 0);
+
+  // StartJump: Flags bit 30 (FSD jump) set while Flags2 bit 19 still is; the panel is gone, nothing may be drawn.
+  {
+  std::FILE * status{_wfopen(status_file.c_str(), L"wb")};
+  std::fprintf(status, "{ \"timestamp\":\"2026-10-04T12:00:10Z\", \"event\":\"Status\", \"Flags\":1090584584, \"Flags2\":524288, "
+                       "\"Destination\":{ \"System\":3932277478106, \"Body\":0, \"Name\":\"Shinrarta Dezhra\" } }\r\n");
+  std::fclose(status);
+  }
+  Sleep(300);
+  std::vector<std::uint32_t> const zeros(512 * 128, 0u);
+  ctx->UpdateSubresource(surface, 0, nullptr, zeros.data(), 512 * 4, 0);
+  ctx->VSSetShader(panel_vs, nullptr, 0);
+  ctx->DrawIndexedInstanced(6, 1, 0, 0, 3);
+  ctx->Flush();
+  ctx->CopyResource(readback, surface);
+  ctx->Map(readback, 0, D3D11_MAP_READ, 0, &m);
+  std::printf("in the jump: surface pixel beside the emblem %06x\n", pixel(256 - 45, 64));
+  check(pixel(256 - 45, 64) == 0u and pixel(208, 64) == 0u, "no patch once the jump has started (Flags bit 30)");
+  ctx->Unmap(readback, 0);
+
+  // A charge with no panel draw for over a second: the probe logs the draws that sample a panel-sized surface.
+  {
+  std::FILE * status{_wfopen(status_file.c_str(), L"wb")};
+  std::fprintf(status, "{ \"timestamp\":\"2026-10-04T12:00:20Z\", \"event\":\"Status\", \"Flags\":16842760, \"Flags2\":524288, "
+                       "\"Destination\":{ \"System\":3932277478106, \"Body\":0, \"Name\":\"Shinrarta Dezhra\" } }\r\n");
+  std::fclose(status);
+  }
+  Sleep(300);
+  // The panel hidden while the ship still aligns (Status.json still says charging): nothing of the game's under
+  // the patch, so nothing of the patch may show.
+  ctx->UpdateSubresource(surface, 0, nullptr, zeros.data(), 512 * 4, 0);
+  ctx->PSSetShaderResources(2, 1, &srv);
+  ctx->VSSetShader(panel_vs, nullptr, 0);
+  ctx->DrawIndexedInstanced(6, 1, 0, 0, 3);
+  ctx->Flush();
+  ctx->CopyResource(readback, surface);
+  ctx->Map(readback, 0, D3D11_MAP_READ, 0, &m);
+  check(pixel(256 - 45, 64) == 0u and pixel(208, 64) == 0u, "no patch where the game drew no panel (hidden while aligning)");
+  ctx->Unmap(readback, 0);
+  D3D11_TEXTURE2D_DESC bd{td};
+  bd.Width = 3072;
+  bd.Height = 660;
+  ID3D11Texture2D * big{};
+  dev->CreateTexture2D(&bd, nullptr, &big);
+  ID3D11ShaderResourceView * big_srv{};
+  dev->CreateShaderResourceView(big, &svd, &big_srv);
+  Sleep(1500);  // the probe thread arms after a second without a panel draw, polling every 100 ms
+  ctx->PSSetShaderResources(2, 1, &big_srv);
+  ctx->VSSetShader(other_vs, nullptr, 0);
+  ctx->DrawIndexed(6, 0, 0);
+  Sleep(300);  // past the probe's window: the next draw closes it
+  ctx->DrawIndexed(6, 0, 0);
+  ctx->Flush();
+  Sleep(200);
+  std::string log_text;
+  if(std::FILE * lf{_wfopen((output_dir + L"\\edworld.log").c_str(), L"rb")})
+    {
+    char buf[4096];
+    for(std::size_t got; (got = std::fread(buf, 1, sizeof buf, lf)) != 0;)
+      log_text.append(buf, got);
+    std::fclose(lf);
+    }
+  check(log_text.find("probe: a jump charges") != std::string::npos, "probe armed by a charge without panel draws");
+  check(log_text.find("PS t2 3072x660") != std::string::npos, "probe names the draw sampling a panel-sized surface");
+  check(log_text.find("probe: done, 2 draw(s) seen, 2 with a panel-sized surface") != std::string::npos, "probe closes after its window");
+  check(log_text.find("draws a panel surface (PS t2 3072x660) and is not in watch_vs: watched from now on (first draws)")
+          != std::string::npos, "an unlisted shader drawing a panel surface is found by its first draws");
+
+  // A shader judged no panel by its first draws that later draws one at PS t1: the probe of the next blind charge finds it.
+  ID3D11VertexShader * found_vs{};
+  dev->CreateVertexShader(g_found_vs, sizeof g_found_vs, nullptr, &found_vs);
+  ctx->PSSetShaderResources(2, 1, &srv);
+  ctx->VSSetShader(found_vs, nullptr, 0);
+  for(int i{}; i != 70; ++i)
+    ctx->DrawIndexed(6, 0, 0);
+  ctx->Flush();
+  for(char const * flags2: {"0", "524288"})
+    {
+    std::FILE * status{_wfopen(status_file.c_str(), L"wb")};
+    std::fprintf(status, "{ \"timestamp\":\"2026-10-04T12:00:30Z\", \"event\":\"Status\", \"Flags\":16842760, \"Flags2\":%s, "
+                         "\"Destination\":{ \"System\":3932277478106, \"Body\":0, \"Name\":\"Shinrarta Dezhra\" } }\r\n", flags2);
+    std::fclose(status);
+    Sleep(400);
+    }
+  Sleep(1300);
+  ID3D11ShaderResourceView * none{};
+  ctx->PSSetShaderResources(2, 1, &none);
+  ctx->PSSetShaderResources(1, 1, &big_srv);
+  ctx->DrawIndexed(6, 0, 0);
+  ctx->Flush();
+  Sleep(200);
+  log_text.clear();
+  if(std::FILE * lf{_wfopen((output_dir + L"\\edworld.log").c_str(), L"rb")})
+    {
+    char buf[4096];
+    for(std::size_t got; (got = std::fread(buf, 1, sizeof buf, lf)) != 0;)
+      log_text.append(buf, got);
+    std::fclose(lf);
+    }
+  check(log_text.find("draws a panel surface (PS t1 3072x660) and is not in watch_vs: watched from now on (probe)")
+          != std::string::npos, "a shader judged no panel is found at PS t1 by the probe of a blind charge");
+  found_vs->Release();
+  big_srv->Release();
+  big->Release();
   }
 
   HANDLE const file{CreateFileW(share_path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr)};
@@ -306,11 +438,11 @@ int main()
   auto const ndc{edworld::clip_to_ndc(p.anchor_clip)};
   check(ndc and near_eq(ndc->x, 1.15f / 2.5f) and near_eq(ndc->y, 1.1f / 2.5f) and near_eq(ndc->w, 2.5f), "anchor from the record's position");
   WIN32_FIND_DATAW found{};
-  HANDLE const dumps{FindFirstFileW((dir + L"\\edworld_dumps\\*_512x128_f27_*.raw").c_str(), &found)};
+  HANDLE const dumps{FindFirstFileW((output_dir + L"\\edworld_dumps\\*_512x128_f27_*.raw").c_str(), &found)};
   check(dumps != INVALID_HANDLE_VALUE, "the panel's surface dumped (512x128)");
   if(dumps != INVALID_HANDLE_VALUE)
     FindClose(dumps);
-  check(GetFileAttributesW((dir + L"\\edworld_dump").c_str()) == INVALID_FILE_ATTRIBUTES, "dump trigger removed");
+  check(GetFileAttributesW((output_dir + L"\\edworld_dump").c_str()) == INVALID_FILE_ATTRIBUTES, "dump trigger removed");
   std::printf("frame %llu source %llu panels %u anchor clip %.4f %.4f %.4f %.4f\n",
               static_cast<unsigned long long>(s.frame), static_cast<unsigned long long>(s.source_frame), s.panel_count,
               p.anchor_clip[0], p.anchor_clip[1], p.anchor_clip[2], p.anchor_clip[3]);

@@ -1,0 +1,30 @@
+edworld
+Copyright (c) 2026 Artur Bać
+
+edworld contains or builds on the following third-party work.
+
+EDVR unofficial patch — https://github.com/characterecho-sean/edvr-unofficial-patch
+  MIT License, Copyright (c) 2026 characterecho-sean. Full text: tools/EDVR-LICENSE.txt
+  - tools/gen_exports.py: EDVR's export thunk generator, copied unchanged; build/gen/edvr_* are its output,
+    and src/proxy.cc uses the edvr_* names it generates. tools/gen_exports_from_release.py (edworld's own) runs
+    it on the export list of a released EDVR d3d11.dll at build time; no EDVR binary is part of edworld.
+  - src/proxy.cc: the proxy chaining discipline of EDVR's src/d3d11/d3d11_proxy.cpp (system copy loaded in
+    DllMain, next proxy on the first export call, depth guard for a next proxy that asks for d3d11.dll by name).
+  - src/hooks.cc: lessons from EDVR and its Proton issue 65 (per-draw work kept to a pointer compare, GPU copies
+    into staging read back with DO_NOT_WAIT instead of CPU reads of mapped dynamic buffers).
+  - src/panel_math.h: the shader hash EDVR names shaders by (FNV-1a 64 over the bytecode) and EDVR's decode of
+    the cockpit panels' instance record (fss_panel_rect.cpp, fss_panel_vs.h); what EDVR measured about the
+    panel shaders' constant buffers.
+
+Dear ImGui v1.91.9b — https://github.com/ocornut/imgui
+  MIT License, Copyright (c) 2014-2025 Omar Cornut. Full text: third_party/imgui/LICENSE.txt
+  - third_party/imgui: the files edworld compiles; one change in backends/imgui_impl_dx11.cpp, described in
+    third_party/imgui/README.md. shaders/imgui.hlsl is that backend's shader source.
+
+EDAssets — https://github.com/Venefilyn/EDAssets
+  MIT License, Copyright (c) 2015 Eric "SpyTec" Gustavsson. Full text: assets/EDAssets-LICENSE.txt
+  - assets/*.svg, and src/emblems.h generated from them by tools/gen_emblems.py: the superpower emblems.
+    The artwork is Frontier Developments'.
+
+Elite Dangerous is a trademark of Frontier Developments plc. edworld is not affiliated with or endorsed by
+Frontier Developments.

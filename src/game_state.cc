@@ -213,9 +213,17 @@ namespace edworld
           {
           bool ok{};
           std::uint64_t const flags2{number_after(text, "\"Flags2\"", 0, ok)};
+          bool flags_ok{};
+          std::uint64_t const flags{number_after(text, "\"Flags\"", 0, flags_ok)};
           // the game rewrites the file in place: a read caught halfway has no Flags2 and says nothing new
-          bool const complete{ok and text.find('}') != std::string::npos and text.back() == '}'};
-          bool const now_charging{complete ? (flags2 & (1ull << 19)) != 0 : last_charging};
+          // the game ends the file with "}\r\n"
+          auto const last{text.find_last_not_of(" \t\r\n")};
+          bool const complete{ok and flags_ok and last != std::string::npos and text[last] == '}'};
+          // Flags2 bit 19 (hyperdrive charging) stays set through the witchspace tunnel, until FSDJump;
+          // Flags bit 30 (FSD jump) is set from StartJump on, when the jump panel is already gone
+          bool const now_charging{
+            complete ? (flags2 & (1ull << 19)) != 0 and (flags & (1ull << 30)) == 0 : last_charging
+          };
           charging.store(now_charging, std::memory_order_relaxed);
           auto const dest_at{text.find("\"Destination\"")};
           bool have_dest{};

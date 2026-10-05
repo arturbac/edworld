@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
-# Smoke test without the game: builds test/test_app.exe, runs it under wine in a fresh prefix with edworld's
+# Smoke test without the game: builds test/test_app.exe, runs it under wine (warm prefix, below) with edworld's
 # d3d11.dll as a native override (next = system d3d11, i.e. wine's own). Needs tools/build.sh first.
-# Usage: tools/test.sh <scratch dir>   (a new prefix and run directory are made under it; nothing deleted)
+# Usage: tools/test.sh <scratch dir>   (a new run directory is made under it; nothing deleted)
+# Environment: MSVC_WINE_ENV, FXC (as tools/build.sh), EDWORLD_WINEPREFIX: a wine prefix kept warm between runs
+# (made on first use, reused; a fresh one each run cost minutes in wineboot).
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 SCR=${1:?scratch dir}
-source /ext/artur/msvc-wine/env.sh
-FXC="/ext/artur/msvc/Windows Kits/10/bin/10.0.26100.0/x64/fxc.exe"
+need() { [[ -n ${!1:-} ]] || { echo "$0: set $1 ($2)" >&2; exit 1; }; }
+need MSVC_WINE_ENV "msvc-wine's env.sh"
+need FXC "fxc.exe of a Windows SDK"
+need EDWORLD_WINEPREFIX "a wine prefix kept between runs"
+source "$MSVC_WINE_ENV"
 cd "$HERE"
 mkdir -p build/test
-for s in panel_vs:vs_5_0 other_vs:vs_5_0 panel_ps:ps_5_0; do
+for s in panel_vs:vs_5_0 other_vs:vs_5_0 found_vs:vs_5_0 panel_ps:ps_5_0; do
   n=${s%%:*}; t=${s##*:}
   WINEDEBUG=-all wine "$FXC" /nologo /T $t /E main /Vn g_$n /Fh build/test/$n.h test/$n.hlsl >/dev/null
 done
@@ -19,8 +24,13 @@ cl /nologo /O2 /MT /LD /std:c++latest /W4 /DWIN32_LEAN_AND_MEAN /Fobuild/test/ /
    test/fake_next.cc /link /EXPORT:D3D11CreateDevice=fake_D3D11CreateDevice >/dev/null
 RUN=$(mktemp -d "$SCR/edworld-test.XXXXXX")
 cp build/test/test_app.exe build/test/fake_next.dll build/d3d11.dll "$RUN/"
-export WINEPREFIX="$RUN/pfx"
-WINEDEBUG=-all wineboot -i >/dev/null 2>&1 || true
+export WINEPREFIX=$EDWORLD_WINEPREFIX
+if [[ ! -f $WINEPREFIX/system.reg ]]; then
+  mkdir -p "$WINEPREFIX"
+  WINEDEBUG=-all wineboot -i >/dev/null 2>&1 || true
+fi
+# one wineserver for all the runs below and the next test within ten minutes
+wineserver -p600 >/dev/null 2>&1 || true  # already running (e.g. from wineboot) is fine
 cd "$RUN"
 set +e
 WINEDEBUG=-all WINEDLLOVERRIDES="d3d11=n,b" wine test_app.exe
@@ -33,6 +43,10 @@ EDWORLD_TEST_NEXT=fake_next.dll WINEDEBUG=-all WINEDLLOVERRIDES="d3d11=n,b" wine
 rc2=$?
 [[ $rc -eq 0 ]] && rc=$rc2
 set -e
+# three sessions in one directory: the first two set aside as edworld.<UTC>.log when the next began
+aside=$(ls "$RUN" | grep -cE '^edworld\.[0-9]{8}T[0-9]{6}Z\.log$' || true)
+echo "--- sessions set aside: $aside (expected 2)"
+[[ $aside -eq 2 ]] || rc=1
 echo "--- edworld.log ($RUN)"
 cat "$RUN/edworld.log" 2>/dev/null | head -40
 exit $rc

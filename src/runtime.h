@@ -15,19 +15,21 @@ namespace edworld
     {
     ///\brief the next d3d11 in the chain (EDHM, EDVR renamed, ReShade); empty = the system copy
     std::wstring next;
-    ///\brief vertex shaders whose draws are panels: the cockpit holo panel family and its "GUI effects off" twin
-    std::vector<std::uint64_t> watch_vs{0x81216C77F90DEDD6ull, 0x1989E6D3B405FDE0ull};
+    ///\brief vertex shaders whose draws are panels: the cockpit holo panel family, its "GUI effects off" twin, and
+    /// the one the game switches the same panels to near a war settlement (surface at PS t1; seen 2026-10-05)
+    std::vector<std::uint64_t> watch_vs{0x81216C77F90DEDD6ull, 0x1989E6D3B405FDE0ull, 0x925ACEDA0153AA5Bull};
     ///\brief the tmpfs directory shared with the tools beside the game, one per data source: `panels` is
     /// published there, `target` read from there (Z: is the Linux root under Wine); empty = neither
-    std::wstring shm_dir{L"Z:\\dev\\shm\\eddn"};
+    std::wstring shm_dir{L"Z:\\dev\\shm\\eht"};
     ///\brief a summary line of the frame's panels at most this often; 0 = never
     std::uint32_t log_interval_ms{1000};
     ///\brief a gap between two panel draws longer than this starts a new frame
     std::uint32_t frame_gap_us{2500};
     ///\brief log the hash of every vertex shader the game creates (discovery)
     bool log_all_vs{false};
-    ///\brief the directory edworld.dll lives in; a file `edworld_dump` there asks for one dump of every panel's
-    /// interface surface into `edworld_dumps\` (raw rows; size, format and row pitch in the name)
+    ///\brief edworld's output directory (edloader's log directory, else the dll's); a file `edworld_dump` there
+    /// asks for one dump of every panel's interface surface into `edworld_dumps\` (raw rows; size, format and row
+    /// pitch in the name)
     std::wstring dir;
 
     // ---- the jump panel patch: drawn by the proxy onto the panel's interface surface while a jump charges ----
@@ -39,7 +41,7 @@ namespace edworld
     std::uint32_t patch_surface_height{660};
     ///\brief the patch's centre and size on that surface, in its pixels; the emblem's height
     float patch_x{1535.f};
-    float patch_y{278.f};
+    float patch_y{280.f};
     float patch_width{260.f};
     float patch_height{120.f};
     float patch_emblem_height{92.f};
@@ -52,7 +54,7 @@ namespace edworld
     };
 
   auto settings() noexcept -> settings_t const &;
-  auto load_settings(std::wstring const & dir) -> void;
+  auto load_settings(std::wstring const & config_dir, std::wstring const & output_dir) -> void;
 
   auto log_open(std::wstring const & dir) -> void;
   ///\brief one line, time-stamped (UTC), flushed
