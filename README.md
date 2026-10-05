@@ -208,6 +208,8 @@ default `/dev/shm/eht`).
 9. **2026-10-05, the same, the list at 50 px, mipmapped, centred, on black.** The list from the tool's record, centred
    and as wide as its rows, on black; slightly soft. The target is R11G11B10_FLOAT and the game blends the panel
    ONE / INV_SRC_ALPHA, RGB only, as the list does.
+10. **2026-10-05, the same, mip LOD bias -0.5 and list_gain 0.8.** Sharper, less glow; accepted as good at the
+    game's supersampling of 0.77 (the list shown at about 0.7 of its texture).
 
 ## Not known yet
 
