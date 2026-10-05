@@ -116,6 +116,11 @@ namespace edworld
         if(auto const v{parse_hash(value)}; v)
           current.patch_ground = static_cast<std::uint32_t>(*v);
         }
+      else if(key == "independent_colour")
+        {
+        if(auto const v{parse_hash(value)}; v)
+          current.independent_colour = static_cast<std::uint32_t>(*v);
+        }
       else if(key == "patch_force")
         current.patch_force = to_uint(value, current.patch_force);
       else if(key == "list")

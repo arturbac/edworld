@@ -53,9 +53,11 @@ namespace edworld
       {
       ID3D11Device * device{};
       ImGuiContext * imgui{};
-      ID3D11ShaderResourceView * emblem[3]{};
-      std::uint32_t emblem_width[3]{};
-      std::uint32_t emblem_height[3]{};
+      ID3D11ShaderResourceView * emblem[4]{};  ///< Federation, Empire, Alliance, Independent
+      std::uint32_t emblem_width[4]{};
+      std::uint32_t emblem_height[4]{};
+      ///\brief the panel's text area copied for reading its SUPERPOWER row (superpower_area on the surface)
+      ID3D11Texture2D * text_copy{};
       // a copy of the panel's surface, only the patch's box written: what the game drew there this frame
       ID3D11Texture2D * mask{};
       ID3D11ShaderResourceView * mask_srv{};
@@ -150,6 +152,8 @@ namespace edworld
         r.mask->Release();
       if(r.gate)
         r.gate->Release();
+      if(r.text_copy)
+        r.text_copy->Release();
       for(IUnknown * u: std::initializer_list<IUnknown *>{r.list_tex, r.list_rtv, r.list_srv, r.white, r.white_gate, r.list_vs, r.list_ps,
                                                          r.list_layout, r.list_cb, r.list_sampler, r.list_blend, r.list_depth,
                                                          r.list_raster})
@@ -179,6 +183,7 @@ namespace edworld
       ok = ok and make_emblem(emblems::federation_mask, emblems::federation_width, emblems::federation_height, 0);
       ok = ok and make_emblem(emblems::empire_mask, emblems::empire_width, emblems::empire_height, 1);
       ok = ok and make_emblem(emblems::alliance_mask, emblems::alliance_width, emblems::alliance_height, 2);
+      ok = ok and make_emblem(emblems::independent_mask, emblems::independent_width, emblems::independent_height, 3);
       if(ok)
         {
         D3D11_BUFFER_DESC bd{};
@@ -356,10 +361,11 @@ namespace edworld
       {
       switch(a)
         {
-        case allegiance_e::federation: return 0xd9534fu;
-        case allegiance_e::empire:     return 0x4a90d9u;
-        case allegiance_e::alliance:   return 0x3cb371u;
-        default:                       return 0xffffffu;
+        case allegiance_e::federation:  return 0xd9534fu;
+        case allegiance_e::empire:      return 0x4a90d9u;
+        case allegiance_e::alliance:    return 0x3cb371u;
+        case allegiance_e::independent: return settings().independent_colour;
+        default:                        return 0xffffffu;
         }
       }
 
@@ -720,6 +726,120 @@ namespace edworld
       };
 
     constexpr UINT list_cb_slot{4};
+
+    // ---- the superpower, read from the panel's own text ----
+    constexpr std::int32_t text_x{superpower_label_x0}, text_y{superpower_area_y0};
+    constexpr std::int32_t text_width{superpower_value_x1 - superpower_label_x0}, text_height{superpower_area_y1 - superpower_area_y0};
+    constexpr std::uint32_t text_tries{240};  ///< frames of an unreadable panel (hidden while aligning, no superpower) before giving up
+
+    struct reading_t
+      {
+      std::uint64_t destination{~0ull};
+      superpower_reading_t result{};
+      bool done{};
+      bool copied{};  ///< a copy waits in r.text_copy
+      std::uint32_t tries{};
+      };
+
+    reading_t reading;
+
+    auto superpower_allegiance(superpower_e p) -> allegiance_e
+      {
+      switch(p)
+        {
+        case superpower_e::federation:  return allegiance_e::federation;
+        case superpower_e::empire:      return allegiance_e::empire;
+        case superpower_e::alliance:    return allegiance_e::alliance;
+        case superpower_e::independent: return allegiance_e::independent;
+        default:                        return allegiance_e::unknown;
+        }
+      }
+
+    ///\brief the area under reading, as it was copied, into edworld_dumps (an unknown word: to learn it)
+    auto dump_text(D3D11_MAPPED_SUBRESOURCE const & m, std::uint64_t destination) -> void
+      {
+      CreateDirectoryW((settings().dir + L"\\edworld_dumps").c_str(), nullptr);
+      wchar_t name[MAX_PATH];
+      std::swprintf(name, MAX_PATH, L"%ls\\edworld_dumps\\superpower_%llu_%dx%d_pitch%u.raw", settings().dir.c_str(),
+                    static_cast<unsigned long long>(destination), text_width, text_height, m.RowPitch);
+      if(std::FILE * f{_wfopen(name, L"wb")})
+        {
+        std::fwrite(m.pData, 1, static_cast<std::size_t>(m.RowPitch) * text_height, f);
+        std::fclose(f);
+        log_line("superpower: the area read written to %S", name);
+        }
+      }
+
+    ///\brief once a frame while a jump charges: the panel's text copied (this frame) and read (a few frames later,
+    /// when the copy is done); per destination, until its SUPERPOWER row is found or the tries run out
+    auto read_text(ID3D11DeviceContext * ctx, ID3D11Texture2D * surface, D3D11_TEXTURE2D_DESC const & d, std::uint64_t destination) -> void
+      {
+      if(d.Width < static_cast<UINT>(superpower_value_x1) or d.Height < static_cast<UINT>(superpower_area_y1))
+        return;  // not the 3072x660 surface the rows were measured on
+      if(destination != reading.destination)
+        reading = reading_t{destination, {}, false, false, 0};
+      if(reading.done)
+        return;
+      if(not r.text_copy)
+        {
+        D3D11_TEXTURE2D_DESC c{};
+        c.Width = static_cast<UINT>(text_width);
+        c.Height = static_cast<UINT>(text_height);
+        c.MipLevels = c.ArraySize = 1;
+        c.Format = d.Format;
+        c.SampleDesc.Count = 1;
+        c.Usage = D3D11_USAGE_STAGING;
+        c.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        if(FAILED(r.device->CreateTexture2D(&c, nullptr, &r.text_copy)) or not r.text_copy)
+          {
+          reading.done = true;
+          log_line("superpower: no copy of the panel's text could be made; no emblem");
+          return;
+          }
+        }
+      if(reading.copied)
+        {
+        D3D11_MAPPED_SUBRESOURCE m{};
+        HRESULT const hr{ctx->Map(r.text_copy, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &m)};
+        if(hr == DXGI_ERROR_WAS_STILL_DRAWING)
+          return;
+        reading.copied = false;
+        if(SUCCEEDED(hr) and m.pData)
+          {
+          reading.result = read_superpower(static_cast<std::uint8_t const *>(m.pData), m.RowPitch, text_width, text_height, text_x, text_y);
+          if(reading.result.label_found)
+            {
+            reading.done = true;
+            superpower_reading_t const & x{reading.result};
+            if(x.superpower != superpower_e::none)
+              log_line("superpower: %llu reads %s on the panel (label %d px, word %d px, row %d..%d); emblem at y %.0f",
+                       static_cast<unsigned long long>(destination), allegiance_name(superpower_allegiance(x.superpower)),
+                       x.label_width, x.value_width, x.row_top, x.row_bottom, static_cast<double>(emblem_centre_y(x)));
+            else
+              {
+              log_line("superpower: %llu: a SUPERPOWER row with a word of no known width (label %d px, word %d px, row %d..%d); no emblem",
+                       static_cast<unsigned long long>(destination), x.label_width, x.value_width, x.row_top, x.row_bottom);
+              dump_text(m, destination);
+              }
+            }
+          ctx->Unmap(r.text_copy, 0);
+          }
+        if(not reading.done and ++reading.tries >= text_tries)
+          {
+          reading.done = true;
+          log_line("superpower: %llu: no SUPERPOWER row on the panel in %u frames (no superpower, or the panel hidden); no emblem",
+                   static_cast<unsigned long long>(destination), text_tries);
+          }
+        if(reading.done)
+          return;
+        }
+      D3D11_BOX const area{static_cast<UINT>(text_x), static_cast<UINT>(text_y), 0, static_cast<UINT>(text_x + text_width),
+                           static_cast<UINT>(text_y + text_height), 1};
+      ctx->CopySubresourceRegion(r.text_copy, 0, 0, 0, 0, surface, 0, &area);
+      reading.copied = true;
+      }
+
+    float patch_centre_y{};  ///< where the patch stands this frame (the gate of the list's quad)
     }  // namespace
 
   auto panel_patch(ID3D11DeviceContext * ctx, ID3D11Device * device, std::uint64_t frame) noexcept -> void
@@ -728,25 +848,9 @@ namespace edworld
     if(s.patch == 0 or frame == patched_frame)
       return;
     game_state_t const g{game_state()};
-    bool const test{s.patch == 2};
-    int emblem{-1};
-    allegiance_e const allegiance{
-      s.patch_force >= 1 and s.patch_force <= 3 ? static_cast<allegiance_e>(s.patch_force) : g.allegiance
-    };
-    switch(allegiance)
-      {
-      case allegiance_e::federation: emblem = 0; break;
-      case allegiance_e::empire:     emblem = 1; break;
-      case allegiance_e::alliance:   emblem = 2; break;
-      default:                       break;
-      }
     if(not g.charging)
       return;
-    // the list only for the destination it was made for, and only when it has something to say
-    faction_list_t const list{s.list != 0 ? destination_factions() : faction_list_t{}};
-    bool const listing{list.system == g.destination and list.source != list_source_e::none and list.count != 0};
-    if(not test and emblem < 0 and not listing)
-      return;
+    bool const test{s.patch == 2};
 
     // the surface this composite draw samples, and whether it is the panel's: at PS t2 for the panel family,
     // at t1 for the shader the game uses near a war settlement
@@ -786,6 +890,35 @@ namespace edworld
       tex->Release();
       return;
       }
+    patched_frame = frame;
+
+    // the superpower as the panel writes it; the emblem goes beside its row (patch_force overrides the word)
+    read_text(ctx, tex, d, g.destination);
+    bool const read_ok{reading.done and reading.result.superpower != superpower_e::none};
+    allegiance_e const allegiance{
+      s.patch_force >= 1 and s.patch_force <= 4 ? static_cast<allegiance_e>(s.patch_force)
+      : read_ok                                 ? superpower_allegiance(reading.result.superpower)
+                                                : allegiance_e::unknown
+    };
+    int emblem{-1};
+    switch(allegiance)
+      {
+      case allegiance_e::federation:  emblem = 0; break;
+      case allegiance_e::empire:      emblem = 1; break;
+      case allegiance_e::alliance:    emblem = 2; break;
+      case allegiance_e::independent: emblem = 3; break;
+      default:                        break;
+      }
+    float const centre_y{reading.done and reading.result.label_found ? emblem_centre_y(reading.result) : s.patch_y};
+    patch_centre_y = centre_y;
+    // the list only for the destination it was made for, and only when it has something to say
+    faction_list_t const list{s.list != 0 ? destination_factions() : faction_list_t{}};
+    bool const listing{list.system == g.destination and list.source != list_source_e::none and list.count != 0};
+    if(not test and emblem < 0 and not listing)
+      {
+      tex->Release();
+      return;
+      }
     ID3D11RenderTargetView * const rtv{rtv_for(tex)};
     ID3D11ShaderResourceView * const mask{rtv ? mask_for(d) : nullptr};
     if(not rtv or not mask)
@@ -797,9 +930,9 @@ namespace edworld
     // still aligns, though Status.json still says charging), the patch's alpha goes to zero
     // (the box's alpha also gates what is drawn beside the panel: the shader reads it at the patch's centre)
     {
-    float const left{s.patch_x - s.patch_width / 2.f}, top{s.patch_y - s.patch_height / 2.f};
+    float const left{s.patch_x - s.patch_width / 2.f}, top{centre_y - s.patch_height / 2.f};
     UINT const x0{left > 0.f ? static_cast<UINT>(left) : 0u}, y0{top > 0.f ? static_cast<UINT>(top) : 0u};
-    UINT const x1{static_cast<UINT>(s.patch_x + s.patch_width / 2.f) + 1u}, y1{static_cast<UINT>(s.patch_y + s.patch_height / 2.f) + 1u};
+    UINT const x1{static_cast<UINT>(s.patch_x + s.patch_width / 2.f) + 1u}, y1{static_cast<UINT>(centre_y + s.patch_height / 2.f) + 1u};
     D3D11_BOX const area{x0, y0, 0, x1 < d.Width ? x1 : d.Width, y1 < d.Height ? y1 : d.Height, 1};
     if(area.left < area.right and area.top < area.bottom)
       ctx->CopySubresourceRegion(r.mask, 0, area.left, area.top, 0, tex, 0, &area);
@@ -812,13 +945,12 @@ namespace edworld
     gate_t const gate{
       {static_cast<std::int32_t>(area.left), static_cast<std::int32_t>(area.top), static_cast<std::int32_t>(area.right),
        static_cast<std::int32_t>(area.bottom)},
-      {static_cast<std::int32_t>(s.patch_x), static_cast<std::int32_t>(s.patch_y), 0, 0}
+      {static_cast<std::int32_t>(s.patch_x), static_cast<std::int32_t>(centre_y), 0, 0}
     };
     std::memcpy(m.pData, &gate, sizeof gate);
     ctx->Unmap(r.gate, 0);
     }
     tex->Release();
-    patched_frame = frame;
 
     float const sw{static_cast<float>(d.Width)}, sh{static_cast<float>(d.Height)};
     ImGui::SetCurrentContext(r.imgui);
@@ -830,19 +962,19 @@ namespace edworld
     ImDrawList * const dl{ImGui::GetBackgroundDrawList()};
     if(test)
       {
-      box(dl, s.patch_x, s.patch_y, s.patch_width, s.patch_height, im_colour(0xff00ffu));  // magenta: where the patch goes
-      box(dl, s.patch_x, s.patch_y, s.patch_width - 8.f, s.patch_height - 8.f, im_colour(s.patch_ground));
+      box(dl, s.patch_x, centre_y, s.patch_width, s.patch_height, im_colour(0xff00ffu));  // magenta: where the patch goes
+      box(dl, s.patch_x, centre_y, s.patch_width - 8.f, s.patch_height - 8.f, im_colour(s.patch_ground));
       }
     else if(emblem >= 0)
-      box(dl, s.patch_x, s.patch_y, s.patch_width, s.patch_height, im_colour(s.patch_ground));
+      box(dl, s.patch_x, centre_y, s.patch_width, s.patch_height, im_colour(s.patch_ground));
     if(emblem >= 0)
       {
       float const eh{s.patch_emblem_height};
       float const ew{eh * static_cast<float>(r.emblem_width[emblem]) / static_cast<float>(r.emblem_height[emblem])};
       dl->AddImage(
         reinterpret_cast<ImTextureID>(r.emblem[emblem]),
-        ImVec2{s.patch_x - ew / 2.f, s.patch_y - eh / 2.f},
-        ImVec2{s.patch_x + ew / 2.f, s.patch_y + eh / 2.f},
+        ImVec2{s.patch_x - ew / 2.f, centre_y - eh / 2.f},
+        ImVec2{s.patch_x + ew / 2.f, centre_y + eh / 2.f},
         ImVec2{0.f, 0.f},
         ImVec2{1.f, 1.f},
         im_colour(colour_of(allegiance))
@@ -1006,7 +1138,7 @@ namespace edworld
     cb.uv_extent[0] = 1.f;
     cb.uv_extent[1] = list_used / static_cast<float>(r.list_height);
     cb.gate[0] = static_cast<std::int32_t>(s.patch_x);
-    cb.gate[1] = static_cast<std::int32_t>(s.patch_y);
+    cb.gate[1] = static_cast<std::int32_t>(patch_centre_y);
     cb.gain[0] = s.list_gain;
     D3D11_MAPPED_SUBRESOURCE m{};
     if(FAILED(ctx->Map(r.list_cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &m)))

@@ -57,9 +57,18 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   emblem in its colour over the wrong one, then lets the game's draw go on. The patch shows only where the game
   drew on the surface in that frame (the surface's alpha under each pixel, copied just before): once the charge
   is done and the ship still aligns, the game hides the panel while Status.json still says charging, and the
-  patch goes with it. In edworld_eht the allegiance comes from `target`
-  in `shm_dir`, written by EHT from its database; when EHT does not know the system, and always in edworld, from EDSM
-  (`api-system-v1/factions`, only the destination's id64, once per new destination). The patch is a Dear ImGui
+  patch goes with it. The superpower is read from the panel itself: the game writes it right, as text in the row
+  labelled SUPERPOWER, while its emblem is wrong. Each charge to a new destination copies the panel's text area
+  (x 1100-1980, y 100-470 of the surface) and reads it a few frames later, when the copy is done (the game's wrong
+  emblem may show for those frames at the first charge to a destination): the rows are the bands of light pixels
+  in the labels' column, the SUPERPOWER row is the one whose label is 231 pixels wide (never one of the first two,
+  the region and the system), and the word is told by its width against the label's (EMPIRE 0.509, ALLIANCE
+  0.667, FEDERATION 0.859, INDEPENDENT 0.994; the game draws its text the same every time). The emblem stands 40
+  pixels under that row's centre, beside it and the two rows under it, whatever the emblem's shape. A row whose
+  word fits no width gets no emblem, a log line and its area written to `edworld_dumps`; a panel without the row
+  (no superpower, deep space) gets none either. No data source and no EDSM for the emblem: only for the list.
+  Independents get an emblem too, the game's phoenix (EDAssets' `independent-power.svg`) in `independent_colour`
+  (default a honey gold, F2C14E), in place of the game's dull blue one. The patch is a Dear ImGui
   draw list rendered by ImGui's D3D11 backend into the surface (own ImGui context, no input, no files);
   everything the game had bound is read back first and put back after.
 - **Factions list** (`list = 1`): with the patch, a box under the panel with the destination's factions by influence:
@@ -149,8 +158,10 @@ patch_height = 120
 patch_emblem_height = 92
 ; the panel's own black, hex RRGGBB without '#'
 patch_ground = 020304
-; 1 Federation, 2 Empire, 3 Alliance = that emblem whatever the destination
+; 1 Federation, 2 Empire, 3 Alliance, 4 Independent = that emblem whatever the destination
 patch_force = 0
+; the independents' emblem's colour
+independent_colour = F2C14E
 ; 0 = never ask EDSM
 edsm = 1
 ; the factions list under the panel: 0 = off
@@ -185,6 +196,8 @@ default `/dev/shm/eht`).
    a black box over the panel instead. Off (`list = 0`): the box gone.
 6. **2026-10-05, ed-lab clone, geometry dumps.** The jump panel shows x 1031-2045, y 2-493 of 3072x660; the black
    box is a one-pixel strip (row 519) stretched over the panel. Hence the list's quad of its own.
+7. **2026-10-05, ed-lab clone, the list's quad (test mode).** The test rows under the panel, edge to edge with it,
+   following it; the jump panel's draw found by its vertices; no faults.
 
 ## Not known yet
 
@@ -194,6 +207,9 @@ default `/dev/shm/eht`).
 - The list's quad in the game: placement under the panel, brightness (`list_gain`), readability at `list_text = 20`.
   Under wine only the pure arithmetic (the panel's vertex decode and map, from the game's own vertices) is tested;
   the test's draw has no stride-40 vertices, so the quad is not drawn there.
+- The superpower read from the panel in the game: EMPIRE, FEDERATION and INDEPENDENT are known from screenshots
+  (their width against the label's, within 3%), not yet read from the surface; under wine it is tested on rows drawn
+  as the game draws them (ALLIANCE's widths from the surface), and on the game's Alliance panel natively.
 - edworld_eht reading a `target` of the first layout (an EHT without the factions): written for, not tested.
 
 ## Credits

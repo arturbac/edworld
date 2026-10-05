@@ -1,6 +1,8 @@
 // edworld — pure arithmetic on what a panel draw carries; no D3D, testable anywhere.
 #pragma once
 
+#include <algorithm>
+#include <climits>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -137,7 +139,6 @@ namespace edworld
     }
 
   ///\brief the surface coordinate (0..1) of a vertex, from its fifth word
-  [[nodiscard]]
   inline auto decode_uv(std::uint32_t word, float & u, float & v) noexcept -> void
     {
     u = (static_cast<float>(word & 0xFFFFu) / 32767.f - 1.f) * 16.f;
@@ -183,5 +184,139 @@ namespace edworld
       return std::nullopt;
     float const rx{px - m.c}, ry{py - m.f};
     return vec3_t{(rx * m.e - ry * m.b) / det, (m.a * ry - m.d * rx) / det, m.z};
+    }
+  // ---- the superpower the game writes on the jump panel: the emblem is chosen by it ----
+  // The game draws a wrong emblem for the Federation, the Empire and the Alliance, but writes the superpower right,
+  // as text in the row labelled SUPERPOWER. The game's text is drawn pixel for pixel the same every time on the
+  // 3072x660 surface, so the word is told by its width against the label's, measured on 2026-10-05: the label 231
+  // pixels wide (x 1112-1343), ALLIANCE 154 (0.667); from the game's screenshots, against the label: EMPIRE 0.509,
+  // FEDERATION 0.859, INDEPENDENT 0.994. The rows are 40 pixels apart; the emblem stands beside the three rows from
+  // SUPERPOWER down, its centre 40 pixels under the SUPERPOWER row's.
+  enum struct superpower_e : std::uint8_t
+    {
+    none,
+    federation,
+    empire,
+    alliance,
+    independent
+    };
+
+  struct superpower_reading_t
+    {
+    ///\brief a row labelled SUPERPOWER was found (else the panel has none, or is not drawn yet)
+    bool label_found;
+    ///\brief the word told by its width; none when no width fits (the row found all the same)
+    superpower_e superpower;
+    ///\brief the row's top and bottom, the label's and the word's widths, in the surface's pixels
+    std::int32_t row_top, row_bottom;
+    std::int32_t label_width, value_width;
+    };
+
+  ///\brief where the panel's rows are read on its 3072x660 surface: the labels' column, the values' column
+  inline constexpr std::int32_t superpower_label_x0{1100}, superpower_label_x1{1400};
+  inline constexpr std::int32_t superpower_value_x0{1700}, superpower_value_x1{1980};
+  inline constexpr std::int32_t superpower_area_y0{100}, superpower_area_y1{470};
+  inline constexpr std::int32_t superpower_label_width{231};
+  inline constexpr std::int32_t superpower_row_pitch{40};
+
+  ///\brief the SUPERPOWER row in an RGBA copy of the panel's area (pixel (x, y) at data + y * pitch + x * 4, its
+  /// top left at (origin_x, origin_y) on the surface). The rows are the bands of light pixels in the labels' column;
+  /// the first two (the region, the system and its distance) are never the superpower's, so a system name of the
+  /// label's width cannot be taken for it
+  [[nodiscard]]
+  inline auto read_superpower(std::uint8_t const * data, std::uint32_t pitch, std::int32_t width, std::int32_t height,
+                              std::int32_t origin_x, std::int32_t origin_y) noexcept -> superpower_reading_t
+    {
+    superpower_reading_t out{};
+    auto const light = [&](std::int32_t x, std::int32_t y) -> bool
+      {
+      std::uint8_t const * p{data + static_cast<std::size_t>(y) * pitch + static_cast<std::size_t>(x) * 4u};
+      return p[3] != 0 and (p[0] > 90 or p[1] > 90 or p[2] > 90);
+      };
+    auto const span = [&](std::int32_t y0, std::int32_t y1, std::int32_t sx0, std::int32_t sx1, std::int32_t & lo, std::int32_t & hi)
+      {
+      lo = INT32_MAX;
+      hi = INT32_MIN;
+      std::int32_t const x0{std::max(sx0 - origin_x, 0)}, x1{std::min(sx1 - origin_x, width)};
+      for(std::int32_t y{y0}; y <= y1; ++y)
+        for(std::int32_t x{x0}; x < x1; ++x)
+          if(light(x, y))
+            {
+            lo = std::min(lo, x);
+            hi = std::max(hi, x);
+            }
+      return lo <= hi;
+      };
+    std::int32_t const lx0{std::max(superpower_label_x0 - origin_x, 0)}, lx1{std::min(superpower_label_x1 - origin_x, width)};
+    if(lx0 >= lx1)
+      return out;
+    // the bands of rows with light pixels in the labels' column; a gap of up to two rows stays inside a band
+    constexpr std::int32_t max_bands{16};
+    std::int32_t tops[max_bands]{}, bottoms[max_bands]{};
+    std::int32_t bands{};
+    std::int32_t top{-1}, last{-1};
+    for(std::int32_t y{}; y < height and bands < max_bands; ++y)
+      {
+      std::int32_t n{};
+      for(std::int32_t x{lx0}; x < lx1; ++x)
+        n += light(x, y) ? 1 : 0;
+      if(n <= 2)
+        continue;
+      if(top >= 0 and y > last + 3)
+        {
+        tops[bands] = top;
+        bottoms[bands++] = last;
+        top = -1;
+        }
+      if(top < 0)
+        top = y;
+      last = y;
+      }
+    if(top >= 0 and bands < max_bands)
+      {
+      tops[bands] = top;
+      bottoms[bands++] = last;
+      }
+    std::int32_t rows{};
+    for(std::int32_t i{}; i != bands; ++i)
+      {
+      if(bottoms[i] - tops[i] < 9)
+        continue;  // a line, a stripe: no row of text
+      if(rows++ < 2)
+        continue;
+      std::int32_t l_lo, l_hi, v_lo, v_hi;
+      if(not span(tops[i], bottoms[i], superpower_label_x0, superpower_label_x1, l_lo, l_hi))
+        continue;
+      std::int32_t const label{l_hi - l_lo};
+      if(label < superpower_label_width - 3 or label > superpower_label_width + 3)
+        continue;
+      out.label_found = true;
+      out.row_top = tops[i] + origin_y;
+      out.row_bottom = bottoms[i] + origin_y;
+      out.label_width = label;
+      if(not span(tops[i], bottoms[i], superpower_value_x0, superpower_value_x1, v_lo, v_hi))
+        return out;
+      out.value_width = v_hi - v_lo;
+      float const ratio{static_cast<float>(out.value_width) / static_cast<float>(label)};
+      struct word_t
+        {
+        superpower_e superpower;
+        float ratio;
+        };
+      constexpr word_t words[]{{superpower_e::empire, 0.509f}, {superpower_e::alliance, 0.667f},
+                               {superpower_e::federation, 0.859f}, {superpower_e::independent, 0.994f}};
+      for(word_t const & w: words)
+        if(std::fabs(ratio - w.ratio) <= 0.05f)
+          out.superpower = w.superpower;
+      return out;
+      }
+    return out;
+    }
+
+  ///\brief the emblem's centre for a SUPERPOWER row found at [top, bottom] on the surface
+  [[nodiscard]]
+  constexpr auto emblem_centre_y(superpower_reading_t const & r) noexcept -> float
+    {
+    return static_cast<float>(r.row_top + r.row_bottom) / 2.f + static_cast<float>(superpower_row_pitch);
     }
   }  // namespace edworld

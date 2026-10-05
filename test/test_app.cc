@@ -79,6 +79,36 @@ int main()
     }
   check(not edworld::map_from({p[0], p[0], p[2]}, {{0.f, 0.f}, {0.f, 0.f}, {1.f, 1.f}}).has_value(), "no map through a line");
   }
+  // the SUPERPOWER row read from the panel's text: rows as the game draws them on 3072x660 (labels from x 1112;
+  // SUPERPOWER 231 px wide, ALLIANCE 154), in an area copied from (1100, 100) as edworld copies it
+  {
+  constexpr std::int32_t w{edworld::superpower_value_x1 - edworld::superpower_label_x0};
+  constexpr std::int32_t h{edworld::superpower_area_y1 - edworld::superpower_area_y0};
+  std::vector<std::uint8_t> area(static_cast<std::size_t>(w) * h * 4);
+  auto const fill = [&](std::int32_t sx0, std::int32_t sx1, std::int32_t sy0, std::int32_t sy1)
+    {
+    for(std::int32_t y{sy0 - 100}; y != sy1 - 100; ++y)
+      for(std::int32_t x{sx0 - 1100}; x <= sx1 - 1100; ++x)
+        {
+        std::uint8_t * px{&area[(static_cast<std::size_t>(y) * w + x) * 4]};
+        px[0] = px[1] = px[2] = 200;
+        px[3] = 255;
+        }
+    };
+  fill(1112, 1500, 175, 195);  // the region
+  fill(1112, 1343, 212, 215);  // a separator line: no row
+  fill(1112, 1343, 232, 253);  // the system, as wide as the label, its distance as wide as EMPIRE: never the superpower
+  fill(1840, 1957, 232, 253);
+  auto none{edworld::read_superpower(area.data(), w * 4u, w, h, 1100, 100)};
+  check(not none.label_found, "superpower: the system's row is never taken for it");
+  fill(1112, 1343, 272, 293);  // SUPERPOWER  ALLIANCE
+  fill(1806, 1960, 272, 293);
+  fill(1112, 1381, 312, 333);  // SECURITY LEVEL
+  auto const found{edworld::read_superpower(area.data(), w * 4u, w, h, 1100, 100)};
+  check(found.label_found and found.superpower == edworld::superpower_e::alliance and found.row_top == 272 and found.row_bottom == 292,
+        "superpower: ALLIANCE told by its width, its row found");
+  check(std::fabs(edworld::emblem_centre_y(found) - 322.f) < 0.6f, "superpower: the emblem 40 px under its row's centre");
+  }
   wchar_t exe[MAX_PATH]{};
   GetModuleFileNameW(nullptr, exe, MAX_PATH);
   std::wstring dir{exe};
@@ -133,8 +163,8 @@ int main()
                static_cast<unsigned long long>(watched));
   if constexpr(with_eht)
     std::fprintf(ini, "shm_dir = %ls\n", shm_dir.c_str());
-  else
-    std::fprintf(ini, "patch_force = 2\n");  // no data source and no EDSM in the test: the Empire emblem by hand
+  // the superpower is read from the panel's text, which this test's surface has none of: the Empire emblem by hand
+  std::fprintf(ini, "patch_force = 2\n");
   std::fclose(ini);
   }
   DeleteFileW(share_path.c_str());
@@ -384,7 +414,7 @@ int main()
           ++upper_half;
         }
   std::printf("empire-blue pixels in the emblem box: %u (upper half %u)\n", emblem_pixels, upper_half);
-  check(emblem_pixels > 150, with_eht ? "Empire emblem from the data source's target, in its colour" : "Empire emblem (patch_force), in its colour");
+  check(emblem_pixels > 150, "Empire emblem (patch_force), in its colour");
   // the Empire's V is wide at the top and comes to a point at the bottom
   check(upper_half * 2 > emblem_pixels, "emblem upright, not flipped");
   check(pixel(256 - 45, 64) == 0x020304u, "patch ground drawn beside the emblem");
