@@ -471,6 +471,7 @@ namespace edworld
     std::uint32_t pending_count{};
     std::uint64_t dumped_ids[max_dumps]{};
     std::uint32_t dumped_count{};
+    std::uint32_t geometry_draws{};  ///< panel draws of the dump frame whose buffers were queued
     bool dump_armed{};
     std::uint64_t dump_frame{};
     LONGLONG last_trigger_check{};
@@ -498,6 +499,7 @@ namespace edworld
       dump_armed = true;
       dump_frame = frame;
       dumped_count = 0;
+      geometry_draws = 0;
       SYSTEMTIME t;
       GetSystemTime(&t);
       std::snprintf(dump_stamp, sizeof dump_stamp, "%04u%02u%02uT%02u%02u%02u_%03uZ", t.wYear, t.wMonth, t.wDay, t.wHour,
@@ -598,6 +600,89 @@ namespace edworld
       pending_count = kept;
       }
 
+    // ---- geometry dumps, with the surface dumps (discovery): what a panel draw reads besides the surface ----
+    // Each panel draw of the dump frame: its index range, the vertex buffers bound (the instance stream from its
+    // start_instance, the others from its base vertex), the VS constant buffers 0..3 from their first constant and
+    // the t33 record pool, each to edworld_dumps/<stamp>_g<draw>_<what>.bin; the draw's arguments go to the log.
+    struct pending_buffer_t
+      {
+      ID3D11Buffer * staging;
+      std::uint32_t bytes;
+      char name[64];
+      LONGLONG qpc;
+      };
+
+    constexpr std::uint32_t max_buffers{128};
+    constexpr std::uint32_t buffer_window{256u * 1024u};
+    constexpr std::uint32_t pool_window{16u * 1024u * 1024u};
+    pending_buffer_t pending_buffers[max_buffers]{};
+    std::uint32_t pending_buffer_count{};
+
+    auto write_buffers(LONGLONG now) noexcept -> void
+      {
+      std::uint32_t kept{};
+      for(std::uint32_t i{}; i != pending_buffer_count; ++i)
+        {
+        pending_buffer_t & p{pending_buffers[i]};
+        D3D11_MAPPED_SUBRESOURCE m{};
+        HRESULT const hr{immediate.load()->Map(p.staging, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &m)};
+        if(hr == DXGI_ERROR_WAS_STILL_DRAWING and (now - p.qpc) * 1000 / qpc_frequency < 2000)
+          {
+          pending_buffers[kept++] = p;
+          continue;
+          }
+        if(SUCCEEDED(hr) and m.pData)
+          {
+          wchar_t name[MAX_PATH];
+          std::swprintf(name, MAX_PATH, L"%ls\\edworld_dumps\\%hs_%hs.bin", settings().dir.c_str(), dump_stamp, p.name);
+          if(std::FILE * f{_wfopen(name, L"wb")})
+            {
+            std::fwrite(m.pData, 1, p.bytes, f);
+            std::fclose(f);
+            }
+          immediate.load()->Unmap(p.staging, 0);
+          }
+        else
+          log_line("dump: buffer %s lost (hr 0x%08lX)", p.name, static_cast<unsigned long>(hr));
+        p.staging->Release();
+        }
+      pending_buffer_count = kept;
+      }
+
+    ///\brief a copy of bytes [from, from + bytes) of a buffer, written by write_buffers once the GPU has made it
+    auto queue_buffer(ID3D11DeviceContext * ctx, ID3D11Buffer * source, std::uint64_t from, std::uint64_t bytes,
+                      char const * name) noexcept -> void
+      {
+      if(pending_buffer_count == max_buffers or not source)
+        return;
+      D3D11_BUFFER_DESC bd{};
+      source->GetDesc(&bd);
+      if(from >= bd.ByteWidth)
+        {
+        log_line("dump: %s starts past its buffer (%llu of %u)", name, static_cast<unsigned long long>(from), bd.ByteWidth);
+        return;
+        }
+      bytes = std::min<std::uint64_t>(bytes, bd.ByteWidth - from);
+      // a staging buffer's size is a multiple of 16 for some drivers
+      std::uint32_t const width{static_cast<std::uint32_t>((bytes + 15u) & ~std::uint64_t{15u})};
+      D3D11_BUFFER_DESC sd{};
+      sd.ByteWidth = width;
+      sd.Usage = D3D11_USAGE_STAGING;
+      sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+      ID3D11Buffer * staging{};
+      if(FAILED(device->CreateBuffer(&sd, nullptr, &staging)) or not staging)
+        return;
+      D3D11_BOX const box{static_cast<UINT>(from), 0, 0, static_cast<UINT>(from + bytes), 1, 1};
+      ctx->CopySubresourceRegion(staging, 0, 0, 0, 0, source, 0, &box);
+      pending_buffer_t & p{pending_buffers[pending_buffer_count++]};
+      p.staging = staging;
+      p.bytes = static_cast<std::uint32_t>(bytes);
+      std::snprintf(p.name, sizeof p.name, "%s", name);
+      p.qpc = qpc_now();
+      log_line("dump: %s = %u byte(s) from %llu of a buffer of %u (stride %u, bind 0x%x, misc 0x%x)", name, p.bytes,
+               static_cast<unsigned long long>(from), bd.ByteWidth, bd.StructureByteStride, bd.BindFlags, bd.MiscFlags);
+      }
+
     auto begin_frame(LONGLONG now) noexcept -> void
       {
       if(recording >= 0 and ring[recording].count)
@@ -616,6 +701,8 @@ namespace edworld
       drain(now);
       if(pending_count)
         write_dumps(now);
+      if(pending_buffer_count)
+        write_buffers(now);
       check_trigger(now);
       if constexpr(not with_eht)
         return;
@@ -673,6 +760,86 @@ namespace edworld
       res->Release();
       surfaces[surface_next++ % 64] = out;
       return true;
+      }
+
+    ///\brief the dump frame's panel draw: everything it reads besides the surface (see write_buffers)
+    auto queue_geometry(ID3D11DeviceContext * ctx, std::uint32_t index_count, std::uint32_t instance_count,
+                        std::uint32_t start_index, std::int32_t base_vertex, std::uint32_t start_instance) noexcept -> void
+      {
+      if(geometry_draws == max_dumps)
+        return;
+      std::uint32_t const g{geometry_draws++};
+      surface_cache_t surface{};
+      surface_of(ctx, surface);
+      log_line("dump: g%u draw: indices %u from %u, base vertex %d, instances %u from %u, surface %08llx %ux%u", g,
+               index_count, start_index, base_vertex, instance_count, start_instance,
+               static_cast<unsigned long long>(reinterpret_cast<std::uint64_t>(surface.resource) & 0xffffffffull),
+               surface.width, surface.height);
+      char name[64];
+
+      ID3D11Buffer * ib{};
+      DXGI_FORMAT ib_format{};
+      UINT ib_offset{};
+      ctx->IAGetIndexBuffer(&ib, &ib_format, &ib_offset);
+      if(ib)
+        {
+        std::uint32_t const size{ib_format == DXGI_FORMAT_R16_UINT ? 2u : 4u};
+        std::snprintf(name, sizeof name, "g%u_ib_u%u", g, size * 8u);
+        queue_buffer(ctx, ib, ib_offset + static_cast<std::uint64_t>(start_index) * size,
+                     static_cast<std::uint64_t>(index_count) * size, name);
+        ib->Release();
+        }
+
+      ID3D11Buffer * vbs[4]{};
+      UINT strides[4]{}, offsets[4]{};
+      ctx->IAGetVertexBuffers(0, 4, vbs, strides, offsets);
+      for(std::uint32_t v{}; v != 4; ++v)
+        {
+        if(not vbs[v])
+          continue;
+        // slot 0 is the instance stream (stage_entry), the others are read from the base vertex
+        std::uint64_t const first{v == 0 ? start_instance : static_cast<std::uint64_t>(std::max(base_vertex, 0))};
+        std::snprintf(name, sizeof name, "g%u_vb%u_s%u", g, v, strides[v]);
+        queue_buffer(ctx, vbs[v], offsets[v] + first * strides[v],
+                     v == 0 ? static_cast<std::uint64_t>(instance_count) * strides[v] : buffer_window, name);
+        vbs[v]->Release();
+        }
+
+      ID3D11Buffer * cbs[4]{};
+      UINT firsts[4]{}, counts[4]{};
+      if(immediate1)
+        immediate1->VSGetConstantBuffers1(0, 4, cbs, firsts, counts);
+      else
+        ctx->VSGetConstantBuffers(0, 4, cbs);
+      for(std::uint32_t c{}; c != 4; ++c)
+        {
+        if(not cbs[c])
+          continue;
+        std::snprintf(name, sizeof name, "g%u_cb%u", g, c);
+        queue_buffer(ctx, cbs[c], firsts[c] * 16ull, counts[c] ? counts[c] * 16ull : 65536ull, name);
+        cbs[c]->Release();
+        }
+
+      ID3D11ShaderResourceView * pool{};
+      ctx->VSGetShaderResources(33, 1, &pool);
+      if(pool)
+        {
+        ID3D11Resource * res{};
+        pool->GetResource(&res);
+        pool->Release();
+        ID3D11Buffer * buffer{};
+        if(res)
+          {
+          res->QueryInterface(__uuidof(ID3D11Buffer), reinterpret_cast<void **>(&buffer));
+          res->Release();
+          }
+        if(buffer)
+          {
+          std::snprintf(name, sizeof name, "g%u_t33", g);
+          queue_buffer(ctx, buffer, 0, pool_window, name);
+          buffer->Release();
+          }
+        }
       }
 
     ///\brief once a frame, at its first panel draw: the t33 record pool and cb1 rows 268..275
@@ -805,7 +972,10 @@ namespace edworld
         {
         // nothing is published: no copies, the patch alone
         if(dump_armed)
+          {
           queue_dump(ctx);
+          queue_geometry(ctx, index_count, instance_count, start_index, base_vertex, start_instance);
+          }
         if(settings().patch)
           panel_patch(ctx, device, frame);
         return;
@@ -837,7 +1007,10 @@ namespace edworld
       cb->Release();
 
       if(dump_armed)
+        {
         queue_dump(ctx);
+        queue_geometry(ctx, index_count, instance_count, start_index, base_vertex, start_instance);
+        }
       if(slot.count == 0)
         stage_frame(ctx, slot);
       slot.have_entry[slot.count] = stage_entry(ctx, slot, slot.count, start_instance);
