@@ -129,7 +129,9 @@ namespace
     next_create = create;
     if(auto const swap{reinterpret_cast<create_device_swap_fn>(GetProcAddress(chained, "D3D11CreateDeviceAndSwapChain"))})
       next_create_swap = swap;
-    edworld::log_line("chain: through %S, %zu export(s) unresolved", path.c_str(), missing);
+    wchar_t loaded[MAX_PATH]{};
+    GetModuleFileNameW(chained, loaded, MAX_PATH);
+    edworld::log_line("chain: through %S (%S), %zu export(s) unresolved", path.c_str(), loaded, missing);
     }
 
   INIT_ONCE init_once = INIT_ONCE_STATIC_INIT;
