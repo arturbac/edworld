@@ -36,6 +36,8 @@ namespace edworld
     double latitude, longitude, altitude, planet_radius, heading;
     ///\brief degrees, + climbing, from the last two fixes that differed; NaN until there are two
     double path_angle;
+    ///\brief metres a second, + climbing, from the last two fixes that differed (by the host's clock); NaN until there are two
+    double vertical_speed;
     ///\brief the destination's body (Destination.Body; 0 = none or the system) and its name as Status.json gives it
     std::uint32_t destination_body;
     char destination_name[64];

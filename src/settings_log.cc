@@ -186,6 +186,10 @@ namespace edworld
         current.compass_sphere_gamma = to_float(value, current.compass_sphere_gamma);
       else if(key == "compass_sphere_gain")
         current.compass_sphere_gain = to_float(value, current.compass_sphere_gain);
+      else if(key == "compass_text")
+        current.compass_text = to_uint(value, current.compass_text);
+      else if(key == "compass_hide_game")
+        current.compass_hide_game = to_uint(value, current.compass_hide_game);
       else if(key == "compass_log_ms")
         current.compass_log_ms = to_uint(value, current.compass_log_ms);
       else if(key == "edsm")

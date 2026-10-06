@@ -34,6 +34,7 @@ namespace edworld
     faction_list_t list{};
     SRWLOCK flight_lock = SRWLOCK_INIT;
     flight_t flight_now{};
+    ULONGLONG last_fix_ms{};  ///< when the last fix that differed was read (the state thread's own)
 
     auto set_list(faction_list_t const & value) -> void
       {
@@ -131,12 +132,16 @@ namespace edworld
       f.heading = real_after(text, "\"Heading\"", 0, hd);
       f.has_position = la and lo and al and pr;
       f.path_angle = std::nan("");
+      f.vertical_speed = std::nan("");
+      ULONGLONG const now{GetTickCount64()};
       if(f.has_position and last.has_position)
         {
         bool const moved{f.latitude != last.latitude or f.longitude != last.longitude or f.altitude != last.altitude};
         f.path_angle = moved ? flight_path_angle(last.latitude, last.longitude, last.altitude, f.latitude, f.longitude,
                                                  f.altitude, f.planet_radius)
                              : last.path_angle;
+        double const seconds{static_cast<double>(now - last_fix_ms) / 1000.0};
+        f.vertical_speed = moved and seconds > 0.05 ? (f.altitude - last.altitude) / seconds : last.vertical_speed;
         }
       auto const dest_at{text.find("\"Destination\"")};
       if(dest_at != std::string_view::npos)
@@ -151,7 +156,10 @@ namespace edworld
       bool const same{f.has_position and last.has_position and f.latitude == last.latitude and f.longitude == last.longitude and
                       f.altitude == last.altitude};
       if(not same)
+        {
         last = f;
+        last_fix_ms = now;
+        }
       else
         {
         last.flags = f.flags;

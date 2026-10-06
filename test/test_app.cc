@@ -243,7 +243,7 @@ int main()
   std::fprintf(ini, "patch_force = 2\n");
   // the compass on the same surface: its disc at (100, 64), the text under the patch's box (its checks untouched)
   std::fprintf(ini, "compass = 2\ncompass_surface = 512x128\ncompass_x = 100\ncompass_y = 64\ncompass_radius = 30\n"
-                    "compass_text_x = 150\ncompass_text_y = 100\ncompass_text_size = 12\ncompass_log_ms = 1\ncompass_spheres = 1\n");
+                    "compass_text_x = 150\ncompass_text_y = 100\ncompass_text_size = 12\ncompass_log_ms = 1\ncompass_spheres = 1\ncompass_hide_game = 1\n");
   std::fclose(ini);
   }
   // the spheres' textures written once for a look (edworld_dumps/sphere0_*.raw, sphere1_*.raw)
@@ -640,7 +640,7 @@ int main()
     }
   check(compass_log.find("compass: first drawn (mode 2, surface 512x128") != std::string::npos, "compass: drawn on its surface");
   check(compass_log.find("compass: dot filled dot +10.00 -10.00") != std::string::npos, "compass: the dot read back where it was put");
-  check(compass_log.find("compass: spheres rendered (512 px each)") != std::string::npos, "spheres: both textures drawn");
+  check(compass_log.find("compass: spheres rendered (512x672 px each)") != std::string::npos, "spheres: both textures drawn");
   check(compass_log.find("compass: spheres written to edworld_dumps") != std::string::npos, "spheres: both textures written for a look");
   }
   WIN32_FIND_DATAW found{};

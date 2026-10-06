@@ -19,6 +19,8 @@
 // back after, and edworld's own draws go through its own objects.
 #include "panel_patch.h"
 
+#include <d3d11_1.h>
+
 #include "emblems.h"
 #include "game_state.h"
 #include "list_font.h"
@@ -71,6 +73,8 @@ namespace edworld
       ID3D11Buffer * gate{};
       ///\brief the list's font; none when it could not be made (no list then, the emblem still)
       ImFont * font{};
+      ///\brief the spheres' lines' font, made at their size (a small font enlarged comes out soft); none: the list's
+      ImFont * sphere_font{};
       // the list: its texture (premultiplied, drawn by ImGui), and what carries it under the panel
       ID3D11Texture2D * list_tex{};
       ID3D11RenderTargetView * list_rtv{};
@@ -180,6 +184,9 @@ namespace edworld
                                               std::clamp(settings().list_text, 8.f, 64.f), &cfg, ranges);
       if(not r.font)
         log_line("patch: the list's font could not be made; no list");
+      if(settings().compass_spheres)
+        r.sphere_font = io.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t *>(font::list_font), static_cast<int>(font::list_font_size),
+                                                       84.f, &cfg, ranges);
       }
       creating_own.store(true);
       bool ok{ImGui_ImplDX11_Init(device, ctx)};
@@ -1324,6 +1331,7 @@ namespace edworld
       std::uint64_t quad_frame{~0ull};
       std::uint32_t quad_index{};
       bool told_quads{};
+      bool told_hide{};
       };
 
     compass_state_t cs;
@@ -1410,7 +1418,8 @@ namespace edworld
 
     constexpr char degree[]{"\xC2\xB0"};
 
-    constexpr std::uint32_t sphere_px{512};
+    ///\brief a sphere's texture: the sphere in its upper 512 x 512, the lines under it below
+    constexpr std::uint32_t sphere_w{512}, sphere_h{672};
 
     auto sphere_targets() -> bool
       {
@@ -1419,7 +1428,8 @@ namespace edworld
       for(int k{}; k != 2; ++k)
         {
         D3D11_TEXTURE2D_DESC d{};
-        d.Width = d.Height = sphere_px;
+        d.Width = sphere_w;
+        d.Height = sphere_h;
         d.MipLevels = 0;
         d.ArraySize = 1;
         d.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -1448,7 +1458,7 @@ namespace edworld
       }
 
     ///\brief the sphere seen from the front: the compass itself, larger; rings at 30 and 60 degrees off the nose
-    auto draw_sphere_front(ImDrawList * dl, compass_direction_t const & d, bool have, char const * caption) -> void
+    auto draw_sphere_front(ImDrawList * dl, compass_direction_t const & d, bool have) -> void
       {
       ImVec2 const c{256.f, 236.f};
       float const radius{200.f};
@@ -1467,14 +1477,12 @@ namespace edworld
         else
           dl->AddCircle(p, 13.f, rgba(255, 150, 40, 255), 32, 5.f);
         }
-      ImVec2 const extent{r.font->CalcTextSizeA(40.f, FLT_MAX, 0.f, caption)};
-      dl->AddText(r.font, 40.f, ImVec2{256.f - extent.x / 2.f, 452.f}, have and d.z < 0.f ? rgba(255, 150, 40, 255) : rgba(150, 230, 255, 255), caption);
       }
 
     ///\brief the sphere seen from behind, the left and above, as the game's radar: the wings' plane, the nose, the target on a
     /// stalk to that plane, and where it should be
-    auto draw_sphere_oblique(ImDrawList * dl, compass_direction_t const & d, bool have, bool show_should, compass_direction_t const & should,
-                             char const * caption) -> void
+    auto draw_sphere_oblique(ImDrawList * dl, compass_direction_t const & d, bool have, bool show_should, compass_direction_t const & should)
+      -> void
       {
       constexpr float yaw{35.f}, pitch{20.f};
       ImVec2 const c{256.f, 236.f};
@@ -1515,7 +1523,7 @@ namespace edworld
       float const dx{n.x - o.x}, dy{n.y - o.y}, len{std::max(1.f, std::sqrt(dx * dx + dy * dy))}, ux{dx / len}, uy{dy / len};
       dl->AddTriangleFilled(ImVec2{n.x + ux * 22.f, n.y + uy * 22.f}, ImVec2{n.x - uy * 13.f, n.y + ux * 13.f}, ImVec2{n.x + uy * 13.f, n.y - ux * 13.f},
                             green);
-      dl->AddText(r.font, 30.f, ImVec2{n.x + 14.f, n.y - 40.f}, green, "NOSE");
+      dl->AddText(r.sphere_font ? r.sphere_font : r.font, 30.f, ImVec2{n.x + 14.f, n.y - 40.f}, green, "NOSE");
       auto const mark = [&](compass_direction_t const & v, ImU32 colour, bool ring)
         {
         ImVec2 const p{at(v)}, foot{at({v.x, 0.f, v.z})};
@@ -1531,10 +1539,23 @@ namespace edworld
         mark(should, rgba(255, 150, 40, 255), true);
       if(have)
         mark(d, rgba(255, 255, 255, 255), false);
-      ImVec2 const extent{r.font->CalcTextSizeA(34.f, FLT_MAX, 0.f, caption)};
-      dl->AddText(r.font, 34.f, ImVec2{256.f - extent.x / 2.f, 456.f}, rgba(255, 230, 120, 255), caption);
       }
 
+
+    ///\brief a line of text under a sphere, centred, as large as asked but never wider than the texture; returns its height
+    auto sphere_line(ImDrawList * dl, float y, float size, ImU32 colour, char const * text) -> float
+      {
+      ImFont * const font{r.sphere_font ? r.sphere_font : r.font};
+      ImVec2 extent{font->CalcTextSizeA(size, FLT_MAX, 0.f, text)};
+      constexpr float widest{static_cast<float>(sphere_w) - 16.f};
+      if(extent.x > widest)
+        {
+        size *= widest / extent.x;
+        extent = font->CalcTextSizeA(size, FLT_MAX, 0.f, text);
+        }
+      dl->AddText(font, size, ImVec2{(static_cast<float>(sphere_w) - extent.x) / 2.f, y}, colour, text);
+      return extent.y;
+      }
     ///\brief both spheres' textures from the reading shown; once a frame, after the compass was read
     auto render_spheres(ID3D11DeviceContext * ctx, settings_t const & s, flight_t const & f) -> void
       {
@@ -1545,31 +1566,72 @@ namespace edworld
       compass_direction_t const d{compass_direction(c.x, c.y, s.compass_radius, c.filled)};
       compass_angles_t const a{compass_angles(c.x, c.y, s.compass_radius, c.filled)};
       compass_direction_t const should{direction_of(-(90.f - s.compass_should_dive), 0.f)};
-      char front[64], oblique[64];
+      // under A: the angles, large; under C: the approach against where it should be (near a planet), else how far off
+      ImU32 const blue{rgba(150, 230, 255, 255)}, orange{rgba(255, 150, 40, 255)}, yellow{rgba(255, 230, 120, 255)};
+      ImU32 const green_line{rgba(120, 255, 160, 255)};
+      bool const behind{have and not c.filled};
+      char a1[48], a2[48], c1[48], c2[48], c3[64];
+      a2[0] = c2[0] = c3[0] = '\0';
       if(have)
-        std::snprintf(front, sizeof front, "%s %.1f%s  %s %.1f%s", a.up < 0.f ? "DN" : "UP", static_cast<double>(std::fabs(a.up)), degree,
-                      a.right < 0.f ? "LT" : "RT", static_cast<double>(std::fabs(a.right)), degree);
+        {
+        std::snprintf(a1, sizeof a1, "%s %.1f%s", a.up < 0.f ? "DN" : "UP", static_cast<double>(std::fabs(a.up)), degree);
+        std::snprintf(a2, sizeof a2, "%s %.1f%s", a.right < 0.f ? "LT" : "RT", static_cast<double>(std::fabs(a.right)), degree);
+        }
       else
-        std::snprintf(front, sizeof front, "NO DOT");
+        std::snprintf(a1, sizeof a1, "NO DOT");
+      ImU32 c2_colour{yellow};
       if(not have)
-        std::snprintf(oblique, sizeof oblique, "NO DOT");
+        std::snprintf(c1, sizeof c1, "NO DOT");
       else if(f.has_position)
-        std::snprintf(oblique, sizeof oblique, "nose %.1f%s  should %.0f%s", static_cast<double>(90.f - a.off_nose), degree,
-                      static_cast<double>(s.compass_should_dive), degree);
+        {
+        // with the planet as the target: the nose below the horizon is 90 minus the target off the nose
+        float const nose{90.f - a.off_nose};
+        float const off_path{s.compass_should_dive - nose};
+        std::snprintf(c1, sizeof c1, "NOSE %.0f%s %s", static_cast<double>(std::fabs(nose)), degree, nose >= 0.f ? "DOWN" : "UP");
+        if(std::fabs(off_path) < 2.f)
+          {
+          std::snprintf(c2, sizeof c2, "ON PATH");
+          c2_colour = green_line;
+          }
+        else
+          {
+          std::snprintf(c2, sizeof c2, "%s %.0f%s", off_path > 0.f ? "PUSH DOWN" : "PULL UP", static_cast<double>(std::fabs(off_path)), degree);
+          c2_colour = orange;
+          }
+        if(std::isnan(f.vertical_speed))
+          std::snprintf(c3, sizeof c3, "ALT %.1f km", f.altitude / 1000.0);
+        else
+          std::snprintf(c3, sizeof c3, "ALT %.1f km  %+.2f km/s", f.altitude / 1000.0, f.vertical_speed / 1000.0);
+        }
       else
-        std::snprintf(oblique, sizeof oblique, "off nose %.1f%s", static_cast<double>(a.off_nose), degree);
+        std::snprintf(c1, sizeof c1, "OFF %.0f%s", static_cast<double>(a.off_nose), degree);
       ImGui::SetCurrentContext(r.imgui);
       ImGuiIO & io{ImGui::GetIO()};
-      io.DisplaySize = ImVec2{static_cast<float>(sphere_px), static_cast<float>(sphere_px)};
+      io.DisplaySize = ImVec2{static_cast<float>(sphere_w), static_cast<float>(sphere_h)};
       for(int k{}; k != 2; ++k)
         {
         ImGui_ImplDX11_NewFrame();
         ImGui::NewFrame();
         ImDrawList * const dl{ImGui::GetBackgroundDrawList()};
+        float y{448.f};
         if(k == 0)
-          draw_sphere_front(dl, d, have, front);
+          {
+          draw_sphere_front(dl, d, have);
+          y += sphere_line(dl, y, 84.f, behind ? orange : blue, a1);
+          if(a2[0])
+            y += sphere_line(dl, y, 84.f, behind ? orange : blue, a2);
+          if(behind)
+            sphere_line(dl, y, 44.f, orange, "BEHIND");
+          }
         else
-          draw_sphere_oblique(dl, d, have, f.has_position, should, oblique);
+          {
+          draw_sphere_oblique(dl, d, have, f.has_position, should);
+          y += sphere_line(dl, y, 80.f, yellow, c1);
+          if(c2[0])
+            y += sphere_line(dl, y, 72.f, c2_colour, c2);
+          if(c3[0])
+            sphere_line(dl, y + 4.f, 40.f, yellow, c3);
+          }
         ImGui::Render();
         backup_t b;
         save(ctx, b);
@@ -1592,7 +1654,8 @@ namespace edworld
         for(int k{}; k != 2; ++k)
           {
           D3D11_TEXTURE2D_DESC sd{};
-          sd.Width = sd.Height = sphere_px;
+          sd.Width = sphere_w;
+          sd.Height = sphere_h;
           sd.MipLevels = sd.ArraySize = 1;
           sd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
           sd.SampleDesc.Count = 1;
@@ -1606,11 +1669,11 @@ namespace edworld
           if(SUCCEEDED(ctx->Map(staging, 0, D3D11_MAP_READ, 0, &m)) and m.pData)
             {
             wchar_t name[MAX_PATH];
-            std::swprintf(name, MAX_PATH, L"%ls\\edworld_dumps\\sphere%d_%ux%u_f28_pitch%u.raw", settings().dir.c_str(), k, sphere_px,
-                          sphere_px, m.RowPitch);
+            std::swprintf(name, MAX_PATH, L"%ls\\edworld_dumps\\sphere%d_%ux%u_f28_pitch%u.raw", settings().dir.c_str(), k, sphere_w,
+                          sphere_h, m.RowPitch);
             if(std::FILE * out{_wfopen(name, L"wb")})
               {
-              std::fwrite(m.pData, 1, static_cast<std::size_t>(m.RowPitch) * sphere_px, out);
+              std::fwrite(m.pData, 1, static_cast<std::size_t>(m.RowPitch) * sphere_h, out);
               std::fclose(out);
               }
             ctx->Unmap(staging, 0);
@@ -1620,7 +1683,7 @@ namespace edworld
         log_line("compass: spheres written to edworld_dumps");
         }
       if(not cs.spheres_drawn)
-        log_line("compass: spheres rendered (%u px each)", sphere_px);
+        log_line("compass: spheres rendered (%ux%u px each)", sphere_w, sphere_h);
       cs.spheres_drawn = true;
       }
     }  // namespace
@@ -1728,6 +1791,23 @@ namespace edworld
       D3D11_BOX const g{gx, gy, 0, gx + 1u, gy + 1u, 1};
       ctx->CopySubresourceRegion(cs.mask, 0, gx, gy, 0, tex, 0, &g);
       }
+    // the game's compass off the surface once read and the gate copied: its square made transparent (D3D11.1 ClearView)
+    if(s.compass_hide_game)
+      {
+      ID3D11DeviceContext1 * ctx1{};
+      if(SUCCEEDED(ctx->QueryInterface(__uuidof(ID3D11DeviceContext1), reinterpret_cast<void **>(&ctx1))) and ctx1)
+        {
+        float const clear[4]{0.f, 0.f, 0.f, 0.f};
+        D3D11_RECT const square{left, top, right, bottom};
+        ctx1->ClearView(rtv, clear, &square, 1);
+        ctx1->Release();
+        }
+      else if(not cs.told_hide)
+        {
+        cs.told_hide = true;
+        log_line("compass: no D3D11.1 context; the game's compass stays");
+        }
+      }
     tex->Release();
     D3D11_MAPPED_SUBRESOURCE gm{};
     if(FAILED(ctx->Map(r.gate, 0, D3D11_MAP_WRITE_DISCARD, 0, &gm)))
@@ -1777,9 +1857,12 @@ namespace edworld
       std::snprintf(line, sizeof line, "%s %.1f%s  %s %.1f%s", a.up < 0.f ? "DN" : "UP", static_cast<double>(std::fabs(a.up)), degree,
                     a.right < 0.f ? "LT" : "RT", static_cast<double>(std::fabs(a.right)), degree);
     ImU32 const main_colour{behind ? IM_COL32(255, 150, 40, 255) : IM_COL32(150, 230, 255, 255)};
-    y += ground_text(dl, s.compass_text_x, y, s.compass_text_size, main_colour, line);
-    if(behind)
-      ground_text(dl, s.compass_text_x, y, std::round(s.compass_text_size * 0.6f), main_colour, "BEHIND");
+    if(s.compass_text)
+      {
+      y += ground_text(dl, s.compass_text_x, y, s.compass_text_size, main_colour, line);
+      if(behind)
+        ground_text(dl, s.compass_text_x, y, std::round(s.compass_text_size * 0.6f), main_colour, "BEHIND");
+      }
     if(s.compass >= 2)
       {
       ImU32 const info{IM_COL32(255, 230, 120, 255)};
@@ -1863,10 +1946,12 @@ namespace edworld
     std::uint32_t const k{cs.quad_index++};
     if(k > 1u)
       return;
+    // the sphere's square where the settings put it; the lines' part of the texture hangs under it
     float const h{s.compass_sphere_height}, w{h * s.compass_sphere_aspect};
     float const cx{k == 0u ? s.compass_sphere_a_x : s.compass_sphere_c_x}, cy{k == 0u ? s.compass_sphere_a_y : s.compass_sphere_c_y};
+    float const top{cy + h / 2.f}, bottom{top - h * static_cast<float>(sphere_h) / static_cast<float>(sphere_w)};
     list_cb_t cb{};
-    float const corners[4][2]{{cx - w / 2.f, cy + h / 2.f}, {cx + w / 2.f, cy + h / 2.f}, {cx + w / 2.f, cy - h / 2.f}, {cx - w / 2.f, cy - h / 2.f}};
+    float const corners[4][2]{{cx - w / 2.f, top}, {cx + w / 2.f, top}, {cx + w / 2.f, bottom}, {cx - w / 2.f, bottom}};
     for(int i{}; i != 4; ++i)
       {
       cb.corner[i][0] = corners[i][0];
