@@ -128,6 +128,9 @@ namespace edworld
     ///\brief the spheres' colours taken from sRGB back to linear with this gamma (the cockpit is linear HDR: without it they
     /// came out half again as light and paler, 2026-10-06; 0 = as drawn), then scaled by the gain
     float compass_sphere_gamma{2.2f};
+    ///\brief 1: the spheres' lines in one wide band over each sphere (clear of the gauges under it, e.g. the thrust arc);
+    /// 0: under it
+    std::uint32_t compass_sphere_text_above{0};
     ///\brief 0: no angles in the strip above the radar (the spheres carry them); 1: written there
     std::uint32_t compass_text{1};
     ///\brief 1: the game's own compass cleared off the HUD surface once read (its square made transparent), the left

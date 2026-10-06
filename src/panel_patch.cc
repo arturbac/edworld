@@ -1418,8 +1418,10 @@ namespace edworld
 
     constexpr char degree[]{"\xC2\xB0"};
 
-    ///\brief a sphere's texture: the sphere in its upper 512 x 512, the lines under it below
-    constexpr std::uint32_t sphere_w{512}, sphere_h{672};
+    ///\brief a sphere's texture, large enough for both layouts: the lines under the sphere (its left 512 x 672), or a wide band
+    /// of lines over it (896 x 640, the sphere's square in x 192..704, y 128..640)
+    constexpr std::uint32_t sphere_w{896}, sphere_h{672};
+    constexpr float below_w{512.f}, below_h{672.f}, above_w{896.f}, above_h{640.f}, above_band{128.f};
 
     auto sphere_targets() -> bool
       {
@@ -1446,6 +1448,9 @@ namespace edworld
 
     auto rgba(int r_, int g_, int b_, int a_) -> ImU32 { return IM_COL32(r_, g_, b_, a_); }
 
+    ///\brief the spheres' lines' font, else the list's
+    auto sphere_font() -> ImFont * { return r.sphere_font ? r.sphere_font : r.font; }
+
     ///\brief the disc behind a sphere: dark, a little lighter towards its middle, translucent
     auto sphere_ground(ImDrawList * dl, ImVec2 c, float radius, int alpha) -> void
       {
@@ -1458,9 +1463,8 @@ namespace edworld
       }
 
     ///\brief the sphere seen from the front: the compass itself, larger; rings at 30 and 60 degrees off the nose
-    auto draw_sphere_front(ImDrawList * dl, compass_direction_t const & d, bool have) -> void
+    auto draw_sphere_front(ImDrawList * dl, ImVec2 c, compass_direction_t const & d, bool have) -> void
       {
-      ImVec2 const c{256.f, 236.f};
       float const radius{200.f};
       sphere_ground(dl, c, radius, 215);
       ImU32 const dim{rgba(50, 85, 150, 255)};
@@ -1481,11 +1485,10 @@ namespace edworld
 
     ///\brief the sphere seen from behind, the left and above, as the game's radar: the wings' plane, the nose, the target on a
     /// stalk to that plane, and where it should be
-    auto draw_sphere_oblique(ImDrawList * dl, compass_direction_t const & d, bool have, bool show_should, compass_direction_t const & should)
-      -> void
+    auto draw_sphere_oblique(ImDrawList * dl, ImVec2 c, compass_direction_t const & d, bool have, bool show_should,
+                             compass_direction_t const & should) -> void
       {
       constexpr float yaw{35.f}, pitch{20.f};
-      ImVec2 const c{256.f, 236.f};
       float const radius{200.f};
       auto const at = [&](compass_direction_t const & v) -> ImVec2
         {
@@ -1523,7 +1526,7 @@ namespace edworld
       float const dx{n.x - o.x}, dy{n.y - o.y}, len{std::max(1.f, std::sqrt(dx * dx + dy * dy))}, ux{dx / len}, uy{dy / len};
       dl->AddTriangleFilled(ImVec2{n.x + ux * 22.f, n.y + uy * 22.f}, ImVec2{n.x - uy * 13.f, n.y + ux * 13.f}, ImVec2{n.x + uy * 13.f, n.y - ux * 13.f},
                             green);
-      dl->AddText(r.sphere_font ? r.sphere_font : r.font, 30.f, ImVec2{n.x + 14.f, n.y - 40.f}, green, "NOSE");
+      dl->AddText(sphere_font(), 30.f, ImVec2{n.x + 14.f, n.y - 40.f}, green, "NOSE");
       auto const mark = [&](compass_direction_t const & v, ImU32 colour, bool ring)
         {
         ImVec2 const p{at(v)}, foot{at({v.x, 0.f, v.z})};
@@ -1543,19 +1546,37 @@ namespace edworld
 
 
     ///\brief a line of text under a sphere, centred, as large as asked but never wider than the texture; returns its height
-    auto sphere_line(ImDrawList * dl, float y, float size, ImU32 colour, char const * text) -> float
+    ///\brief one line of up to two parts in their own colours, centred in [x0, x0 + width), as large as asked but never wider;
+    /// returns its height
+    auto sphere_line(ImDrawList * dl, float x0, float width, float y, float size, ImU32 colour, char const * text, ImU32 colour2 = 0,
+                     char const * text2 = nullptr) -> float
       {
-      ImFont * const font{r.sphere_font ? r.sphere_font : r.font};
-      ImVec2 extent{font->CalcTextSizeA(size, FLT_MAX, 0.f, text)};
-      constexpr float widest{static_cast<float>(sphere_w) - 16.f};
-      if(extent.x > widest)
+      ImFont * const font{sphere_font()};
+      constexpr char gap[]{"  "};
+      auto const measure = [&](float sz) -> float
         {
-        size *= widest / extent.x;
-        extent = font->CalcTextSizeA(size, FLT_MAX, 0.f, text);
+        float w{font->CalcTextSizeA(sz, FLT_MAX, 0.f, text).x};
+        if(text2 and text2[0])
+          w += font->CalcTextSizeA(sz, FLT_MAX, 0.f, gap).x + font->CalcTextSizeA(sz, FLT_MAX, 0.f, text2).x;
+        return w;
+        };
+      float const widest{width - 16.f};
+      float total{measure(size)};
+      if(total > widest)
+        {
+        size *= widest / total;
+        total = measure(size);
         }
-      dl->AddText(font, size, ImVec2{(static_cast<float>(sphere_w) - extent.x) / 2.f, y}, colour, text);
-      return extent.y;
+      float x{x0 + (width - total) / 2.f};
+      dl->AddText(font, size, ImVec2{x, y}, colour, text);
+      if(text2 and text2[0])
+        {
+        x += font->CalcTextSizeA(size, FLT_MAX, 0.f, text).x + font->CalcTextSizeA(size, FLT_MAX, 0.f, gap).x;
+        dl->AddText(font, size, ImVec2{x, y}, colour2, text2);
+        }
+      return font->CalcTextSizeA(size, FLT_MAX, 0.f, text).y;
       }
+
     ///\brief both spheres' textures from the reading shown; once a frame, after the compass was read
     auto render_spheres(ID3D11DeviceContext * ctx, settings_t const & s, flight_t const & f) -> void
       {
@@ -1613,29 +1634,57 @@ namespace edworld
         ImGui_ImplDX11_NewFrame();
         ImGui::NewFrame();
         ImDrawList * const dl{ImGui::GetBackgroundDrawList()};
-        float y{448.f};
-        if(k == 0)
+        bool const above{s.compass_sphere_text_above != 0};
+        ImVec2 const centre{above ? ImVec2{above_w / 2.f, above_band + 256.f} : ImVec2{256.f, 236.f}};
+        ImFont * const name_font{sphere_font()};
+        if(above)
           {
-          draw_sphere_front(dl, d, have);
-          y += sphere_line(dl, y, 84.f, behind ? orange : blue, a1);
-          if(a2[0])
-            y += sphere_line(dl, y, 84.f, behind ? orange : blue, a2);
-          if(behind)
-            sphere_line(dl, y, 44.f, orange, "BEHIND");
-          // the plugin's name, small, in the corner under the angles
-          ImFont * const name_font{r.sphere_font ? r.sphere_font : r.font};
-          ImVec2 const name{name_font->CalcTextSizeA(26.f, FLT_MAX, 0.f, "edworld")};
-          dl->AddText(name_font, 26.f, ImVec2{static_cast<float>(sphere_w) - name.x - 10.f, static_cast<float>(sphere_h) - name.y - 6.f},
-                      rgba(110, 140, 180, 200), "edworld");
+          // a band over the sphere, dark under the lines (they may stand over a bright sky or a planet)
+          dl->AddRectFilled(ImVec2{8.f, 0.f}, ImVec2{above_w - 8.f, above_band - 6.f}, rgba(4, 8, 16, 170), 14.f);
+          if(k == 0)
+            {
+            draw_sphere_front(dl, centre, d, have);
+            char wide[96];
+            std::snprintf(wide, sizeof wide, "%s%s%s", a1, a2[0] ? "  " : "", a2);
+            float const used{sphere_line(dl, 0.f, above_w, 10.f, 76.f, behind ? orange : blue, wide)};
+            if(behind)
+              sphere_line(dl, 0.f, above_w, 10.f + used + 2.f, 30.f, orange, "BEHIND");
+            ImVec2 const name{name_font->CalcTextSizeA(26.f, FLT_MAX, 0.f, "edworld")};
+            dl->AddText(name_font, 26.f, ImVec2{above_w / 2.f + 256.f - name.x - 10.f, above_h - name.y - 6.f}, rgba(110, 140, 180, 200),
+                        "edworld");
+            }
+          else
+            {
+            draw_sphere_oblique(dl, centre, d, have, f.has_position, should);
+            float const used{sphere_line(dl, 0.f, above_w, 8.f, 66.f, yellow, c1, c2_colour, c2)};
+            if(c3[0])
+              sphere_line(dl, 0.f, above_w, 8.f + used + 4.f, 38.f, yellow, c3);
+            }
           }
         else
           {
-          draw_sphere_oblique(dl, d, have, f.has_position, should);
-          y += sphere_line(dl, y, 80.f, yellow, c1);
-          if(c2[0])
-            y += sphere_line(dl, y, 72.f, c2_colour, c2);
-          if(c3[0])
-            sphere_line(dl, y + 4.f, 40.f, yellow, c3);
+          float y{448.f};
+          if(k == 0)
+            {
+            draw_sphere_front(dl, centre, d, have);
+            y += sphere_line(dl, 0.f, below_w, y, 84.f, behind ? orange : blue, a1);
+            if(a2[0])
+              y += sphere_line(dl, 0.f, below_w, y, 84.f, behind ? orange : blue, a2);
+            if(behind)
+              sphere_line(dl, 0.f, below_w, y, 44.f, orange, "BEHIND");
+            // the plugin's name, small, in the corner under the angles
+            ImVec2 const name{name_font->CalcTextSizeA(26.f, FLT_MAX, 0.f, "edworld")};
+            dl->AddText(name_font, 26.f, ImVec2{below_w - name.x - 10.f, below_h - name.y - 6.f}, rgba(110, 140, 180, 200), "edworld");
+            }
+          else
+            {
+            draw_sphere_oblique(dl, centre, d, have, f.has_position, should);
+            y += sphere_line(dl, 0.f, below_w, y, 80.f, yellow, c1);
+            if(c2[0])
+              y += sphere_line(dl, 0.f, below_w, y, 72.f, c2_colour, c2);
+            if(c3[0])
+              sphere_line(dl, 0.f, below_w, y + 4.f, 40.f, yellow, c3);
+            }
           }
         ImGui::Render();
         backup_t b;
@@ -1951,18 +2000,23 @@ namespace edworld
     std::uint32_t const k{cs.quad_index++};
     if(k > 1u)
       return;
-    // the sphere's square where the settings put it; the lines' part of the texture hangs under it
+    // the sphere's square where the settings put it; the lines' part of the texture hangs under it, or stands over it as a
+    // wider band (the quad as much wider and taller as the texture's used part is than the square)
     float const h{s.compass_sphere_height}, w{h * s.compass_sphere_aspect};
     float const cx{k == 0u ? s.compass_sphere_a_x : s.compass_sphere_c_x}, cy{k == 0u ? s.compass_sphere_a_y : s.compass_sphere_c_y};
-    float const top{cy + h / 2.f}, bottom{top - h * static_cast<float>(sphere_h) / static_cast<float>(sphere_w)};
+    bool const above{s.compass_sphere_text_above != 0};
+    float const used_w{above ? above_w : below_w}, used_h{above ? above_h : below_h};
+    float const qw{w * used_w / 512.f}, qh{h * used_h / 512.f};
+    float const top{above ? cy - h / 2.f + qh : cy + h / 2.f}, bottom{top - qh};
     list_cb_t cb{};
-    float const corners[4][2]{{cx - w / 2.f, top}, {cx + w / 2.f, top}, {cx + w / 2.f, bottom}, {cx - w / 2.f, bottom}};
+    float const corners[4][2]{{cx - qw / 2.f, top}, {cx + qw / 2.f, top}, {cx + qw / 2.f, bottom}, {cx - qw / 2.f, bottom}};
     for(int i{}; i != 4; ++i)
       {
       cb.corner[i][0] = corners[i][0];
       cb.corner[i][1] = corners[i][1];
       }
-    cb.uv_extent[0] = cb.uv_extent[1] = 1.f;
+    cb.uv_extent[0] = used_w / static_cast<float>(sphere_w);
+    cb.uv_extent[1] = used_h / static_cast<float>(sphere_h);
     cb.gain[0] = s.compass_sphere_gain;
     cb.colour[0] = s.compass_sphere_gamma;
     D3D11_MAPPED_SUBRESOURCE m{};
