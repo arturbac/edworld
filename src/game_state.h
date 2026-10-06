@@ -27,6 +27,23 @@ namespace edworld
     allegiance_e allegiance;
     };
 
+  ///\brief what Status.json says of the flight near a planet, for the compass (PoC): the fields are there in orbital
+  /// cruise, gliding, flying and landed; has_position false elsewhere
+  struct flight_t
+    {
+    std::uint64_t flags;
+    bool has_position;
+    double latitude, longitude, altitude, planet_radius, heading;
+    ///\brief degrees, + climbing, from the last two fixes that differed; NaN until there are two
+    double path_angle;
+    ///\brief the destination's body (Destination.Body; 0 = none or the system) and its name as Status.json gives it
+    std::uint32_t destination_body;
+    char destination_name[64];
+    };
+
+  [[nodiscard]]
+  auto flight() noexcept -> flight_t;
+
   ///\brief starts the thread that polls Status.json and asks EDSM about a new destination; once
   auto start_game_state() noexcept -> void;
 

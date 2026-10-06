@@ -14,4 +14,7 @@ namespace edworld
   /// frame, the list is drawn under the panel as a quad of its own in the panel's plane
   auto panel_list_after(ID3D11DeviceContext * ctx, std::uint64_t frame, std::uint32_t index_count, std::uint32_t start_index,
                         std::int32_t base_vertex, std::uint32_t start_instance) noexcept -> void;
+  ///\brief called at a watched panel draw (PoC): when the draw samples the compass's surface, the compass's dot is
+  /// read off it and the angles drawn beside the disc, at most once a frame (settings: compass*)
+  auto panel_compass(ID3D11DeviceContext * ctx, ID3D11Device * device, std::uint64_t frame) noexcept -> void;
   }  // namespace edworld

@@ -137,6 +137,31 @@ namespace edworld
         current.list_text = to_float(value, current.list_text);
       else if(key == "list_gain")
         current.list_gain = to_float(value, current.list_gain);
+      else if(key == "compass")
+        current.compass = to_uint(value, current.compass);
+      else if(key == "compass_surface")
+        {
+        auto const x{value.find('x')};
+        if(x != std::string_view::npos)
+          {
+          current.compass_surface_width = to_uint(trim(value.substr(0, x)), current.compass_surface_width);
+          current.compass_surface_height = to_uint(trim(value.substr(x + 1)), current.compass_surface_height);
+          }
+        }
+      else if(key == "compass_x")
+        current.compass_x = to_float(value, current.compass_x);
+      else if(key == "compass_y")
+        current.compass_y = to_float(value, current.compass_y);
+      else if(key == "compass_radius")
+        current.compass_radius = to_float(value, current.compass_radius);
+      else if(key == "compass_text_x")
+        current.compass_text_x = to_float(value, current.compass_text_x);
+      else if(key == "compass_text_y")
+        current.compass_text_y = to_float(value, current.compass_text_y);
+      else if(key == "compass_text_size")
+        current.compass_text_size = to_float(value, current.compass_text_size);
+      else if(key == "compass_log_ms")
+        current.compass_log_ms = to_uint(value, current.compass_log_ms);
       else if(key == "edsm")
         current.edsm = value == "1" or value == "true";
       else if(key == "log_all_vs")

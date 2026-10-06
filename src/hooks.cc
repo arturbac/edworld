@@ -960,6 +960,8 @@ namespace edworld
       last_draw_qpc = now;
       ++stat_draws;
       last_watched_ms.store(GetTickCount64(), std::memory_order_relaxed);
+      if(settings().compass)
+        panel_compass(ctx, device, frame);
       if(watched_found[current_watched])
         {
         // found in the game: its draws carry the panel surface, but whether its records decode like the family's
@@ -1518,6 +1520,8 @@ namespace edworld
     if(not share)
       open_share();
 #endif
+    if(settings().compass)
+      start_game_state();  // the compass's checking lines read the flight from Status.json
     if(settings().patch)
       {
       start_game_state();

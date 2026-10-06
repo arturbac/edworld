@@ -3,6 +3,7 @@
 // new destination.
 #include "game_state.h"
 
+#include "compass_math.h"
 #include "edworld_share.h"
 
 #include "runtime.h"
@@ -10,7 +11,9 @@
 #include <shlobj.h>
 #include <winhttp.h>
 
+#include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
@@ -29,6 +32,8 @@ namespace edworld
     // the list is written by the state thread, read by the patch on the render thread
     SRWLOCK list_lock = SRWLOCK_INIT;
     faction_list_t list{};
+    SRWLOCK flight_lock = SRWLOCK_INIT;
+    flight_t flight_now{};
 
     auto set_list(faction_list_t const & value) -> void
       {
@@ -91,6 +96,72 @@ namespace edworld
       if(close == std::string_view::npos)
         return {};
       return text.substr(open + 1, close - open - 1);
+      }
+
+    ///\brief the decimal number (sign, fraction, exponent) after "key":; ok false when there is none
+    auto real_after(std::string_view text, std::string_view key, std::size_t from, bool & ok) -> double
+      {
+      ok = false;
+      auto const at{text.find(key, from)};
+      if(at == std::string_view::npos)
+        return 0.0;
+      std::size_t i{at + key.size()};
+      while(i < text.size() and (text[i] == ' ' or text[i] == ':'))
+        ++i;
+      char buf[48]{};
+      std::size_t n{};
+      while(i < text.size() and n + 1 < sizeof buf and std::strchr("+-.0123456789eE", text[i]))
+        buf[n++] = text[i++];
+      char * end{};
+      double const v{std::strtod(buf, &end)};
+      ok = n != 0 and end == buf + n;
+      return ok ? v : 0.0;
+      }
+
+    ///\brief the flight fields of a complete Status.json; the path angle from the previous fix that differed
+    auto read_flight(std::string_view text, std::uint64_t flags, flight_t & last) -> void
+      {
+      flight_t f{};
+      f.flags = flags;
+      bool la{}, lo{}, al{}, pr{}, hd{};
+      f.latitude = real_after(text, "\"Latitude\"", 0, la);
+      f.longitude = real_after(text, "\"Longitude\"", 0, lo);
+      f.altitude = real_after(text, "\"Altitude\"", 0, al);
+      f.planet_radius = real_after(text, "\"PlanetRadius\"", 0, pr);
+      f.heading = real_after(text, "\"Heading\"", 0, hd);
+      f.has_position = la and lo and al and pr;
+      f.path_angle = std::nan("");
+      if(f.has_position and last.has_position)
+        {
+        bool const moved{f.latitude != last.latitude or f.longitude != last.longitude or f.altitude != last.altitude};
+        f.path_angle = moved ? flight_path_angle(last.latitude, last.longitude, last.altitude, f.latitude, f.longitude,
+                                                 f.altitude, f.planet_radius)
+                             : last.path_angle;
+        }
+      auto const dest_at{text.find("\"Destination\"")};
+      if(dest_at != std::string_view::npos)
+        {
+        bool ok{};
+        f.destination_body = static_cast<std::uint32_t>(number_after(text, "\"Body\"", dest_at, ok));
+        std::string_view const name{string_after(text, "\"Name\"", dest_at)};
+        std::size_t const n{std::min(name.size(), sizeof f.destination_name - 1)};
+        std::memcpy(f.destination_name, name.data(), n);
+        }
+      // the previous fix kept until the position changes, so the angle spans a real move
+      bool const same{f.has_position and last.has_position and f.latitude == last.latitude and f.longitude == last.longitude and
+                      f.altitude == last.altitude};
+      if(not same)
+        last = f;
+      else
+        {
+        last.flags = f.flags;
+        last.heading = f.heading;
+        last.destination_body = f.destination_body;
+        std::memcpy(last.destination_name, f.destination_name, sizeof f.destination_name);
+        }
+      AcquireSRWLockExclusive(&flight_lock);
+      flight_now = last;
+      ReleaseSRWLockExclusive(&flight_lock);
       }
 
     auto to_allegiance(std::string_view name) -> allegiance_e
@@ -247,6 +318,7 @@ namespace edworld
       bool target_answered{};
       bool target_known{};
       bool target_listed{};
+      flight_t last_fix{};
       for(;;)
         {
         std::string const text{read_file(path)};
@@ -266,6 +338,8 @@ namespace edworld
             complete ? (flags2 & (1ull << 19)) != 0 and (flags & (1ull << 30)) == 0 : last_charging
           };
           charging.store(now_charging, std::memory_order_relaxed);
+          if(complete)
+            read_flight(text, flags, last_fix);
           auto const dest_at{text.find("\"Destination\"")};
           bool have_dest{};
           std::uint64_t const dest{
@@ -370,6 +444,14 @@ namespace edworld
       destination.load(std::memory_order_relaxed),
       static_cast<allegiance_e>(allegiance.load(std::memory_order_relaxed))
     };
+    }
+
+  auto flight() noexcept -> flight_t
+    {
+    AcquireSRWLockShared(&flight_lock);
+    flight_t const copy{flight_now};
+    ReleaseSRWLockShared(&flight_lock);
+    return copy;
     }
 
   auto destination_factions() noexcept -> faction_list_t

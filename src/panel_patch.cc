@@ -24,6 +24,7 @@
 #include "list_font.h"
 #include "list_ps.h"
 #include "list_vs.h"
+#include "compass_math.h"
 #include "panel_math.h"
 
 #include <imgui.h>
@@ -1282,6 +1283,316 @@ namespace edworld
       {
       told_list_quad = true;
       log_line("list: first drawn under the jump panel as a quad of its own (%.0f px of %u)", static_cast<double>(list_used), r.list_height);
+      }
+    }
+
+  // ---- the compass (PoC): the dot read off the HUD's surface, the angles written beside the disc ----
+  // Each frame the disc's square is copied before anything of edworld's is drawn; the copy is read a frame or more
+  // later (Map without waiting), so the angles lag the dot by a few frames. The text goes onto the same surface, so it
+  // rides the cockpit with the compass; it shows while the disc's rim shows (the surface's alpha at one rim pixel).
+  namespace
+    {
+    struct compass_state_t
+      {
+      ID3D11Device * device{};
+      ID3D11Texture2D * copy{};
+      std::uint32_t copy_width{}, copy_height{};
+      DXGI_FORMAT copy_format{};
+      bool copied{};
+      std::uint64_t copied_frame{};
+      ID3D11Texture2D * mask{};
+      ID3D11ShaderResourceView * mask_srv{};
+      std::uint32_t mask_width{}, mask_height{};
+      compass_reading_t reading{};
+      bool have_reading{};
+      std::uint64_t lag{};  ///< frames between the copy and its reading
+      std::uint64_t drawn_frame{~0ull};
+      std::uint64_t reads{};
+      LONGLONG last_log{};
+      bool told{};
+      };
+
+    compass_state_t cs;
+
+    auto compass_reset(ID3D11Device * device) -> void
+      {
+      for(IUnknown * u: std::initializer_list<IUnknown *>{cs.copy, cs.mask_srv, cs.mask})
+        if(u)
+          u->Release();
+      cs = compass_state_t{};
+      cs.device = device;
+      }
+
+    ///\brief the surface of the given size this draw samples (PS t2, else t1), AddRef'd; none when it is another
+    auto surface_sampled(ID3D11DeviceContext * ctx, std::uint32_t width, std::uint32_t height, D3D11_TEXTURE2D_DESC & d)
+      -> ID3D11Texture2D *
+      {
+      for(UINT const slot: {2u, 1u})
+        {
+        ID3D11ShaderResourceView * srv{};
+        ctx->PSGetShaderResources(slot, 1, &srv);
+        if(not srv)
+          continue;
+        ID3D11Resource * res{};
+        srv->GetResource(&res);
+        srv->Release();
+        if(not res)
+          continue;
+        D3D11_RESOURCE_DIMENSION dim{};
+        res->GetType(&dim);
+        ID3D11Texture2D * t{};
+        if(dim == D3D11_RESOURCE_DIMENSION_TEXTURE2D)
+          res->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void **>(&t));
+        res->Release();
+        if(not t)
+          continue;
+        t->GetDesc(&d);
+        if(d.Width == width and d.Height == height)
+          return t;
+        t->Release();
+        }
+      return nullptr;
+      }
+
+    auto compass_mask_for(D3D11_TEXTURE2D_DESC const & surface) -> ID3D11ShaderResourceView *
+      {
+      if(cs.mask and cs.mask_width == surface.Width and cs.mask_height == surface.Height)
+        return cs.mask_srv;
+      release(cs.mask_srv);
+      release(cs.mask);
+      D3D11_TEXTURE2D_DESC d{};
+      d.Width = surface.Width;
+      d.Height = surface.Height;
+      d.MipLevels = 1;
+      d.ArraySize = 1;
+      d.Format = surface.Format;
+      d.SampleDesc.Count = 1;
+      d.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+      if(FAILED(r.device->CreateTexture2D(&d, nullptr, &cs.mask)) or not cs.mask)
+        return nullptr;
+      D3D11_SHADER_RESOURCE_VIEW_DESC vd{};
+      vd.Format = d.Format == DXGI_FORMAT_R8G8B8A8_TYPELESS ? DXGI_FORMAT_R8G8B8A8_UNORM : d.Format;
+      vd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+      vd.Texture2D.MipLevels = 1;
+      if(FAILED(r.device->CreateShaderResourceView(cs.mask, &vd, &cs.mask_srv)))
+        {
+        release(cs.mask);
+        return nullptr;
+        }
+      cs.mask_width = surface.Width;
+      cs.mask_height = surface.Height;
+      return cs.mask_srv;
+      }
+
+    ///\brief text on an opaque dark ground, top left at (x, y); returns the height used
+    auto ground_text(ImDrawList * dl, float x, float y, float size, ImU32 colour, char const * text) -> float
+      {
+      ImVec2 const extent{r.font->CalcTextSizeA(size, FLT_MAX, 0.f, text)};
+      dl->AddRectFilled(ImVec2{x - 4.f, y - 2.f}, ImVec2{x + extent.x + 4.f, y + extent.y + 2.f}, IM_COL32(2, 3, 4, 255));
+      dl->AddText(r.font, size, ImVec2{x, y}, colour, text);
+      return extent.y + 4.f;
+      }
+
+    constexpr char degree[]{"\xC2\xB0"};
+    }  // namespace
+
+  auto panel_compass(ID3D11DeviceContext * ctx, ID3D11Device * device, std::uint64_t frame) noexcept -> void
+    {
+    settings_t const & s{settings()};
+    if(s.compass == 0 or frame == cs.drawn_frame)
+      return;
+    D3D11_TEXTURE2D_DESC d{};
+    ID3D11Texture2D * const tex{surface_sampled(ctx, s.compass_surface_width, s.compass_surface_height, d)};
+    if(not tex)
+      return;
+    if(not create(device, ctx) or not r.font)
+      {
+      tex->Release();
+      return;
+      }
+    if(cs.device != device)
+      compass_reset(device);
+    cs.drawn_frame = frame;
+
+    // the disc's square: read the copy made earlier, then copy this frame's (before edworld draws anything)
+    auto const half{static_cast<std::int32_t>(std::ceil(s.compass_radius * 1.4f))};
+    std::int32_t const left{std::max(0, static_cast<std::int32_t>(s.compass_x) - half)};
+    std::int32_t const top{std::max(0, static_cast<std::int32_t>(s.compass_y) - half)};
+    std::int32_t const right{std::min(static_cast<std::int32_t>(d.Width), static_cast<std::int32_t>(s.compass_x) + half)};
+    std::int32_t const bottom{std::min(static_cast<std::int32_t>(d.Height), static_cast<std::int32_t>(s.compass_y) + half)};
+    if(right <= left or bottom <= top)
+      {
+      tex->Release();
+      return;
+      }
+    auto const cw{static_cast<std::uint32_t>(right - left)}, ch{static_cast<std::uint32_t>(bottom - top)};
+    if(not cs.copy or cs.copy_width != cw or cs.copy_height != ch or cs.copy_format != d.Format)
+      {
+      release(cs.copy);
+      cs.copied = false;
+      D3D11_TEXTURE2D_DESC c{};
+      c.Width = cw;
+      c.Height = ch;
+      c.MipLevels = c.ArraySize = 1;
+      c.Format = d.Format;
+      c.SampleDesc.Count = 1;
+      c.Usage = D3D11_USAGE_STAGING;
+      c.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+      if(FAILED(r.device->CreateTexture2D(&c, nullptr, &cs.copy)) or not cs.copy)
+        {
+        tex->Release();
+        return;
+        }
+      cs.copy_width = cw;
+      cs.copy_height = ch;
+      cs.copy_format = d.Format;
+      }
+    if(cs.copied)
+      {
+      D3D11_MAPPED_SUBRESOURCE m{};
+      HRESULT const hr{ctx->Map(cs.copy, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &m)};
+      if(hr != DXGI_ERROR_WAS_STILL_DRAWING)
+        {
+        cs.copied = false;
+        if(SUCCEEDED(hr) and m.pData)
+          {
+          cs.reading = read_compass(static_cast<std::uint8_t const *>(m.pData), m.RowPitch, static_cast<std::int32_t>(cw),
+                                    static_cast<std::int32_t>(ch), s.compass_x - static_cast<float>(left),
+                                    s.compass_y - static_cast<float>(top), s.compass_radius * 1.25f);
+          cs.have_reading = true;
+          cs.lag = frame - cs.copied_frame;
+          ++cs.reads;
+          ctx->Unmap(cs.copy, 0);
+          }
+        }
+      }
+    if(not cs.copied)
+      {
+      D3D11_BOX const area{static_cast<UINT>(left), static_cast<UINT>(top), 0, static_cast<UINT>(right), static_cast<UINT>(bottom), 1};
+      ctx->CopySubresourceRegion(cs.copy, 0, 0, 0, 0, tex, 0, &area);
+      cs.copied = true;
+      cs.copied_frame = frame;
+      }
+
+    // the gate: one pixel of the rim (right of the centre); no box, so everything drawn follows that pixel's alpha
+    ID3D11RenderTargetView * const rtv{rtv_for(tex)};
+    ID3D11ShaderResourceView * const mask{rtv ? compass_mask_for(d) : nullptr};
+    if(not rtv or not mask)
+      {
+      tex->Release();
+      return;
+      }
+    auto const gx{static_cast<UINT>(s.compass_x + s.compass_radius)}, gy{static_cast<UINT>(s.compass_y)};
+    if(gx + 1u < d.Width and gy + 1u < d.Height)
+      {
+      D3D11_BOX const g{gx, gy, 0, gx + 1u, gy + 1u, 1};
+      ctx->CopySubresourceRegion(cs.mask, 0, gx, gy, 0, tex, 0, &g);
+      }
+    tex->Release();
+    D3D11_MAPPED_SUBRESOURCE gm{};
+    if(FAILED(ctx->Map(r.gate, 0, D3D11_MAP_WRITE_DISCARD, 0, &gm)))
+      return;
+    gate_t const gate{{0, 0, 0, 0}, {static_cast<std::int32_t>(gx), static_cast<std::int32_t>(gy), 0, 0}};
+    std::memcpy(gm.pData, &gate, sizeof gate);
+    ctx->Unmap(r.gate, 0);
+
+    flight_t const f{flight()};
+    compass_reading_t const & c{cs.reading};
+    compass_angles_t const a{compass_angles(c.x, c.y, s.compass_radius, c.filled)};
+
+    float const sw{static_cast<float>(d.Width)}, sh{static_cast<float>(d.Height)};
+    ImGui::SetCurrentContext(r.imgui);
+    ImGuiIO & io{ImGui::GetIO()};
+    io.DisplaySize = ImVec2{sw, sh};
+    io.DeltaTime = 1.f / 60.f;
+    ImGui_ImplDX11_NewFrame();
+    ImGui::NewFrame();
+    ImDrawList * const dl{ImGui::GetBackgroundDrawList()};
+    char line[256];
+    if(s.compass == 2)
+      {
+      // the surface's pixels: magenta lines every 100, their coordinates every 200 (magenta is never read as the dot)
+      ImU32 const grid{IM_COL32(255, 0, 255, 255)};
+      for(float x{100.f}; x < sw; x += 100.f)
+        dl->AddLine(ImVec2{x, 0.f}, ImVec2{x, sh}, grid, std::fmod(x, 500.f) == 0.f ? 4.f : 2.f);
+      for(float y{100.f}; y < sh; y += 100.f)
+        dl->AddLine(ImVec2{0.f, y}, ImVec2{sw, y}, grid, std::fmod(y, 500.f) == 0.f ? 4.f : 2.f);
+      for(float y{0.f}; y < sh; y += 200.f)
+        for(float x{0.f}; x < sw; x += 200.f)
+          {
+          std::snprintf(line, sizeof line, "%.0f,%.0f", static_cast<double>(x), static_cast<double>(y));
+          dl->AddText(r.font, 22.f, ImVec2{x + 4.f, y + 4.f}, IM_COL32(255, 255, 0, 255), line);
+          }
+      // where the reading looks: the disc's rim and the square copied
+      dl->AddCircle(ImVec2{s.compass_x, s.compass_y}, s.compass_radius, IM_COL32(255, 128, 0, 255), 64, 1.f);
+      dl->AddRect(ImVec2{static_cast<float>(left), static_cast<float>(top)}, ImVec2{static_cast<float>(right), static_cast<float>(bottom)},
+                  IM_COL32(255, 128, 0, 255));
+      }
+    float const x0{s.compass_text_x};
+    float y{s.compass_text_y};
+    float const big{s.compass_text_size}, info_size{std::round(s.compass_text_size * 0.62f)};
+    if(not cs.have_reading or not c.found)
+      std::snprintf(line, sizeof line, "NO DOT");
+    else
+      std::snprintf(line, sizeof line, "%s%s %.1f%s  %s %.1f%s", c.filled ? "" : "BEHIND ", a.up < 0.f ? "DOWN" : "UP",
+                    static_cast<double>(std::fabs(a.up)), degree, a.right < 0.f ? "LEFT" : "RIGHT", static_cast<double>(std::fabs(a.right)),
+                    degree);
+    y += ground_text(dl, x0, y, big, IM_COL32(150, 230, 255, 255), line);
+    if(s.compass == 2)
+      {
+      ImU32 const info{IM_COL32(255, 230, 120, 255)};
+      std::snprintf(line, sizeof line, "off nose %.1f%s  r %.1f/%.0f  dot %+.1f %+.1f  px %u %s", static_cast<double>(a.off_nose), degree,
+                    static_cast<double>(std::sqrt(c.x * c.x + c.y * c.y)), static_cast<double>(s.compass_radius), static_cast<double>(c.x),
+                    static_cast<double>(c.y), c.pixels, c.filled ? "filled" : "hollow");
+      y += ground_text(dl, x0, y, info_size, info, line);
+      std::snprintf(line, sizeof line, "if target = planet: nose %.1f%s below horizon", static_cast<double>(90.f - a.off_nose), degree);
+      y += ground_text(dl, x0, y, info_size, info, line);
+      if(f.has_position)
+        {
+        std::snprintf(line, sizeof line, "alt %.2f km  hdg %.0f  path %+.1f%s (Status)", f.altitude / 1000.0, f.heading,
+                      f.path_angle, degree);
+        y += ground_text(dl, x0, y, info_size, info, line);
+        std::snprintf(line, sizeof line, "lat %.4f lon %.4f  R %.0f km", f.latitude, f.longitude, f.planet_radius / 1000.0);
+        y += ground_text(dl, x0, y, info_size, info, line);
+        }
+      else
+        y += ground_text(dl, x0, y, info_size, info, "no position in Status.json");
+      std::snprintf(line, sizeof line, "dest body %u %.40s", f.destination_body, f.destination_name);
+      y += ground_text(dl, x0, y, info_size, info, line);
+      std::snprintf(line, sizeof line, "flags %08llx  lag %llu fr  reads %llu  %s", static_cast<unsigned long long>(f.flags),
+                    static_cast<unsigned long long>(cs.lag), static_cast<unsigned long long>(cs.reads), EDWORLD_VERSION);
+      y += ground_text(dl, x0, y, info_size, info, line);
+      }
+    ImGui::Render();
+
+    backup_t b;
+    save(ctx, b);
+    ctx->OMSetRenderTargets(1, &rtv, nullptr);
+    ctx->PSSetShaderResources(1, 1, &mask);
+    ctx->PSSetConstantBuffers(0, 1, &r.gate);
+    ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+    restore(ctx, b);
+
+    if(not cs.told)
+      {
+      cs.told = true;
+      log_line("compass: first drawn (mode %u, surface %ux%u, disc %.0f,%.0f r %.0f, text at %.0f,%.0f)", s.compass, d.Width, d.Height,
+               static_cast<double>(s.compass_x), static_cast<double>(s.compass_y), static_cast<double>(s.compass_radius),
+               static_cast<double>(s.compass_text_x), static_cast<double>(s.compass_text_y));
+      }
+    LARGE_INTEGER now{};
+    QueryPerformanceCounter(&now);
+    LARGE_INTEGER freq{};
+    QueryPerformanceFrequency(&freq);
+    if(s.compass_log_ms and (now.QuadPart - cs.last_log) * 1000 / freq.QuadPart >= s.compass_log_ms)
+      {
+      cs.last_log = now.QuadPart;
+      log_line("compass: %s %s dot %+.2f %+.2f px %u off %.2f up %+.2f right %+.2f lag %llu | alt %.0f lat %.6f lon %.6f hdg %.0f path %+.2f "
+               "flags %llx dest %u %.40s",
+               c.found ? "dot" : "none", c.filled ? "filled" : "hollow", static_cast<double>(c.x), static_cast<double>(c.y), c.pixels,
+               static_cast<double>(a.off_nose), static_cast<double>(a.up), static_cast<double>(a.right),
+               static_cast<unsigned long long>(cs.lag), f.has_position ? f.altitude : -1.0, f.latitude, f.longitude, f.heading, f.path_angle,
+               static_cast<unsigned long long>(f.flags), f.destination_body, f.destination_name);
       }
     }
   }  // namespace edworld

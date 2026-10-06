@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "../src/compass_math.h"
 #include "../src/edworld_share.h"
 #include "../src/faction_list.h"
 #include "../src/panel_math.h"
@@ -121,6 +122,54 @@ int main()
           std::fabs(edworld::list_height(seven_edsm, 58.f, 15.f, 28.f) - 522.f) < 0.01f,
         "list: the box as high as its rows and its footer");
   }
+  // the compass: a filled dot and a hollow one drawn into a copy of the disc's square, read back; the angles from the
+  // sphere's projection; the flight path angle from two fixes Status.json gave on 2026-10-06 (ed-lab, Kestrel)
+  {
+  constexpr std::int32_t w{152}, h{152};
+  constexpr float cx{76.f}, cy{76.f}, radius{54.f};
+  std::vector<std::uint8_t> area(static_cast<std::size_t>(w) * h * 4u);
+  auto const clear = [&]
+    {
+    for(std::size_t i{}; i != area.size(); i += 4)
+      {
+      area[i] = 30; area[i + 1] = 80; area[i + 2] = 200; area[i + 3] = 255;  // the disc's blue: never the dot
+      }
+    };
+  auto const dot = [&](float x, float y, float outer, float inner)
+    {
+    for(std::int32_t py{}; py != h; ++py)
+      for(std::int32_t px{}; px != w; ++px)
+        {
+        float const d{std::hypot(static_cast<float>(px) - x, static_cast<float>(py) - y)};
+        if(d <= outer and d >= inner)
+          std::memset(&area[(static_cast<std::size_t>(py) * w + px) * 4u], 255, 4);
+        }
+    };
+  clear();
+  dot(cx + 20.f, cy - 30.f, 6.6f, 0.f);
+  auto const filled{edworld::read_compass(area.data(), w * 4u, w, h, cx, cy, radius * 1.25f)};
+  check(filled.found and filled.filled and std::fabs(filled.x - 20.f) < 0.2f and std::fabs(filled.y + 30.f) < 0.2f and
+          filled.pixels > 100u,
+        "compass: a filled dot found where it is drawn");
+  clear();
+  dot(cx - 40.f, cy + 10.f, 6.6f, 4.5f);
+  auto const hollow{edworld::read_compass(area.data(), w * 4u, w, h, cx, cy, radius * 1.25f)};
+  check(hollow.found and not hollow.filled and std::fabs(hollow.x + 40.f) < 0.3f and std::fabs(hollow.y - 10.f) < 0.3f,
+        "compass: a hollow dot found and told from a filled one");
+  clear();
+  check(not edworld::read_compass(area.data(), w * 4u, w, h, cx, cy, radius * 1.25f).found, "compass: no dot on a bare disc");
+  auto const up30{edworld::compass_angles(0.f, -27.f, radius, true)};
+  check(std::fabs(up30.up - 30.f) < 0.01f and std::fabs(up30.off_nose - 30.f) < 0.01f and std::fabs(up30.right) < 0.01f,
+        "compass: half the radius straight up is 30 degrees up, not 45 (the sphere's projection)");
+  auto const behind{edworld::compass_angles(27.f, 0.f, radius, false)};
+  check(std::fabs(behind.off_nose - 150.f) < 0.01f and std::fabs(behind.right - 150.f) < 0.01f and std::fabs(behind.up) < 0.01f,
+        "compass: hollow half the radius right is 150 degrees right, behind");
+  auto const rim{edworld::compass_angles(0.f, 80.f, radius, true)};
+  check(std::fabs(rim.up + 90.f) < 0.01f, "compass: past the rim counts as on it");
+  double const g{edworld::flight_path_angle(-13.579245, 55.208015, 879953.0, -12.421914, 52.95866, 719708.0, 884209.9375)};
+  check(std::fabs(g + 65.6) < 0.1, "compass: the flight path angle of two fixes (-65.6 degrees, the run of 2026-10-06)");
+  check(std::isnan(edworld::flight_path_angle(1.0, 2.0, 3.0, 1.0, 2.0, 3.0, 1000.0)), "compass: no angle without a move");
+  }
   wchar_t exe[MAX_PATH]{};
   GetModuleFileNameW(nullptr, exe, MAX_PATH);
   std::wstring dir{exe};
@@ -177,6 +226,9 @@ int main()
     std::fprintf(ini, "shm_dir = %ls\n", shm_dir.c_str());
   // the superpower is read from the panel's text, which this test's surface has none of: the Empire emblem by hand
   std::fprintf(ini, "patch_force = 2\n");
+  // the compass on the same surface: its disc at (100, 64), the text under the patch's box (its checks untouched)
+  std::fprintf(ini, "compass = 2\ncompass_surface = 512x128\ncompass_x = 100\ncompass_y = 64\ncompass_radius = 30\n"
+                    "compass_text_x = 150\ncompass_text_y = 100\ncompass_text_size = 12\ncompass_log_ms = 1\n");
   std::fclose(ini);
   }
   DeleteFileW(share_path.c_str());
@@ -325,6 +377,11 @@ int main()
   for(int y{34}; y != 95; ++y)
     for(int x{200}; x != 313; ++x)
       drawn[static_cast<std::size_t>(y) * 512 + x] = 0xff000000u;
+  // the compass's dot, white, 10 px right of and 10 px above its disc's centre (100, 64)
+  for(int y{48}; y != 61; ++y)
+    for(int x{104}; x != 117; ++x)
+      if((x - 110) * (x - 110) + (y - 54) * (y - 54) <= 36)
+        drawn[static_cast<std::size_t>(y) * 512 + x] = 0xffffffffu;
   ctx->UpdateSubresource(surface, 0, nullptr, drawn.data(), 512 * 4, 0);
 
   D3D11_TEXTURE2D_DESC rd{};
@@ -554,6 +611,18 @@ int main()
   big->Release();
   }
 
+  {
+  std::string compass_log;
+  if(std::FILE * lf{_wfopen(log_path.c_str(), L"rb")})
+    {
+    char buf[4096];
+    for(std::size_t got; (got = std::fread(buf, 1, sizeof buf, lf)) != 0;)
+      compass_log.append(buf, got);
+    std::fclose(lf);
+    }
+  check(compass_log.find("compass: first drawn (mode 2, surface 512x128") != std::string::npos, "compass: drawn on its surface");
+  check(compass_log.find("compass: dot filled dot +10.00 -10.00") != std::string::npos, "compass: the dot read back where it was put");
+  }
   WIN32_FIND_DATAW found{};
   HANDLE const dumps{FindFirstFileW((output_dir + L"\\edworld_dumps\\*_512x128_f27_*.raw").c_str(), &found)};
   check(dumps != INVALID_HANDLE_VALUE, "the panel's surface dumped (512x128)");

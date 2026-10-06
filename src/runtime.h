@@ -85,6 +85,24 @@ namespace edworld
     ///\brief the list's colours times this in the cockpit: its target is HDR (R11G11B10_FLOAT), and white text there
     /// blooms more than the panel's own
     float list_gain{0.8f};
+
+    // ---- the compass (PoC): the HUD compass's dot read off its interface surface, the angles written beside it ----
+    ///\brief 0 off, 1 the angles, 2 the angles with everything known for checking them, and a grid of the surface's
+    /// pixels with candidate places for the text (which of the surface the cockpit shows is not known yet)
+    std::uint32_t compass{0};
+    ///\brief the interface surface that carries the compass (the HUD's left cluster: heat, speed, fuel, target)
+    std::uint32_t compass_surface_width{2200};
+    std::uint32_t compass_surface_height{1800};
+    ///\brief the compass disc's centre and rim radius on that surface (T8 and Kestrel, 2026-10-04/06)
+    float compass_x{430.f};
+    float compass_y{271.f};
+    float compass_radius{54.f};
+    ///\brief the text's top left corner and its height, in the surface's pixels
+    float compass_text_x{140.f};
+    float compass_text_y{180.f};
+    float compass_text_size{30.f};
+    ///\brief a line of the reading in the log at most this often; 0 = never
+    std::uint32_t compass_log_ms{1000};
     };
 
   auto settings() noexcept -> settings_t const &;
