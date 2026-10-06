@@ -1622,6 +1622,11 @@ namespace edworld
             y += sphere_line(dl, y, 84.f, behind ? orange : blue, a2);
           if(behind)
             sphere_line(dl, y, 44.f, orange, "BEHIND");
+          // the plugin's name, small, in the corner under the angles
+          ImFont * const name_font{r.sphere_font ? r.sphere_font : r.font};
+          ImVec2 const name{name_font->CalcTextSizeA(26.f, FLT_MAX, 0.f, "edworld")};
+          dl->AddText(name_font, 26.f, ImVec2{static_cast<float>(sphere_w) - name.x - 10.f, static_cast<float>(sphere_h) - name.y - 6.f},
+                      rgba(110, 140, 180, 200), "edworld");
           }
         else
           {
