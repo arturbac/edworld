@@ -516,6 +516,7 @@ namespace edworld
       float uv_extent[4];
       std::int32_t gate[4];
       float gain[4];
+      float colour[4];  ///< x: the texture's gamma (0: as it is)
       };
 
     std::uint64_t list_frame{~0ull};  ///< the frame the list's texture was drawn in
@@ -1872,7 +1873,8 @@ namespace edworld
       cb.corner[i][1] = corners[i][1];
       }
     cb.uv_extent[0] = cb.uv_extent[1] = 1.f;
-    cb.gain[0] = s.list_gain;
+    cb.gain[0] = s.compass_sphere_gain;
+    cb.colour[0] = s.compass_sphere_gamma;
     D3D11_MAPPED_SUBRESOURCE m{};
     if(FAILED(ctx->Map(r.list_cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &m)))
       return;

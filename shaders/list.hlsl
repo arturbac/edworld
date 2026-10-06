@@ -33,6 +33,7 @@ cbuffer list_cb : register(b4)
   float4 uv_extent;  // the used part of the list's texture: u, v
   int4 gate;         // a pixel of the panel's surface
   float4 gain;       // colour scale (the target may be HDR)
+  float4 colour;     // x: the texture's gamma, its colours taken back to linear (0: as they are - the list)
   };
 
 struct vs_out
@@ -85,6 +86,12 @@ SamplerState linear_clamp : register(s0);
 float4 ps_main(vs_out i) : SV_Target
   {
   float4 c = list_texture.Sample(linear_clamp, i.uv);
+  // the cockpit is composed in linear HDR: colours drawn as on a picture (sRGB) come out lighter and paler there
+  if(colour.x > 0.0)
+    {
+    float a = max(c.a, 1e-4);
+    c.rgb = pow(saturate(c.rgb / a), colour.x) * a;
+    }
   float shown = surface.Load(int3(gate.xy, 0)).a;
   return float4(c.rgb * gain.x, c.a) * shown;
   }
