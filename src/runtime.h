@@ -108,6 +108,23 @@ namespace edworld
     float compass_info_size{18.f};
     ///\brief a line of the reading in the log at most this often; 0 = never
     std::uint32_t compass_log_ms{1000};
+    ///\brief 1: two spheres of the target's direction as quads of edworld's own on the dashboard, in the planes of the two
+    /// panels drawn first from the 2048x1280 surface (12 indices; the left one, then the right one): on the left the
+    /// sphere seen from the front (as the compass, larger), on the right seen from behind, the left and above, with the
+    /// place the target should be (compass_should_dive)
+    std::uint32_t compass_spheres{0};
+    ///\brief the quads' height in the panels' local units, their width over height (square on the screen: the panels'
+    /// units are not square there), and their centres in each panel's local plane (2026-10-06, Kestrel: the panels' lower
+    /// quads span x -0.10..0.18 / -0.18..0.10, y -0.22..-0.36)
+    float compass_sphere_height{0.135f};
+    float compass_sphere_aspect{1.13f};
+    float compass_sphere_a_x{0.043f};
+    float compass_sphere_a_y{-0.289f};
+    float compass_sphere_c_x{-0.041f};
+    float compass_sphere_c_y{-0.289f};
+    ///\brief the nose this many degrees below the horizon is the approach to show (PoC: fixed); with the planet as the
+    /// target, the target then is 90 minus this below the nose
+    float compass_should_dive{35.f};
     };
 
   auto settings() noexcept -> settings_t const &;

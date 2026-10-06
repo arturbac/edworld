@@ -166,6 +166,22 @@ namespace edworld
         current.compass_info_y = to_float(value, current.compass_info_y);
       else if(key == "compass_info_size")
         current.compass_info_size = to_float(value, current.compass_info_size);
+      else if(key == "compass_spheres")
+        current.compass_spheres = to_uint(value, current.compass_spheres);
+      else if(key == "compass_sphere_height")
+        current.compass_sphere_height = to_float(value, current.compass_sphere_height);
+      else if(key == "compass_sphere_aspect")
+        current.compass_sphere_aspect = to_float(value, current.compass_sphere_aspect);
+      else if(key == "compass_sphere_a_x")
+        current.compass_sphere_a_x = to_float(value, current.compass_sphere_a_x);
+      else if(key == "compass_sphere_a_y")
+        current.compass_sphere_a_y = to_float(value, current.compass_sphere_a_y);
+      else if(key == "compass_sphere_c_x")
+        current.compass_sphere_c_x = to_float(value, current.compass_sphere_c_x);
+      else if(key == "compass_sphere_c_y")
+        current.compass_sphere_c_y = to_float(value, current.compass_sphere_c_y);
+      else if(key == "compass_should_dive")
+        current.compass_should_dive = to_float(value, current.compass_should_dive);
       else if(key == "compass_log_ms")
         current.compass_log_ms = to_uint(value, current.compass_log_ms);
       else if(key == "edsm")

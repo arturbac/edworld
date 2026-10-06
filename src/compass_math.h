@@ -128,4 +128,54 @@ namespace edworld
       return std::nan("");
     return std::atan2(vertical, horizontal) / rad;
     }
+
+  // ---- the spheres drawn beside the dashboard (PoC): the target's direction in the ship's frame, and a view of it ----
+  ///\brief a direction in the ship's frame: x right, y up, z forward (unit length)
+  struct compass_direction_t
+    {
+    float x, y, z;
+    };
+
+  ///\brief the target's direction from the dot (x right, y down on the surface, radius in its pixels), as
+  /// compass_angles reads it
+  [[nodiscard]]
+  inline auto compass_direction(float x, float y, float radius, bool filled) noexcept -> compass_direction_t
+    {
+    float rx{x / radius}, ry{-y / radius};
+    float const r{std::sqrt(rx * rx + ry * ry)};
+    if(r > 1.f)
+      {
+      rx /= r;
+      ry /= r;
+      }
+    return compass_direction_t{rx, ry, std::sqrt(std::max(0.f, 1.f - rx * rx - ry * ry)) * (filled ? 1.f : -1.f)};
+    }
+
+  ///\brief a direction from its angles in degrees (up: above the wings' plane, right: atan2(right, forward))
+  [[nodiscard]]
+  inline auto direction_of(float up, float right) noexcept -> compass_direction_t
+    {
+    float const u{up / compass_degrees}, r{right / compass_degrees};
+    return compass_direction_t{std::cos(u) * std::sin(r), std::sin(u), std::cos(u) * std::cos(r)};
+    }
+
+  ///\brief a point of the unit sphere as a camera behind, to the left and above sees it: x right and y up on the
+  /// picture (the sphere's outline is the unit circle), on_far_side: on the far side of the sphere from the camera
+  struct sphere_point_t
+    {
+    float x, y;
+    bool on_far_side;
+    };
+
+  ///\brief the camera turned yaw degrees about the ship's vertical (to its left) and tilted pitch degrees down
+  /// over it; yaw 0, pitch 0 looks along the nose from behind
+  [[nodiscard]]
+  inline auto sphere_view(compass_direction_t const & d, float yaw, float pitch) noexcept -> sphere_point_t
+    {
+    float const cy{std::cos(yaw / compass_degrees)}, sy{std::sin(yaw / compass_degrees)};
+    float const cp{std::cos(pitch / compass_degrees)}, sp{std::sin(pitch / compass_degrees)};
+    float const x1{d.x * cy - d.z * sy}, z1{d.x * sy + d.z * cy};
+    float const y2{d.y * cp + z1 * sp}, z2{-d.y * sp + z1 * cp};
+    return sphere_point_t{x1, y2, z2 > 0.f};
+    }
   }  // namespace edworld

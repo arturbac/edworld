@@ -1062,11 +1062,16 @@ namespace edworld
       ID3D11DeviceContext * ctx, std::uint32_t index_count, std::uint32_t start_index, std::int32_t base_vertex, std::uint32_t start_instance
     ) noexcept -> void
       {
-      if(not settings().patch or not settings().list)
+      bool const list{settings().patch and settings().list};
+      bool const spheres{settings().compass and settings().compass_spheres};
+      if(not list and not spheres)
         return;
       __try
         {
-        panel_list_after(ctx, frame, index_count, start_index, base_vertex, start_instance);
+        if(list)
+          panel_list_after(ctx, frame, index_count, start_index, base_vertex, start_instance);
+        if(spheres)
+          panel_compass_after(ctx, frame, index_count, start_instance);
         }
       __except(EXCEPTION_EXECUTE_HANDLER)
         {

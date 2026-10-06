@@ -173,6 +173,17 @@ int main()
   double const g{edworld::flight_path_angle(-13.579245, 55.208015, 879953.0, -12.421914, 52.95866, 719708.0, 884209.9375)};
   check(std::fabs(g + 65.6) < 0.1, "compass: the flight path angle of two fixes (-65.6 degrees, the run of 2026-10-06)");
   check(std::isnan(edworld::flight_path_angle(1.0, 2.0, 3.0, 1.0, 2.0, 3.0, 1000.0)), "compass: no angle without a move");
+  auto const ahead{edworld::compass_direction(0.f, 0.f, radius, true)};
+  check(std::fabs(ahead.z - 1.f) < 1e-6f and std::fabs(ahead.x) < 1e-6f, "spheres: the dot in the middle is the nose");
+  auto const d{edworld::compass_direction(0.f, 27.f, radius, true)};
+  auto const back{edworld::direction_of(-30.f, 0.f)};
+  check(std::fabs(d.y - back.y) < 1e-5f and std::fabs(d.z - back.z) < 1e-5f, "spheres: the dot and the angles give one direction");
+  auto const nose{edworld::sphere_view({0.f, 0.f, 1.f}, 35.f, 20.f)};
+  auto const tail{edworld::sphere_view({0.f, 0.f, -1.f}, 35.f, 20.f)};
+  check(nose.on_far_side and not tail.on_far_side and nose.x < 0.f and nose.y > 0.f,
+        "spheres: seen from behind, the left and above, the nose points away, up the picture and to its left");
+  auto const below{edworld::sphere_view({0.f, -1.f, 0.f}, 35.f, 20.f)};
+  check(below.y < -0.9f and std::fabs(below.x) < 1e-5f, "spheres: straight down is down the picture");
   }
   wchar_t exe[MAX_PATH]{};
   GetModuleFileNameW(nullptr, exe, MAX_PATH);
@@ -232,9 +243,12 @@ int main()
   std::fprintf(ini, "patch_force = 2\n");
   // the compass on the same surface: its disc at (100, 64), the text under the patch's box (its checks untouched)
   std::fprintf(ini, "compass = 2\ncompass_surface = 512x128\ncompass_x = 100\ncompass_y = 64\ncompass_radius = 30\n"
-                    "compass_text_x = 150\ncompass_text_y = 100\ncompass_text_size = 12\ncompass_log_ms = 1\n");
+                    "compass_text_x = 150\ncompass_text_y = 100\ncompass_text_size = 12\ncompass_log_ms = 1\ncompass_spheres = 1\n");
   std::fclose(ini);
   }
+  // the spheres' textures written once for a look (edworld_dumps/sphere0_*.raw, sphere1_*.raw)
+  if(std::FILE * t{_wfopen((output_dir + L"\\edworld_sphere_dump").c_str(), L"wb")})
+    std::fclose(t);
   DeleteFileW(share_path.c_str());
   std::wstring const log_path{output_dir + L"\\" + plugin_name + L".log"};
   // the data source's target, as EHT writes it: the destination is known, an Empire system
@@ -626,6 +640,8 @@ int main()
     }
   check(compass_log.find("compass: first drawn (mode 2, surface 512x128") != std::string::npos, "compass: drawn on its surface");
   check(compass_log.find("compass: dot filled dot +10.00 -10.00") != std::string::npos, "compass: the dot read back where it was put");
+  check(compass_log.find("compass: spheres rendered (512 px each)") != std::string::npos, "spheres: both textures drawn");
+  check(compass_log.find("compass: spheres written to edworld_dumps") != std::string::npos, "spheres: both textures written for a look");
   }
   WIN32_FIND_DATAW found{};
   HANDLE const dumps{FindFirstFileW((output_dir + L"\\edworld_dumps\\*_512x128_f27_*.raw").c_str(), &found)};

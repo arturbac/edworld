@@ -1314,13 +1314,23 @@ namespace edworld
       std::uint64_t reads{};
       LONGLONG last_log{};
       bool told{};
+      // the spheres: their textures (premultiplied, drawn by ImGui, with mips), and which of the frame's 2048x1280 panel
+      // draws comes next
+      ID3D11Texture2D * sphere_tex[2]{};
+      ID3D11RenderTargetView * sphere_rtv[2]{};
+      ID3D11ShaderResourceView * sphere_srv[2]{};
+      bool spheres_drawn{};
+      std::uint64_t quad_frame{~0ull};
+      std::uint32_t quad_index{};
+      bool told_quads{};
       };
 
     compass_state_t cs;
 
     auto compass_reset(ID3D11Device * device) -> void
       {
-      for(IUnknown * u: std::initializer_list<IUnknown *>{cs.copy, cs.mask_srv, cs.mask})
+      for(IUnknown * u: std::initializer_list<IUnknown *>{cs.copy, cs.mask_srv, cs.mask, cs.sphere_srv[0], cs.sphere_srv[1], cs.sphere_rtv[0],
+                                                         cs.sphere_rtv[1], cs.sphere_tex[0], cs.sphere_tex[1]})
         if(u)
           u->Release();
       cs = compass_state_t{};
@@ -1398,6 +1408,220 @@ namespace edworld
       }
 
     constexpr char degree[]{"\xC2\xB0"};
+
+    constexpr std::uint32_t sphere_px{512};
+
+    auto sphere_targets() -> bool
+      {
+      if(cs.sphere_tex[0] and cs.sphere_tex[1])
+        return true;
+      for(int k{}; k != 2; ++k)
+        {
+        D3D11_TEXTURE2D_DESC d{};
+        d.Width = d.Height = sphere_px;
+        d.MipLevels = 0;
+        d.ArraySize = 1;
+        d.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        d.SampleDesc.Count = 1;
+        d.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+        d.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+        if(FAILED(r.device->CreateTexture2D(&d, nullptr, &cs.sphere_tex[k])) or not cs.sphere_tex[k]
+           or FAILED(r.device->CreateRenderTargetView(cs.sphere_tex[k], nullptr, &cs.sphere_rtv[k]))
+           or FAILED(r.device->CreateShaderResourceView(cs.sphere_tex[k], nullptr, &cs.sphere_srv[k])))
+          return false;
+        }
+      return true;
+      }
+
+    auto rgba(int r_, int g_, int b_, int a_) -> ImU32 { return IM_COL32(r_, g_, b_, a_); }
+
+    ///\brief the disc behind a sphere: dark, a little lighter towards its middle, translucent
+    auto sphere_ground(ImDrawList * dl, ImVec2 c, float radius, int alpha) -> void
+      {
+      for(int i{24}; i >= 1; --i)
+        {
+        float const f{static_cast<float>(i) / 24.f};
+        int const k{static_cast<int>(40.f * (1.f - f))};
+        dl->AddCircleFilled(c, radius * f, rgba(8 + k / 3, 14 + k / 2, 30 + k, alpha), 96);
+        }
+      }
+
+    ///\brief the sphere seen from the front: the compass itself, larger; rings at 30 and 60 degrees off the nose
+    auto draw_sphere_front(ImDrawList * dl, compass_direction_t const & d, bool have, char const * caption) -> void
+      {
+      ImVec2 const c{256.f, 236.f};
+      float const radius{200.f};
+      sphere_ground(dl, c, radius, 215);
+      ImU32 const dim{rgba(50, 85, 150, 255)};
+      for(float const a: {30.f, 60.f})
+        dl->AddCircle(c, radius * std::sin(a / compass_degrees), dim, 96, 2.f);
+      dl->AddLine(ImVec2{c.x - radius, c.y}, ImVec2{c.x + radius, c.y}, dim, 2.f);
+      dl->AddLine(ImVec2{c.x, c.y - radius}, ImVec2{c.x, c.y + radius}, dim, 2.f);
+      dl->AddCircle(c, radius, rgba(80, 150, 255, 255), 96, 5.f);
+      if(have)
+        {
+        ImVec2 const p{c.x + d.x * radius, c.y - d.y * radius};
+        if(d.z >= 0.f)
+          dl->AddCircleFilled(p, 15.f, rgba(255, 255, 255, 255), 32);
+        else
+          dl->AddCircle(p, 13.f, rgba(255, 150, 40, 255), 32, 5.f);
+        }
+      ImVec2 const extent{r.font->CalcTextSizeA(40.f, FLT_MAX, 0.f, caption)};
+      dl->AddText(r.font, 40.f, ImVec2{256.f - extent.x / 2.f, 452.f}, have and d.z < 0.f ? rgba(255, 150, 40, 255) : rgba(150, 230, 255, 255), caption);
+      }
+
+    ///\brief the sphere seen from behind, the left and above, as the game's radar: the wings' plane, the nose, the target on a
+    /// stalk to that plane, and where it should be
+    auto draw_sphere_oblique(ImDrawList * dl, compass_direction_t const & d, bool have, bool show_should, compass_direction_t const & should,
+                             char const * caption) -> void
+      {
+      constexpr float yaw{35.f}, pitch{20.f};
+      ImVec2 const c{256.f, 236.f};
+      float const radius{200.f};
+      auto const at = [&](compass_direction_t const & v) -> ImVec2
+        {
+        sphere_point_t const p{sphere_view(v, yaw, pitch)};
+        return ImVec2{c.x + p.x * radius, c.y - p.y * radius};
+        };
+      auto const facing = [&](compass_direction_t const & v) -> bool { return not sphere_view(v, yaw, pitch).on_far_side; };
+      sphere_ground(dl, c, radius, 200);
+      dl->AddCircle(c, radius, rgba(40, 70, 130, 255), 96, 2.f);
+      constexpr float pi2{6.2831853f};
+      auto const curve = [&](auto && point, ImU32 bright, ImU32 faint, float width)
+        {
+        constexpr int steps{96};
+        compass_direction_t a{point(0.f)};
+        for(int i{1}; i <= steps; ++i)
+          {
+          compass_direction_t const b{point(pi2 * static_cast<float>(i) / steps)};
+          dl->AddLine(at(a), at(b), facing(a) ? bright : faint, width);
+          a = b;
+          }
+        };
+      ImU32 const faint{rgba(30, 50, 95, 255)};
+      for(float const a: {-30.f, -60.f})
+        {
+        float const sa{std::sin(a / compass_degrees)}, ca{std::cos(a / compass_degrees)};
+        curve([&](float t) { return compass_direction_t{ca * std::cos(t), sa, ca * std::sin(t)}; }, rgba(45, 75, 130, 255), faint, 1.5f);
+        }
+      curve([](float t) { return compass_direction_t{0.f, std::sin(t), std::cos(t)}; }, rgba(60, 100, 170, 255), faint, 2.f);
+      curve([](float t) { return compass_direction_t{std::cos(t), std::sin(t), 0.f}; }, rgba(60, 100, 170, 255), faint, 2.f);
+      curve([](float t) { return compass_direction_t{std::cos(t), 0.f, std::sin(t)}; }, rgba(80, 150, 255, 255), faint, 5.f);
+      // the nose: an arrow forward in the wings' plane
+      ImU32 const green{rgba(80, 255, 140, 255)};
+      ImVec2 const o{at({0.f, 0.f, 0.f})}, n{at({0.f, 0.f, 1.f})};
+      dl->AddLine(o, n, green, 5.f);
+      float const dx{n.x - o.x}, dy{n.y - o.y}, len{std::max(1.f, std::sqrt(dx * dx + dy * dy))}, ux{dx / len}, uy{dy / len};
+      dl->AddTriangleFilled(ImVec2{n.x + ux * 22.f, n.y + uy * 22.f}, ImVec2{n.x - uy * 13.f, n.y + ux * 13.f}, ImVec2{n.x + uy * 13.f, n.y - ux * 13.f},
+                            green);
+      dl->AddText(r.font, 30.f, ImVec2{n.x + 14.f, n.y - 40.f}, green, "NOSE");
+      auto const mark = [&](compass_direction_t const & v, ImU32 colour, bool ring)
+        {
+        ImVec2 const p{at(v)}, foot{at({v.x, 0.f, v.z})};
+        dl->AddLine(o, foot, (colour & 0x00ffffffu) | 0x80000000u, 2.f);
+        dl->AddLine(foot, p, colour, 5.f);
+        dl->AddCircle(foot, 6.f, colour, 16, 3.f);
+        if(ring)
+          dl->AddCircle(p, 20.f, colour, 32, 5.f);
+        else
+          dl->AddCircleFilled(p, 15.f, colour, 32);
+        };
+      if(show_should)
+        mark(should, rgba(255, 150, 40, 255), true);
+      if(have)
+        mark(d, rgba(255, 255, 255, 255), false);
+      ImVec2 const extent{r.font->CalcTextSizeA(34.f, FLT_MAX, 0.f, caption)};
+      dl->AddText(r.font, 34.f, ImVec2{256.f - extent.x / 2.f, 456.f}, rgba(255, 230, 120, 255), caption);
+      }
+
+    ///\brief both spheres' textures from the reading shown; once a frame, after the compass was read
+    auto render_spheres(ID3D11DeviceContext * ctx, settings_t const & s, flight_t const & f) -> void
+      {
+      if(not make_list_objects() or not sphere_targets())
+        return;
+      compass_reading_t const & c{cs.shown};
+      bool const have{cs.have_shown};
+      compass_direction_t const d{compass_direction(c.x, c.y, s.compass_radius, c.filled)};
+      compass_angles_t const a{compass_angles(c.x, c.y, s.compass_radius, c.filled)};
+      compass_direction_t const should{direction_of(-(90.f - s.compass_should_dive), 0.f)};
+      char front[64], oblique[64];
+      if(have)
+        std::snprintf(front, sizeof front, "%s %.1f%s  %s %.1f%s", a.up < 0.f ? "DN" : "UP", static_cast<double>(std::fabs(a.up)), degree,
+                      a.right < 0.f ? "LT" : "RT", static_cast<double>(std::fabs(a.right)), degree);
+      else
+        std::snprintf(front, sizeof front, "NO DOT");
+      if(not have)
+        std::snprintf(oblique, sizeof oblique, "NO DOT");
+      else if(f.has_position)
+        std::snprintf(oblique, sizeof oblique, "nose %.1f%s  should %.0f%s", static_cast<double>(90.f - a.off_nose), degree,
+                      static_cast<double>(s.compass_should_dive), degree);
+      else
+        std::snprintf(oblique, sizeof oblique, "off nose %.1f%s", static_cast<double>(a.off_nose), degree);
+      ImGui::SetCurrentContext(r.imgui);
+      ImGuiIO & io{ImGui::GetIO()};
+      io.DisplaySize = ImVec2{static_cast<float>(sphere_px), static_cast<float>(sphere_px)};
+      for(int k{}; k != 2; ++k)
+        {
+        ImGui_ImplDX11_NewFrame();
+        ImGui::NewFrame();
+        ImDrawList * const dl{ImGui::GetBackgroundDrawList()};
+        if(k == 0)
+          draw_sphere_front(dl, d, have, front);
+        else
+          draw_sphere_oblique(dl, d, have, f.has_position, should, oblique);
+        ImGui::Render();
+        backup_t b;
+        save(ctx, b);
+        float const clear[4]{0.f, 0.f, 0.f, 0.f};
+        ctx->ClearRenderTargetView(cs.sphere_rtv[k], clear);
+        ctx->OMSetRenderTargets(1, &cs.sphere_rtv[k], nullptr);
+        ctx->PSSetShaderResources(1, 1, &r.white);
+        ctx->PSSetConstantBuffers(0, 1, &r.white_gate);
+        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+        restore(ctx, b);
+        ctx->GenerateMips(cs.sphere_srv[k]);
+        }
+      // a file edworld_sphere_dump beside the log: both textures (their largest level) written once to edworld_dumps, at the
+      // first plausible reading after it appeared (checking)
+      std::wstring const trigger{settings().dir + L"\\edworld_sphere_dump"};
+      if(have and GetFileAttributesW(trigger.c_str()) != INVALID_FILE_ATTRIBUTES)
+        {
+        DeleteFileW(trigger.c_str());
+        CreateDirectoryW((settings().dir + L"\\edworld_dumps").c_str(), nullptr);
+        for(int k{}; k != 2; ++k)
+          {
+          D3D11_TEXTURE2D_DESC sd{};
+          sd.Width = sd.Height = sphere_px;
+          sd.MipLevels = sd.ArraySize = 1;
+          sd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+          sd.SampleDesc.Count = 1;
+          sd.Usage = D3D11_USAGE_STAGING;
+          sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+          ID3D11Texture2D * staging{};
+          if(FAILED(r.device->CreateTexture2D(&sd, nullptr, &staging)) or not staging)
+            continue;
+          ctx->CopySubresourceRegion(staging, 0, 0, 0, 0, cs.sphere_tex[k], 0, nullptr);
+          D3D11_MAPPED_SUBRESOURCE m{};
+          if(SUCCEEDED(ctx->Map(staging, 0, D3D11_MAP_READ, 0, &m)) and m.pData)
+            {
+            wchar_t name[MAX_PATH];
+            std::swprintf(name, MAX_PATH, L"%ls\\edworld_dumps\\sphere%d_%ux%u_f28_pitch%u.raw", settings().dir.c_str(), k, sphere_px,
+                          sphere_px, m.RowPitch);
+            if(std::FILE * out{_wfopen(name, L"wb")})
+              {
+              std::fwrite(m.pData, 1, static_cast<std::size_t>(m.RowPitch) * sphere_px, out);
+              std::fclose(out);
+              }
+            ctx->Unmap(staging, 0);
+            }
+          staging->Release();
+          }
+        log_line("compass: spheres written to edworld_dumps");
+        }
+      if(not cs.spheres_drawn)
+        log_line("compass: spheres rendered (%u px each)", sphere_px);
+      cs.spheres_drawn = true;
+      }
     }  // namespace
 
   auto panel_compass(ID3D11DeviceContext * ctx, ID3D11Device * device, std::uint64_t frame) noexcept -> void
@@ -1591,6 +1815,8 @@ namespace edworld
     ctx->PSSetConstantBuffers(0, 1, &r.gate);
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
     restore(ctx, b);
+    if(s.compass_spheres)
+      render_spheres(ctx, s, f);
 
     if(not cs.told)
       {
@@ -1614,6 +1840,96 @@ namespace edworld
                compass_plausible(raw) ? "ok" : "rejected", static_cast<double>(a.off_nose), static_cast<double>(a.up),
                static_cast<double>(a.right), static_cast<unsigned long long>(cs.lag), f.has_position ? f.altitude : -1.0, f.latitude, f.longitude, f.heading, f.path_angle,
                static_cast<unsigned long long>(f.flags), f.destination_body, f.destination_name);
+      }
+    }
+
+  auto panel_compass_after(ID3D11DeviceContext * ctx, std::uint64_t frame, std::uint32_t index_count, std::uint32_t start_instance) noexcept
+    -> void
+    {
+    settings_t const & s{settings()};
+    if(s.compass == 0 or not s.compass_spheres or not cs.spheres_drawn or index_count != 12u or not r.list_vs)
+      return;
+    D3D11_TEXTURE2D_DESC d{};
+    ID3D11Texture2D * const tex{surface_sampled(ctx, 2048u, 1280u, d)};
+    if(not tex)
+      return;
+    tex->Release();
+    if(frame != cs.quad_frame)
+      {
+      cs.quad_frame = frame;
+      cs.quad_index = 0;
+      }
+    std::uint32_t const k{cs.quad_index++};
+    if(k > 1u)
+      return;
+    float const h{s.compass_sphere_height}, w{h * s.compass_sphere_aspect};
+    float const cx{k == 0u ? s.compass_sphere_a_x : s.compass_sphere_c_x}, cy{k == 0u ? s.compass_sphere_a_y : s.compass_sphere_c_y};
+    list_cb_t cb{};
+    float const corners[4][2]{{cx - w / 2.f, cy + h / 2.f}, {cx + w / 2.f, cy + h / 2.f}, {cx + w / 2.f, cy - h / 2.f}, {cx - w / 2.f, cy - h / 2.f}};
+    for(int i{}; i != 4; ++i)
+      {
+      cb.corner[i][0] = corners[i][0];
+      cb.corner[i][1] = corners[i][1];
+      }
+    cb.uv_extent[0] = cb.uv_extent[1] = 1.f;
+    cb.gain[0] = s.list_gain;
+    D3D11_MAPPED_SUBRESOURCE m{};
+    if(FAILED(ctx->Map(r.list_cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &m)))
+      return;
+    std::memcpy(m.pData, &cb, sizeof cb);
+    ctx->Unmap(r.list_cb, 0);
+
+    list_backup_t b;
+    ctx->VSGetShader(&b.vs, b.vs_instances, &b.vs_instance_count);
+    ctx->PSGetShader(&b.ps, b.ps_instances, &b.ps_instance_count);
+    ctx->IAGetInputLayout(&b.layout);
+    ctx->IAGetPrimitiveTopology(&b.topology);
+    ctx->VSGetConstantBuffers(list_cb_slot, 1, &b.vs_cb);
+    ctx->PSGetConstantBuffers(list_cb_slot, 1, &b.ps_cb);
+    ctx->PSGetShaderResources(0, 2, b.ps_srv);
+    ctx->PSGetSamplers(0, 1, &b.ps_sampler);
+    ctx->OMGetBlendState(&b.blend, b.blend_factor, &b.sample_mask);
+    ctx->OMGetDepthStencilState(&b.depth, &b.stencil_ref);
+    ctx->RSGetState(&b.raster);
+    // the sphere's texture, and an opaque pixel as the gate (the spheres show whenever the panel is drawn)
+    ID3D11ShaderResourceView * const srvs[2]{cs.sphere_srv[k], r.white};
+    ctx->VSSetShader(r.list_vs, nullptr, 0);
+    ctx->PSSetShader(r.list_ps, nullptr, 0);
+    ctx->IASetInputLayout(r.list_layout);
+    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ctx->VSSetConstantBuffers(list_cb_slot, 1, &r.list_cb);
+    ctx->PSSetConstantBuffers(list_cb_slot, 1, &r.list_cb);
+    ctx->PSSetShaderResources(0, 2, srvs);
+    ctx->PSSetSamplers(0, 1, &r.list_sampler);
+    float const factor[4]{};
+    ctx->OMSetBlendState(r.list_blend, factor, 0xffffffffu);
+    ctx->OMSetDepthStencilState(r.list_depth, 0);
+    ctx->RSSetState(r.list_raster);
+    ctx->DrawInstanced(6, 1, 0, start_instance);
+
+    ctx->VSSetShader(b.vs, b.vs_instances, b.vs_instance_count);
+    ctx->PSSetShader(b.ps, b.ps_instances, b.ps_instance_count);
+    ctx->IASetInputLayout(b.layout);
+    ctx->IASetPrimitiveTopology(b.topology);
+    ctx->VSSetConstantBuffers(list_cb_slot, 1, &b.vs_cb);
+    ctx->PSSetConstantBuffers(list_cb_slot, 1, &b.ps_cb);
+    ctx->PSSetShaderResources(0, 2, b.ps_srv);
+    ctx->PSSetSamplers(0, 1, &b.ps_sampler);
+    ctx->OMSetBlendState(b.blend, b.blend_factor, b.sample_mask);
+    ctx->OMSetDepthStencilState(b.depth, b.stencil_ref);
+    ctx->RSSetState(b.raster);
+    for(IUnknown * u: std::initializer_list<IUnknown *>{b.vs, b.ps, b.layout, b.vs_cb, b.ps_cb, b.ps_srv[0], b.ps_srv[1], b.ps_sampler,
+                                                       b.blend, b.depth, b.raster})
+      if(u)
+        u->Release();
+    for(UINT i{}; i != b.vs_instance_count; ++i)
+      b.vs_instances[i]->Release();
+    for(UINT i{}; i != b.ps_instance_count; ++i)
+      b.ps_instances[i]->Release();
+    if(not cs.told_quads and k == 1u)
+      {
+      cs.told_quads = true;
+      log_line("compass: spheres first drawn as quads on the two 2048x1280 panels (instances from %u)", start_instance);
       }
     }
   }  // namespace edworld
