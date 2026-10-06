@@ -128,6 +128,21 @@ namespace edworld
     ///\brief the spheres' colours taken from sRGB back to linear with this gamma (the cockpit is linear HDR: without it they
     /// came out half again as light and paler, 2026-10-06; 0 = as drawn), then scaled by the gain
     float compass_sphere_gamma{2.2f};
+    ///\brief 1: each sphere anchored to a piece of the HUD the game places in every cockpit - the left one to the compass,
+    /// the right one to the speed readout right of the radar - by the triangle of its draw holding that point of the HUD
+    /// surface; so they keep their places by those pieces in every ship. 0: on the two side panels (compass_sphere_a/c,
+    /// which differ from ship to ship)
+    std::uint32_t compass_anchor{0};
+    ///\brief the right sphere's anchor on the HUD surface: the speed readout (2026-10-06, the HUD surface 2200x1800)
+    float compass_anchor_c_px{416.f};
+    float compass_anchor_c_py{157.f};
+    ///\brief anchored: a sphere's diameter in compass diameters, and each sphere's centre from its anchor in compass diameters
+    /// (x to the right, y up); measured on the Kestrel, 2026-10-06
+    float compass_anchor_scale{1.9f};
+    float compass_anchor_a_dx{-0.41f};
+    float compass_anchor_a_dy{0.45f};
+    float compass_anchor_c_dx{1.22f};
+    float compass_anchor_c_dy{0.83f};
     ///\brief 1: the spheres' lines in one wide band over each sphere (clear of the gauges under it, e.g. the thrust arc);
     /// 0: under it
     std::uint32_t compass_sphere_text_above{0};

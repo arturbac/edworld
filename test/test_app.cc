@@ -243,7 +243,7 @@ int main()
   std::fprintf(ini, "patch_force = 2\n");
   // the compass on the same surface: its disc at (100, 64), the text under the patch's box (its checks untouched)
   std::fprintf(ini, "compass = 2\ncompass_surface = 512x128\ncompass_x = 100\ncompass_y = 64\ncompass_radius = 30\n"
-                    "compass_text_x = 150\ncompass_text_y = 100\ncompass_text_size = 12\ncompass_log_ms = 1\ncompass_spheres = 1\ncompass_hide_game = 1\ncompass_sphere_text_above = 1\n");
+                    "compass_text_x = 150\ncompass_text_y = 100\ncompass_text_size = 12\ncompass_log_ms = 1\ncompass_spheres = 1\ncompass_hide_game = 1\ncompass_sphere_text_above = 1\ncompass_anchor = 1\ncompass_anchor_c_px = 300\ncompass_anchor_c_py = 64\n");
   std::fclose(ini);
   }
   // the spheres' textures written once for a look (edworld_dumps/sphere0_*.raw, sphere1_*.raw)

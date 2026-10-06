@@ -1981,11 +1981,327 @@ namespace edworld
       }
     }
 
-  auto panel_compass_after(ID3D11DeviceContext * ctx, std::uint64_t frame, std::uint32_t index_count, std::uint32_t start_instance) noexcept
-    -> void
+  namespace
+    {
+    ///\brief sphere k's quad right after the game's draw whose records are bound (its instance from start_instance), corners
+    /// in that draw's local plane, the texture's used part to its edges
+    auto draw_sphere_quad(ID3D11DeviceContext * ctx, std::uint32_t k, float const (&corners)[4][3], std::uint32_t start_instance) -> bool
+      {
+      settings_t const & s{settings()};
+      bool const above{s.compass_sphere_text_above != 0};
+      float const used_w{above ? above_w : below_w}, used_h{above ? above_h : below_h};
+      list_cb_t cb{};
+      for(int i{}; i != 4; ++i)
+        for(int j{}; j != 3; ++j)
+          cb.corner[i][j] = corners[i][j];
+      cb.uv_extent[0] = used_w / static_cast<float>(sphere_w);
+      cb.uv_extent[1] = used_h / static_cast<float>(sphere_h);
+      cb.gain[0] = s.compass_sphere_gain;
+      cb.colour[0] = s.compass_sphere_gamma;
+      D3D11_MAPPED_SUBRESOURCE m{};
+      if(FAILED(ctx->Map(r.list_cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &m)))
+        return false;
+      std::memcpy(m.pData, &cb, sizeof cb);
+      ctx->Unmap(r.list_cb, 0);
+
+    list_backup_t b;
+      ctx->VSGetShader(&b.vs, b.vs_instances, &b.vs_instance_count);
+      ctx->PSGetShader(&b.ps, b.ps_instances, &b.ps_instance_count);
+      ctx->IAGetInputLayout(&b.layout);
+      ctx->IAGetPrimitiveTopology(&b.topology);
+      ctx->VSGetConstantBuffers(list_cb_slot, 1, &b.vs_cb);
+      ctx->PSGetConstantBuffers(list_cb_slot, 1, &b.ps_cb);
+      ctx->PSGetShaderResources(0, 2, b.ps_srv);
+      ctx->PSGetSamplers(0, 1, &b.ps_sampler);
+      ctx->OMGetBlendState(&b.blend, b.blend_factor, &b.sample_mask);
+      ctx->OMGetDepthStencilState(&b.depth, &b.stencil_ref);
+      ctx->RSGetState(&b.raster);
+      // the sphere's texture, and an opaque pixel as the gate (the spheres show whenever the panel is drawn)
+      ID3D11ShaderResourceView * const srvs[2]{cs.sphere_srv[k], r.white};
+      ctx->VSSetShader(r.list_vs, nullptr, 0);
+      ctx->PSSetShader(r.list_ps, nullptr, 0);
+      ctx->IASetInputLayout(r.list_layout);
+      ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+      ctx->VSSetConstantBuffers(list_cb_slot, 1, &r.list_cb);
+      ctx->PSSetConstantBuffers(list_cb_slot, 1, &r.list_cb);
+      ctx->PSSetShaderResources(0, 2, srvs);
+      ctx->PSSetSamplers(0, 1, &r.list_sampler);
+      float const factor[4]{};
+      ctx->OMSetBlendState(r.list_blend, factor, 0xffffffffu);
+      ctx->OMSetDepthStencilState(r.list_depth, 0);
+      ctx->RSSetState(r.list_raster);
+      ctx->DrawInstanced(6, 1, 0, start_instance);
+
+      ctx->VSSetShader(b.vs, b.vs_instances, b.vs_instance_count);
+      ctx->PSSetShader(b.ps, b.ps_instances, b.ps_instance_count);
+      ctx->IASetInputLayout(b.layout);
+      ctx->IASetPrimitiveTopology(b.topology);
+      ctx->VSSetConstantBuffers(list_cb_slot, 1, &b.vs_cb);
+      ctx->PSSetConstantBuffers(list_cb_slot, 1, &b.ps_cb);
+      ctx->PSSetShaderResources(0, 2, b.ps_srv);
+      ctx->PSSetSamplers(0, 1, &b.ps_sampler);
+      ctx->OMSetBlendState(b.blend, b.blend_factor, b.sample_mask);
+      ctx->OMSetDepthStencilState(b.depth, b.stencil_ref);
+      ctx->RSSetState(b.raster);
+      for(IUnknown * u: std::initializer_list<IUnknown *>{b.vs, b.ps, b.layout, b.vs_cb, b.ps_cb, b.ps_srv[0], b.ps_srv[1], b.ps_sampler,
+                                                         b.blend, b.depth, b.raster})
+        if(u)
+          u->Release();
+      for(UINT i{}; i != b.vs_instance_count; ++i)
+        b.vs_instances[i]->Release();
+      for(UINT i{}; i != b.ps_instance_count; ++i)
+        b.ps_instances[i]->Release();
+      return true;
+      }
+
+    ///\brief the quad's corners (top left, top right, bottom right, bottom left) on the HUD surface, in its pixels (y down), for
+    /// a sphere of square side side_px centred at (x, y): the lines' band under it or over it, as the texture is laid out
+    auto sphere_quad_px(float x, float y, float side_px, float (&px)[4][2]) -> void
+      {
+      settings_t const & s{settings()};
+      bool const above{s.compass_sphere_text_above != 0};
+      float const qw{side_px * (above ? above_w : below_w) / 512.f}, qh{side_px * (above ? above_h : below_h) / 512.f};
+      float const top{above ? y + side_px / 2.f - qh : y - side_px / 2.f};
+      float const pts[4][2]{{x - qw / 2.f, top}, {x + qw / 2.f, top}, {x + qw / 2.f, top + qh}, {x - qw / 2.f, top + qh}};
+      std::memcpy(px, pts, sizeof pts);
+      }
+
+    // ---- anchored: the draws of the HUD surface, each read once for the triangles holding the anchors ----
+    struct anchor_draw_t
+      {
+      enum struct state_e : std::uint8_t
+        {
+        empty,
+        pending,
+        judged
+        };
+      void * ib;
+      UINT ib_offset;
+      std::uint32_t start_index;
+      std::uint32_t index_count;
+      void * vb;
+      UINT vb_offset;
+      std::int32_t base_vertex;
+      state_e state;
+      std::uint32_t index_bytes;
+      std::uint32_t vertices;  ///< copied after the base vertex
+      ID3D11Buffer * staged_ib;
+      ID3D11Buffer * staged_vb;
+      bool holds[2];
+      panel_map_t map[2];
+      };
+
+    constexpr std::uint32_t max_anchor_draws{24};
+    constexpr std::uint32_t max_anchor_indices{2048};
+    constexpr std::uint32_t max_anchor_vertices{4096};
+    anchor_draw_t anchor_draws[max_anchor_draws]{};
+    std::uint32_t anchor_draw_next{};
+    std::uint64_t anchor_drawn_frame[2]{~0ull, ~0ull};
+    bool told_anchor[2]{};
+
+    auto anchor_points(settings_t const & s, float (&pt)[2][2]) -> void
+      {
+      pt[0][0] = s.compass_x;
+      pt[0][1] = s.compass_y;
+      pt[1][0] = s.compass_anchor_c_px;
+      pt[1][1] = s.compass_anchor_c_py;
+      }
+
+    auto drop_anchor_staged(anchor_draw_t & e) -> void
+      {
+      if(e.staged_ib)
+        e.staged_ib->Release();
+      if(e.staged_vb)
+        e.staged_vb->Release();
+      e.staged_ib = nullptr;
+      e.staged_vb = nullptr;
+      }
+
+    ///\brief the copied indices and vertices read: for each anchor, the triangle whose surface pixels hold it and its map
+    auto judge_anchor(ID3D11DeviceContext * ctx, anchor_draw_t & e, settings_t const & s) -> void
+      {
+      D3D11_MAPPED_SUBRESOURCE mi{}, mv{};
+      HRESULT const hi{ctx->Map(e.staged_ib, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mi)};
+      if(hi == DXGI_ERROR_WAS_STILL_DRAWING)
+        return;
+      HRESULT const hv{SUCCEEDED(hi) ? ctx->Map(e.staged_vb, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mv) : hi};
+      if(hv == DXGI_ERROR_WAS_STILL_DRAWING)
+        {
+        ctx->Unmap(e.staged_ib, 0);
+        return;
+        }
+      e.state = anchor_draw_t::state_e::judged;
+      float pt[2][2];
+      anchor_points(s, pt);
+      if(SUCCEEDED(hi) and SUCCEEDED(hv) and mi.pData and mv.pData)
+        {
+        auto const index = [&](std::uint32_t i) -> std::uint32_t
+          {
+          if(e.index_bytes == 2u)
+            {
+            std::uint16_t v{};
+            std::memcpy(&v, static_cast<std::uint8_t const *>(mi.pData) + i * 2u, 2);
+            return v;
+            }
+          std::uint32_t v{};
+          std::memcpy(&v, static_cast<std::uint8_t const *>(mi.pData) + i * 4u, 4);
+          return v;
+          };
+        for(std::uint32_t t{}; t + 2u < e.index_count; t += 3u)
+          {
+          std::uint32_t const idx[3]{index(t), index(t + 1u), index(t + 2u)};
+          if(idx[0] >= e.vertices or idx[1] >= e.vertices or idx[2] >= e.vertices)
+            continue;
+          vec3_t p[3];
+          float px[3][2];
+          for(std::uint32_t i{}; i != 3; ++i)
+            {
+            std::uint32_t w[5];
+            std::memcpy(w, static_cast<std::uint8_t const *>(mv.pData) + static_cast<std::size_t>(idx[i]) * vertex_stride, sizeof w);
+            p[i] = decode_local(w[0], w[1], w[2]);
+            float u, v;
+            decode_uv(w[4], u, v);
+            px[i][0] = u * static_cast<float>(s.compass_surface_width);
+            px[i][1] = v * static_cast<float>(s.compass_surface_height);
+            }
+          for(int k{}; k != 2; ++k)
+            {
+            if(e.holds[k])
+              continue;
+            // the anchor inside the triangle's pixels (barycentric, either winding)
+            float const d{(px[1][1] - px[2][1]) * (px[0][0] - px[2][0]) + (px[2][0] - px[1][0]) * (px[0][1] - px[2][1])};
+            if(std::fabs(d) < 1e-6f)
+              continue;
+            float const l0{((px[1][1] - px[2][1]) * (pt[k][0] - px[2][0]) + (px[2][0] - px[1][0]) * (pt[k][1] - px[2][1])) / d};
+            float const l1{((px[2][1] - px[0][1]) * (pt[k][0] - px[2][0]) + (px[0][0] - px[2][0]) * (pt[k][1] - px[2][1])) / d};
+            if(l0 < 0.f or l1 < 0.f or l0 + l1 > 1.f)
+              continue;
+            if(auto const m{map_from(p, px)}; m)
+              {
+              e.holds[k] = true;
+              e.map[k] = *m;
+              log_line("compass: the %s sphere's anchor (%.0f, %.0f) is in a draw of %u indices (base vertex %d), triangle %u",
+                       k == 0 ? "left" : "right", static_cast<double>(pt[k][0]), static_cast<double>(pt[k][1]), e.index_count, e.base_vertex,
+                       t / 3u);
+              }
+            }
+          }
+        }
+      if(SUCCEEDED(hi))
+        ctx->Unmap(e.staged_ib, 0);
+      if(SUCCEEDED(hv))
+        ctx->Unmap(e.staged_vb, 0);
+      drop_anchor_staged(e);
+      }
+
+    ///\brief anchored: after a draw of the HUD surface, the spheres whose anchors it holds
+    auto anchored_after(ID3D11DeviceContext * ctx, std::uint64_t frame, std::uint32_t index_count, std::uint32_t start_index,
+                        std::int32_t base_vertex, std::uint32_t start_instance) -> void
+      {
+      settings_t const & s{settings()};
+      D3D11_TEXTURE2D_DESC d{};
+      ID3D11Texture2D * const tex{surface_sampled(ctx, s.compass_surface_width, s.compass_surface_height, d)};
+      if(not tex)
+        return;
+      tex->Release();
+      ID3D11Buffer * ib{};
+      DXGI_FORMAT ib_format{};
+      UINT ib_offset{};
+      ctx->IAGetIndexBuffer(&ib, &ib_format, &ib_offset);
+      ID3D11Buffer * vb{};
+      UINT vb_stride{}, vb_offset{};
+      ctx->IAGetVertexBuffers(1, 1, &vb, &vb_stride, &vb_offset);
+      anchor_draw_t * entry{};
+      if(ib and vb and vb_stride == vertex_stride and index_count <= max_anchor_indices and base_vertex >= 0)
+        {
+        for(anchor_draw_t & e: anchor_draws)
+          if(e.state != anchor_draw_t::state_e::empty and e.ib == ib and e.ib_offset == ib_offset and e.start_index == start_index
+             and e.index_count == index_count and e.vb == vb and e.vb_offset == vb_offset and e.base_vertex == base_vertex)
+            {
+            entry = &e;
+            break;
+            }
+        if(not entry)
+          {
+          anchor_draw_t & e{anchor_draws[anchor_draw_next++ % max_anchor_draws]};
+          drop_anchor_staged(e);
+          std::uint32_t const size{ib_format == DXGI_FORMAT_R16_UINT ? 2u : 4u};
+          e = anchor_draw_t{ib, ib_offset, start_index, index_count, vb, vb_offset, base_vertex, anchor_draw_t::state_e::pending, size};
+          D3D11_BUFFER_DESC vd{};
+          vb->GetDesc(&vd);
+          std::uint64_t const from{vb_offset + static_cast<std::uint64_t>(base_vertex) * vertex_stride};
+          std::uint64_t const room{from < vd.ByteWidth ? (vd.ByteWidth - from) / vertex_stride : 0u};
+          e.vertices = static_cast<std::uint32_t>(std::min<std::uint64_t>(room, max_anchor_vertices));
+          e.staged_ib = staging_copy(ctx, ib, ib_offset + std::uint64_t{start_index} * size, index_count * size);
+          e.staged_vb = e.vertices ? staging_copy(ctx, vb, from, e.vertices * vertex_stride) : nullptr;
+          if(not e.staged_ib or not e.staged_vb)
+            {
+            drop_anchor_staged(e);
+            e.state = anchor_draw_t::state_e::judged;
+            }
+          entry = nullptr;  // judged in a later frame
+          }
+        else if(entry->state == anchor_draw_t::state_e::pending)
+          {
+          judge_anchor(ctx, *entry, s);
+          entry = nullptr;
+          }
+        }
+      if(ib)
+        ib->Release();
+      if(vb)
+        vb->Release();
+      if(not entry or entry->state != anchor_draw_t::state_e::judged)
+        return;
+      float pt[2][2];
+      anchor_points(s, pt);
+      float const diameter{2.f * s.compass_radius};
+      float const side{s.compass_anchor_scale * diameter * 512.f / 400.f};  // the sphere is 400 of the square's 512
+      for(std::uint32_t k{}; k != 2u; ++k)
+        {
+        if(not entry->holds[k] or anchor_drawn_frame[k] == frame)
+          continue;
+        float const dx{k == 0u ? s.compass_anchor_a_dx : s.compass_anchor_c_dx}, dy{k == 0u ? s.compass_anchor_a_dy : s.compass_anchor_c_dy};
+        float px[4][2];
+        sphere_quad_px(pt[k][0] + dx * diameter, pt[k][1] - dy * diameter, side, px);
+        float corners[4][3];
+        bool ok{true};
+        for(int i{}; i != 4 and ok; ++i)
+          {
+          auto const local{local_of(entry->map[k], px[i][0], px[i][1])};
+          ok = local.has_value();
+          if(ok)
+            {
+            corners[i][0] = local->x;
+            corners[i][1] = local->y;
+            corners[i][2] = local->z;
+            }
+          }
+        if(ok and draw_sphere_quad(ctx, k, corners, start_instance))
+          {
+          anchor_drawn_frame[k] = frame;
+          if(not told_anchor[k])
+            {
+            told_anchor[k] = true;
+            log_line("compass: the %s sphere first drawn by its anchor", k == 0u ? "left" : "right");
+            }
+          }
+        }
+      }
+    }  // namespace
+
+  auto panel_compass_after(ID3D11DeviceContext * ctx, std::uint64_t frame, std::uint32_t index_count, std::uint32_t start_index,
+                           std::int32_t base_vertex, std::uint32_t start_instance) noexcept -> void
     {
     settings_t const & s{settings()};
-    if(s.compass == 0 or not s.compass_spheres or not cs.spheres_drawn or index_count != 12u or not r.list_vs)
+    if(s.compass == 0 or not s.compass_spheres or not cs.spheres_drawn or not r.list_vs)
+      return;
+    if(s.compass_anchor)
+      {
+      anchored_after(ctx, frame, index_count, start_index, base_vertex, start_instance);
+      return;
+      }
+    if(index_count != 12u)
       return;
     D3D11_TEXTURE2D_DESC d{};
     ID3D11Texture2D * const tex{surface_sampled(ctx, 2048u, 1280u, d)};
@@ -2000,78 +2316,16 @@ namespace edworld
     std::uint32_t const k{cs.quad_index++};
     if(k > 1u)
       return;
-    // the sphere's square where the settings put it; the lines' part of the texture hangs under it, or stands over it as a
-    // wider band (the quad as much wider and taller as the texture's used part is than the square)
+    // the sphere's square where the settings put it in the panel's plane; the lines' band under it or over it
     float const h{s.compass_sphere_height}, w{h * s.compass_sphere_aspect};
     float const cx{k == 0u ? s.compass_sphere_a_x : s.compass_sphere_c_x}, cy{k == 0u ? s.compass_sphere_a_y : s.compass_sphere_c_y};
     bool const above{s.compass_sphere_text_above != 0};
     float const used_w{above ? above_w : below_w}, used_h{above ? above_h : below_h};
     float const qw{w * used_w / 512.f}, qh{h * used_h / 512.f};
     float const top{above ? cy - h / 2.f + qh : cy + h / 2.f}, bottom{top - qh};
-    list_cb_t cb{};
-    float const corners[4][2]{{cx - qw / 2.f, top}, {cx + qw / 2.f, top}, {cx + qw / 2.f, bottom}, {cx - qw / 2.f, bottom}};
-    for(int i{}; i != 4; ++i)
-      {
-      cb.corner[i][0] = corners[i][0];
-      cb.corner[i][1] = corners[i][1];
-      }
-    cb.uv_extent[0] = used_w / static_cast<float>(sphere_w);
-    cb.uv_extent[1] = used_h / static_cast<float>(sphere_h);
-    cb.gain[0] = s.compass_sphere_gain;
-    cb.colour[0] = s.compass_sphere_gamma;
-    D3D11_MAPPED_SUBRESOURCE m{};
-    if(FAILED(ctx->Map(r.list_cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &m)))
+    float const corners[4][3]{{cx - qw / 2.f, top, 0.f}, {cx + qw / 2.f, top, 0.f}, {cx + qw / 2.f, bottom, 0.f}, {cx - qw / 2.f, bottom, 0.f}};
+    if(not draw_sphere_quad(ctx, k, corners, start_instance))
       return;
-    std::memcpy(m.pData, &cb, sizeof cb);
-    ctx->Unmap(r.list_cb, 0);
-
-    list_backup_t b;
-    ctx->VSGetShader(&b.vs, b.vs_instances, &b.vs_instance_count);
-    ctx->PSGetShader(&b.ps, b.ps_instances, &b.ps_instance_count);
-    ctx->IAGetInputLayout(&b.layout);
-    ctx->IAGetPrimitiveTopology(&b.topology);
-    ctx->VSGetConstantBuffers(list_cb_slot, 1, &b.vs_cb);
-    ctx->PSGetConstantBuffers(list_cb_slot, 1, &b.ps_cb);
-    ctx->PSGetShaderResources(0, 2, b.ps_srv);
-    ctx->PSGetSamplers(0, 1, &b.ps_sampler);
-    ctx->OMGetBlendState(&b.blend, b.blend_factor, &b.sample_mask);
-    ctx->OMGetDepthStencilState(&b.depth, &b.stencil_ref);
-    ctx->RSGetState(&b.raster);
-    // the sphere's texture, and an opaque pixel as the gate (the spheres show whenever the panel is drawn)
-    ID3D11ShaderResourceView * const srvs[2]{cs.sphere_srv[k], r.white};
-    ctx->VSSetShader(r.list_vs, nullptr, 0);
-    ctx->PSSetShader(r.list_ps, nullptr, 0);
-    ctx->IASetInputLayout(r.list_layout);
-    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    ctx->VSSetConstantBuffers(list_cb_slot, 1, &r.list_cb);
-    ctx->PSSetConstantBuffers(list_cb_slot, 1, &r.list_cb);
-    ctx->PSSetShaderResources(0, 2, srvs);
-    ctx->PSSetSamplers(0, 1, &r.list_sampler);
-    float const factor[4]{};
-    ctx->OMSetBlendState(r.list_blend, factor, 0xffffffffu);
-    ctx->OMSetDepthStencilState(r.list_depth, 0);
-    ctx->RSSetState(r.list_raster);
-    ctx->DrawInstanced(6, 1, 0, start_instance);
-
-    ctx->VSSetShader(b.vs, b.vs_instances, b.vs_instance_count);
-    ctx->PSSetShader(b.ps, b.ps_instances, b.ps_instance_count);
-    ctx->IASetInputLayout(b.layout);
-    ctx->IASetPrimitiveTopology(b.topology);
-    ctx->VSSetConstantBuffers(list_cb_slot, 1, &b.vs_cb);
-    ctx->PSSetConstantBuffers(list_cb_slot, 1, &b.ps_cb);
-    ctx->PSSetShaderResources(0, 2, b.ps_srv);
-    ctx->PSSetSamplers(0, 1, &b.ps_sampler);
-    ctx->OMSetBlendState(b.blend, b.blend_factor, b.sample_mask);
-    ctx->OMSetDepthStencilState(b.depth, b.stencil_ref);
-    ctx->RSSetState(b.raster);
-    for(IUnknown * u: std::initializer_list<IUnknown *>{b.vs, b.ps, b.layout, b.vs_cb, b.ps_cb, b.ps_srv[0], b.ps_srv[1], b.ps_sampler,
-                                                       b.blend, b.depth, b.raster})
-      if(u)
-        u->Release();
-    for(UINT i{}; i != b.vs_instance_count; ++i)
-      b.vs_instances[i]->Release();
-    for(UINT i{}; i != b.ps_instance_count; ++i)
-      b.ps_instances[i]->Release();
     if(not cs.told_quads and k == 1u)
       {
       cs.told_quads = true;

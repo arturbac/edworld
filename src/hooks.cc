@@ -1071,7 +1071,7 @@ namespace edworld
         if(list)
           panel_list_after(ctx, frame, index_count, start_index, base_vertex, start_instance);
         if(spheres)
-          panel_compass_after(ctx, frame, index_count, start_instance);
+          panel_compass_after(ctx, frame, index_count, start_index, base_vertex, start_instance);
         }
       __except(EXCEPTION_EXECUTE_HANDLER)
         {

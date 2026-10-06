@@ -188,6 +188,22 @@ namespace edworld
         current.compass_sphere_gain = to_float(value, current.compass_sphere_gain);
       else if(key == "compass_sphere_text_above")
         current.compass_sphere_text_above = to_uint(value, current.compass_sphere_text_above);
+      else if(key == "compass_anchor")
+        current.compass_anchor = to_uint(value, current.compass_anchor);
+      else if(key == "compass_anchor_c_px")
+        current.compass_anchor_c_px = to_float(value, current.compass_anchor_c_px);
+      else if(key == "compass_anchor_c_py")
+        current.compass_anchor_c_py = to_float(value, current.compass_anchor_c_py);
+      else if(key == "compass_anchor_scale")
+        current.compass_anchor_scale = to_float(value, current.compass_anchor_scale);
+      else if(key == "compass_anchor_a_dx")
+        current.compass_anchor_a_dx = to_float(value, current.compass_anchor_a_dx);
+      else if(key == "compass_anchor_a_dy")
+        current.compass_anchor_a_dy = to_float(value, current.compass_anchor_a_dy);
+      else if(key == "compass_anchor_c_dx")
+        current.compass_anchor_c_dx = to_float(value, current.compass_anchor_c_dx);
+      else if(key == "compass_anchor_c_dy")
+        current.compass_anchor_c_dy = to_float(value, current.compass_anchor_c_dy);
       else if(key == "compass_text")
         current.compass_text = to_uint(value, current.compass_text);
       else if(key == "compass_hide_game")
