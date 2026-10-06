@@ -2054,18 +2054,6 @@ namespace edworld
       return true;
       }
 
-    ///\brief the quad's corners (top left, top right, bottom right, bottom left) on the HUD surface, in its pixels (y down), for
-    /// a sphere of square side side_px centred at (x, y): the lines' band under it or over it, as the texture is laid out
-    auto sphere_quad_px(float x, float y, float side_px, float (&px)[4][2]) -> void
-      {
-      settings_t const & s{settings()};
-      bool const above{s.compass_sphere_text_above != 0};
-      float const qw{side_px * (above ? above_w : below_w) / 512.f}, qh{side_px * (above ? above_h : below_h) / 512.f};
-      float const top{above ? y + side_px / 2.f - qh : y - side_px / 2.f};
-      float const pts[4][2]{{x - qw / 2.f, top}, {x + qw / 2.f, top}, {x + qw / 2.f, top + qh}, {x - qw / 2.f, top + qh}};
-      std::memcpy(px, pts, sizeof pts);
-      }
-
     // ---- anchored: the draws of the HUD surface, each read once for the triangles holding the anchors ----
     struct anchor_draw_t
       {
@@ -2097,6 +2085,8 @@ namespace edworld
     anchor_draw_t anchor_draws[max_anchor_draws]{};
     std::uint32_t anchor_draw_next{};
     std::uint64_t anchor_drawn_frame[2]{~0ull, ~0ull};
+    float anchor_diameter_local{};  ///< the compass's diameter in the HUD mesh's local units
+    float anchor_right[2]{1.f, 0.f}, anchor_up[2]{0.f, 1.f};  ///< the surface's right and up in the mesh's local plane
     bool told_anchor[2]{};
 
     auto anchor_points(settings_t const & s, float (&pt)[2][2]) -> void
@@ -2255,29 +2245,58 @@ namespace edworld
         return;
       float pt[2][2];
       anchor_points(s, pt);
-      float const diameter{2.f * s.compass_radius};
-      float const side{s.compass_anchor_scale * diameter * 512.f / 400.f};  // the sphere is 400 of the square's 512
+      // sizes and offsets in the mesh's own units, from the compass's piece (the HUD's pieces are scaled differently on the
+      // surface: the speed readout's pixels are not the compass's); kept for a draw that holds only the right anchor
+      if(entry->holds[0])
+        {
+        // the compass's piece gives the mesh's directions too: right and up on the surface (y down there), in local units
+        auto const o{local_of(entry->map[0], pt[0][0], pt[0][1])};
+        auto const rx{local_of(entry->map[0], pt[0][0] + s.compass_radius, pt[0][1])};
+        auto const uy{local_of(entry->map[0], pt[0][0], pt[0][1] - s.compass_radius)};
+        if(o and rx and uy)
+          {
+          float const ax{rx->x - o->x}, ay{rx->y - o->y}, bx{uy->x - o->x}, by{uy->y - o->y};
+          float const la{std::sqrt(ax * ax + ay * ay)}, lb{std::sqrt(bx * bx + by * by)};
+          if(la > 0.f and lb > 0.f)
+            {
+            anchor_diameter_local = la + la;
+            anchor_right[0] = ax / la;
+            anchor_right[1] = ay / la;
+            anchor_up[0] = bx / lb;
+            anchor_up[1] = by / lb;
+            }
+          }
+        }
+      if(not(anchor_diameter_local > 0.f))
+        return;
+      float const dl{anchor_diameter_local};
+      float const side{s.compass_anchor_scale * dl * 512.f / 400.f};  // the sphere is 400 of the square's 512
+      bool const above{s.compass_sphere_text_above != 0};
+      float const qw{side * (above ? above_w : below_w) / 512.f}, qh{side * (above ? above_h : below_h) / 512.f};
+      // a point dx to the right and dy up of (x, y), in the mesh's local plane
+      auto const step = [&](float x, float y, float dx, float dy, float z, float (&out)[3])
+        {
+        out[0] = x + dx * anchor_right[0] + dy * anchor_up[0];
+        out[1] = y + dx * anchor_right[1] + dy * anchor_up[1];
+        out[2] = z;
+        };
       for(std::uint32_t k{}; k != 2u; ++k)
         {
         if(not entry->holds[k] or anchor_drawn_frame[k] == frame)
           continue;
         float const dx{k == 0u ? s.compass_anchor_a_dx : s.compass_anchor_c_dx}, dy{k == 0u ? s.compass_anchor_a_dy : s.compass_anchor_c_dy};
-        float px[4][2];
-        sphere_quad_px(pt[k][0] + dx * diameter, pt[k][1] - dy * diameter, side, px);
+        auto const at{local_of(entry->map[k], pt[k][0], pt[k][1])};
+        if(not at)
+          continue;
+        // the sphere's centre; the quad's top and bottom relative to it (the band over the square, or under it)
+        float const top{above ? -side / 2.f + qh : side / 2.f}, bottom{top - qh};
+        float const cx{dx * dl}, cy{dy * dl};
         float corners[4][3];
-        bool ok{true};
-        for(int i{}; i != 4 and ok; ++i)
-          {
-          auto const local{local_of(entry->map[k], px[i][0], px[i][1])};
-          ok = local.has_value();
-          if(ok)
-            {
-            corners[i][0] = local->x;
-            corners[i][1] = local->y;
-            corners[i][2] = local->z;
-            }
-          }
-        if(ok and draw_sphere_quad(ctx, k, corners, start_instance))
+        step(at->x, at->y, cx - qw / 2.f, cy + top, at->z, corners[0]);
+        step(at->x, at->y, cx + qw / 2.f, cy + top, at->z, corners[1]);
+        step(at->x, at->y, cx + qw / 2.f, cy + bottom, at->z, corners[2]);
+        step(at->x, at->y, cx - qw / 2.f, cy + bottom, at->z, corners[3]);
+        if(draw_sphere_quad(ctx, k, corners, start_instance))
           {
           anchor_drawn_frame[k] = frame;
           if(not told_anchor[k])
