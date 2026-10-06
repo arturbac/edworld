@@ -1303,8 +1303,12 @@ namespace edworld
       ID3D11Texture2D * mask{};
       ID3D11ShaderResourceView * mask_srv{};
       std::uint32_t mask_width{}, mask_height{};
-      compass_reading_t reading{};
+      compass_reading_t reading{};  ///< the last one read, plausible or not
       bool have_reading{};
+      compass_reading_t shown{};  ///< the last plausible one: what the angles come from
+      bool have_shown{};
+      std::uint64_t held{};      ///< readings in a row not plausible (the last plausible one held meanwhile)
+      std::uint64_t rejected{};  ///< all readings not plausible
       std::uint64_t lag{};  ///< frames between the copy and its reading
       std::uint64_t drawn_frame{~0ull};
       std::uint64_t reads{};
@@ -1460,6 +1464,17 @@ namespace edworld
                                     static_cast<std::int32_t>(ch), s.compass_x - static_cast<float>(left),
                                     s.compass_y - static_cast<float>(top), s.compass_radius * 1.25f);
           cs.have_reading = true;
+          if(compass_plausible(cs.reading))
+            {
+            cs.shown = cs.reading;
+            cs.have_shown = true;
+            cs.held = 0;
+            }
+          else
+            {
+            ++cs.held;
+            ++cs.rejected;
+            }
           cs.lag = frame - cs.copied_frame;
           ++cs.reads;
           ctx->Unmap(cs.copy, 0);
@@ -1497,7 +1512,7 @@ namespace edworld
     ctx->Unmap(r.gate, 0);
 
     flight_t const f{flight()};
-    compass_reading_t const & c{cs.reading};
+    compass_reading_t const & c{cs.shown};
     compass_angles_t const a{compass_angles(c.x, c.y, s.compass_radius, c.filled)};
 
     float const sw{static_cast<float>(d.Width)}, sh{static_cast<float>(d.Height)};
@@ -1509,7 +1524,7 @@ namespace edworld
     ImGui::NewFrame();
     ImDrawList * const dl{ImGui::GetBackgroundDrawList()};
     char line[256];
-    if(s.compass == 2)
+    if(s.compass >= 3)
       {
       // the surface's pixels: magenta lines every 100, their coordinates every 200 (magenta is never read as the dot)
       ImU32 const grid{IM_COL32(255, 0, 255, 255)};
@@ -1528,40 +1543,44 @@ namespace edworld
       dl->AddRect(ImVec2{static_cast<float>(left), static_cast<float>(top)}, ImVec2{static_cast<float>(right), static_cast<float>(bottom)},
                   IM_COL32(255, 128, 0, 255));
       }
-    float const x0{s.compass_text_x};
+    // the angles: DN/UP below or above the wings' plane, LT/RT left or right of the nose; BEHIND under them, orange
     float y{s.compass_text_y};
-    float const big{s.compass_text_size}, info_size{std::round(s.compass_text_size * 0.62f)};
-    if(not cs.have_reading or not c.found)
+    bool const behind{cs.have_shown and not c.filled};
+    if(not cs.have_shown)
       std::snprintf(line, sizeof line, "NO DOT");
     else
-      std::snprintf(line, sizeof line, "%s%s %.1f%s  %s %.1f%s", c.filled ? "" : "BEHIND ", a.up < 0.f ? "DOWN" : "UP",
-                    static_cast<double>(std::fabs(a.up)), degree, a.right < 0.f ? "LEFT" : "RIGHT", static_cast<double>(std::fabs(a.right)),
-                    degree);
-    y += ground_text(dl, x0, y, big, IM_COL32(150, 230, 255, 255), line);
-    if(s.compass == 2)
+      std::snprintf(line, sizeof line, "%s %.1f%s  %s %.1f%s", a.up < 0.f ? "DN" : "UP", static_cast<double>(std::fabs(a.up)), degree,
+                    a.right < 0.f ? "LT" : "RT", static_cast<double>(std::fabs(a.right)), degree);
+    ImU32 const main_colour{behind ? IM_COL32(255, 150, 40, 255) : IM_COL32(150, 230, 255, 255)};
+    y += ground_text(dl, s.compass_text_x, y, s.compass_text_size, main_colour, line);
+    if(behind)
+      ground_text(dl, s.compass_text_x, y, std::round(s.compass_text_size * 0.6f), main_colour, "BEHIND");
+    if(s.compass >= 2)
       {
       ImU32 const info{IM_COL32(255, 230, 120, 255)};
-      std::snprintf(line, sizeof line, "off nose %.1f%s  r %.1f/%.0f  dot %+.1f %+.1f  px %u %s", static_cast<double>(a.off_nose), degree,
+      float const x0{s.compass_info_x}, size{s.compass_info_size};
+      float yi{s.compass_info_y};
+      std::snprintf(line, sizeof line, "off %.1f%s r %.1f/%.0f dot %+.1f %+.1f", static_cast<double>(a.off_nose), degree,
                     static_cast<double>(std::sqrt(c.x * c.x + c.y * c.y)), static_cast<double>(s.compass_radius), static_cast<double>(c.x),
-                    static_cast<double>(c.y), c.pixels, c.filled ? "filled" : "hollow");
-      y += ground_text(dl, x0, y, info_size, info, line);
-      std::snprintf(line, sizeof line, "if target = planet: nose %.1f%s below horizon", static_cast<double>(90.f - a.off_nose), degree);
-      y += ground_text(dl, x0, y, info_size, info, line);
+                    static_cast<double>(c.y));
+      yi += ground_text(dl, x0, yi, size, info, line);
+      std::snprintf(line, sizeof line, "px %u %s  held %llu  rejected %llu", c.pixels, c.filled ? "filled" : "hollow",
+                    static_cast<unsigned long long>(cs.held), static_cast<unsigned long long>(cs.rejected));
+      yi += ground_text(dl, x0, yi, size, info, line);
       if(f.has_position)
         {
-        std::snprintf(line, sizeof line, "alt %.2f km  hdg %.0f  path %+.1f%s (Status)", f.altitude / 1000.0, f.heading,
-                      f.path_angle, degree);
-        y += ground_text(dl, x0, y, info_size, info, line);
-        std::snprintf(line, sizeof line, "lat %.4f lon %.4f  R %.0f km", f.latitude, f.longitude, f.planet_radius / 1000.0);
-        y += ground_text(dl, x0, y, info_size, info, line);
+        std::snprintf(line, sizeof line, "planet: nose %.1f%s path %.1f%s below", static_cast<double>(90.f - a.off_nose), degree,
+                      -f.path_angle, degree);
+        yi += ground_text(dl, x0, yi, size, info, line);
+        std::snprintf(line, sizeof line, "alt %.2f km hdg %.0f", f.altitude / 1000.0, f.heading);
+        yi += ground_text(dl, x0, yi, size, info, line);
         }
       else
-        y += ground_text(dl, x0, y, info_size, info, "no position in Status.json");
-      std::snprintf(line, sizeof line, "dest body %u %.40s", f.destination_body, f.destination_name);
-      y += ground_text(dl, x0, y, info_size, info, line);
-      std::snprintf(line, sizeof line, "flags %08llx  lag %llu fr  reads %llu  %s", static_cast<unsigned long long>(f.flags),
-                    static_cast<unsigned long long>(cs.lag), static_cast<unsigned long long>(cs.reads), EDWORLD_VERSION);
-      y += ground_text(dl, x0, y, info_size, info, line);
+        yi += ground_text(dl, x0, yi, size, info, "no position in Status.json");
+      std::snprintf(line, sizeof line, "dest %u %.30s", f.destination_body, f.destination_name);
+      yi += ground_text(dl, x0, yi, size, info, line);
+      std::snprintf(line, sizeof line, "lag %llu fr %s", static_cast<unsigned long long>(cs.lag), EDWORLD_VERSION);
+      yi += ground_text(dl, x0, yi, size, info, line);
       }
     ImGui::Render();
 
@@ -1587,11 +1606,13 @@ namespace edworld
     if(s.compass_log_ms and (now.QuadPart - cs.last_log) * 1000 / freq.QuadPart >= s.compass_log_ms)
       {
       cs.last_log = now.QuadPart;
-      log_line("compass: %s %s dot %+.2f %+.2f px %u off %.2f up %+.2f right %+.2f lag %llu | alt %.0f lat %.6f lon %.6f hdg %.0f path %+.2f "
+      // the raw reading, plausible or not, and the angles shown (from the last plausible one)
+      compass_reading_t const & raw{cs.reading};
+      log_line("compass: %s %s dot %+.2f %+.2f px %u %s off %.2f up %+.2f right %+.2f lag %llu | alt %.0f lat %.6f lon %.6f hdg %.0f path %+.2f "
                "flags %llx dest %u %.40s",
-               c.found ? "dot" : "none", c.filled ? "filled" : "hollow", static_cast<double>(c.x), static_cast<double>(c.y), c.pixels,
-               static_cast<double>(a.off_nose), static_cast<double>(a.up), static_cast<double>(a.right),
-               static_cast<unsigned long long>(cs.lag), f.has_position ? f.altitude : -1.0, f.latitude, f.longitude, f.heading, f.path_angle,
+               raw.found ? "dot" : "none", raw.filled ? "filled" : "hollow", static_cast<double>(raw.x), static_cast<double>(raw.y), raw.pixels,
+               compass_plausible(raw) ? "ok" : "rejected", static_cast<double>(a.off_nose), static_cast<double>(a.up),
+               static_cast<double>(a.right), static_cast<unsigned long long>(cs.lag), f.has_position ? f.altitude : -1.0, f.latitude, f.longitude, f.heading, f.path_angle,
                static_cast<unsigned long long>(f.flags), f.destination_body, f.destination_name);
       }
     }

@@ -71,6 +71,14 @@ namespace edworld
     return out;
     }
 
+  ///\brief a reading worth showing: a filled dot is ~137 lit pixels, a hollow ring ~25 (2200x1800, 2026-10-06);
+  /// a handful (the dot half drawn, a flash entering an atmosphere) or a thousand (the whole disc lit) is not the dot
+  [[nodiscard]]
+  constexpr auto compass_plausible(compass_reading_t const & r) noexcept -> bool
+    {
+    return r.found and (r.filled ? r.pixels >= 80u and r.pixels <= 400u : r.pixels >= 15u and r.pixels <= 40u);
+    }
+
   inline constexpr float compass_degrees{57.29577951308232f};
 
   ///\brief the target's direction from the dot, in degrees

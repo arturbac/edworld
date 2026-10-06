@@ -87,8 +87,8 @@ namespace edworld
     float list_gain{0.8f};
 
     // ---- the compass (PoC): the HUD compass's dot read off its interface surface, the angles written beside it ----
-    ///\brief 0 off, 1 the angles, 2 the angles with everything known for checking them, and a grid of the surface's
-    /// pixels with candidate places for the text (which of the surface the cockpit shows is not known yet)
+    ///\brief 0 off, 1 the angles, 2 also everything known for checking them, 3 also a grid of the surface's pixels
+    /// (the surface is a mosaic of HUD pieces placed around the cockpit; the grid shows which piece goes where)
     std::uint32_t compass{0};
     ///\brief the interface surface that carries the compass (the HUD's left cluster: heat, speed, fuel, target)
     std::uint32_t compass_surface_width{2200};
@@ -97,10 +97,15 @@ namespace edworld
     float compass_x{430.f};
     float compass_y{271.f};
     float compass_radius{54.f};
-    ///\brief the text's top left corner and its height, in the surface's pixels
-    float compass_text_x{140.f};
-    float compass_text_y{180.f};
-    float compass_text_size{30.f};
+    ///\brief the angles' top left corner and height, in the surface's pixels: the GRAVITY WELL strip, shown above the
+    /// radar (atlas x 1170-1580, y 815-900, seen with the grid on 2026-10-06, Kestrel)
+    float compass_text_x{1185.f};
+    float compass_text_y{822.f};
+    float compass_text_size{34.f};
+    ///\brief the checking lines (compass = 2): an empty piece shown above the ship's hologram (x 1600-2150, y 20-190)
+    float compass_info_x{1620.f};
+    float compass_info_y{24.f};
+    float compass_info_size{18.f};
     ///\brief a line of the reading in the log at most this often; 0 = never
     std::uint32_t compass_log_ms{1000};
     };

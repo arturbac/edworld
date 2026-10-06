@@ -160,6 +160,12 @@ namespace edworld
         current.compass_text_y = to_float(value, current.compass_text_y);
       else if(key == "compass_text_size")
         current.compass_text_size = to_float(value, current.compass_text_size);
+      else if(key == "compass_info_x")
+        current.compass_info_x = to_float(value, current.compass_info_x);
+      else if(key == "compass_info_y")
+        current.compass_info_y = to_float(value, current.compass_info_y);
+      else if(key == "compass_info_size")
+        current.compass_info_size = to_float(value, current.compass_info_size);
       else if(key == "compass_log_ms")
         current.compass_log_ms = to_uint(value, current.compass_log_ms);
       else if(key == "edsm")

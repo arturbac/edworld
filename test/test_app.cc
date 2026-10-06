@@ -152,10 +152,14 @@ int main()
           filled.pixels > 100u,
         "compass: a filled dot found where it is drawn");
   clear();
-  dot(cx - 40.f, cy + 10.f, 6.6f, 4.5f);
+  dot(cx - 40.f, cy + 10.f, 6.6f, 5.8f);  // a ring as thin as the game's (~25-30 lit pixels)
   auto const hollow{edworld::read_compass(area.data(), w * 4u, w, h, cx, cy, radius * 1.25f)};
   check(hollow.found and not hollow.filled and std::fabs(hollow.x + 40.f) < 0.3f and std::fabs(hollow.y - 10.f) < 0.3f,
         "compass: a hollow dot found and told from a filled one");
+  check(edworld::compass_plausible(filled) and edworld::compass_plausible(hollow), "compass: both dots plausible");
+  check(not edworld::compass_plausible(edworld::compass_reading_t{true, true, 1.f, 1.f, 4u}) and
+          not edworld::compass_plausible(edworld::compass_reading_t{true, false, 1.f, 1.f, 1234u}),
+        "compass: a few lit pixels or the whole disc lit is no dot");
   clear();
   check(not edworld::read_compass(area.data(), w * 4u, w, h, cx, cy, radius * 1.25f).found, "compass: no dot on a bare disc");
   auto const up30{edworld::compass_angles(0.f, -27.f, radius, true)};
