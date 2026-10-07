@@ -2088,6 +2088,7 @@ namespace edworld
     float anchor_diameter_local{};  ///< the compass's diameter in the HUD mesh's local units
     float anchor_right[2]{1.f, 0.f}, anchor_up[2]{0.f, 1.f};  ///< the surface's right and up in the mesh's local plane
     bool told_anchor[2]{};
+    float told_place[2][3]{};  ///< the spheres' centres and size last logged, in the HUD mesh's local units
 
     auto anchor_points(settings_t const & s, float (&pt)[2][2]) -> void
       {
@@ -2303,6 +2304,20 @@ namespace edworld
             {
             told_anchor[k] = true;
             log_line("compass: the %s sphere first drawn by its anchor", k == 0u ? "left" : "right");
+            }
+          // the sphere's place, logged whenever it moves by more than 1% of its diameter (another ship, another cockpit),
+          // so a tester's log tells where the spheres were and how large
+          float const place[3]{at->x + cx * anchor_right[0] + cy * anchor_up[0], at->y + cx * anchor_right[1] + cy * anchor_up[1], dl};
+          float const tol{0.01f * dl};
+          if(std::fabs(place[0] - told_place[k][0]) > tol or std::fabs(place[1] - told_place[k][1]) > tol
+             or std::fabs(place[2] - told_place[k][2]) > tol)
+            {
+            std::memcpy(told_place[k], place, sizeof place);
+            log_line("compass: the %s sphere's centre at local (%.4f, %.4f, %.4f), compass diameter %.4f, right (%.3f, %.3f) up (%.3f, %.3f), "
+                     "draw of %u indices",
+                     k == 0u ? "left" : "right", static_cast<double>(place[0]), static_cast<double>(place[1]), static_cast<double>(at->z),
+                     static_cast<double>(dl), static_cast<double>(anchor_right[0]), static_cast<double>(anchor_right[1]),
+                     static_cast<double>(anchor_up[0]), static_cast<double>(anchor_up[1]), entry->index_count);
             }
           }
         }

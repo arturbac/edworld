@@ -89,7 +89,7 @@ namespace edworld
     // ---- the compass (PoC): the HUD compass's dot read off its interface surface, the angles written beside it ----
     ///\brief 0 off, 1 the angles, 2 also everything known for checking them, 3 also a grid of the surface's pixels
     /// (the surface is a mosaic of HUD pieces placed around the cockpit; the grid shows which piece goes where)
-    std::uint32_t compass{0};
+    std::uint32_t compass{1};
     ///\brief the interface surface that carries the compass (the HUD's left cluster: heat, speed, fuel, target)
     std::uint32_t compass_surface_width{2200};
     std::uint32_t compass_surface_height{1800};
@@ -112,7 +112,7 @@ namespace edworld
     /// panels drawn first from the 2048x1280 surface (12 indices; the left one, then the right one): on the left the
     /// sphere seen from the front (as the compass, larger), on the right seen from behind, the left and above, with the
     /// place the target should be (compass_should_dive)
-    std::uint32_t compass_spheres{0};
+    std::uint32_t compass_spheres{1};
     ///\brief the quads' height in the panels' local units, their width over height (square on the screen: the panels'
     /// units are not square there), and their centres in each panel's local plane (2026-10-06, Kestrel: the panels' lower
     /// quads span x -0.10..0.18 / -0.18..0.10, y -0.22..-0.36)
@@ -132,7 +132,7 @@ namespace edworld
     /// the right one to the speed readout right of the radar - by the triangle of its draw holding that point of the HUD
     /// surface; so they keep their places by those pieces in every ship. 0: on the two side panels (compass_sphere_a/c,
     /// which differ from ship to ship)
-    std::uint32_t compass_anchor{0};
+    std::uint32_t compass_anchor{1};
     ///\brief the right sphere's anchor on the HUD surface: the speed readout (2026-10-06, the HUD surface 2200x1800)
     float compass_anchor_c_px{416.f};
     float compass_anchor_c_py{157.f};
@@ -145,9 +145,9 @@ namespace edworld
     float compass_anchor_c_dy{0.83f};
     ///\brief 1: the spheres' lines in one wide band over each sphere (clear of the gauges under it, e.g. the thrust arc);
     /// 0: under it
-    std::uint32_t compass_sphere_text_above{0};
+    std::uint32_t compass_sphere_text_above{1};
     ///\brief 0: no angles in the strip above the radar (the spheres carry them); 1: written there
-    std::uint32_t compass_text{1};
+    std::uint32_t compass_text{0};
     ///\brief 1: the game's own compass cleared off the HUD surface once read (its square made transparent), the left
     /// sphere standing in for it; the game's returns whenever edworld is not there
     std::uint32_t compass_hide_game{0};

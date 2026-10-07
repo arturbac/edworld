@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.0-beta.1
+
+A beta: testers wanted (README).
+
+- **Navballs.** Two spheres beside the radar showing the selected target's direction: on the left seen from the
+  front with the angles above it, on the right seen from behind, the left and above with the nose marked and how far
+  the target is off it; in a planet's gravity well with the planet targeted, the nose's angle below the horizon,
+  `PUSH DOWN` / `PULL UP` towards a 35° dive (`compass_should_dive`) and the altitude. The direction is read off the
+  game's own compass on the HUD's surface. The spheres are quads in the HUD's plane, held to the compass and to the
+  speed readout; their size and offsets are in the HUD mesh's own units, taken from the compass. On by default
+  (`compass = 0` turns them off). The log records each sphere's place and size whenever it changes.
+
+Known: placed and checked in the Kestrel's cockpit only; the lines near a planet are not yet checked in the game;
+the game does not draw its compass every frame, so a sphere keeps its last reading in between.
+
 ## 1.0.0
 
 The first release.
