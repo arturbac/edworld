@@ -43,9 +43,11 @@ Both dlls are in `edworld-<version>.zip` on the [Releases](https://github.com/ar
 
 ### Through edloader
 
-edloader runs several d3d11 mods at once (its own doc/users.md). Put edworld's dll into `edloader\plugins`, list it
-in `edloader.txt`, and put `edworld.ini` with `next = d3d11.dll` into `edloader\config`. Its log is then in
-`edloader\logs`.
+[edloader](https://github.com/arturbac/edloader) runs several d3d11 mods at once. The release zip carries it in its
+`edloader` folder (its `d3d11.dll`, `edloader.txt.example` and its own `doc/users.md`, which tells how to install
+it). Put edworld's dll into `edloader\plugins`, list it in `edloader.txt`, and put `edworld.ini` with
+`next = d3d11.dll` into `edloader\config`. Its log is then in `edloader\logs`. With EDHM and EDVR, list EDHM before
+EDVR (edloader's doc/users.md, "EDHM and EDVR").
 
 ### With Elite Help Tool
 

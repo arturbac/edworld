@@ -36,8 +36,12 @@ place them right in every cockpit. `compass = 0` in the ini turns the navballs o
   found in the game, and how to write a d3d11 plugin of your own on the same pattern.
 
 Version 1.0.0, beta 1.1.0-beta.1 ([CHANGELOG.md](CHANGELOG.md)). Observing is read-only: every hook calls the game's call through
-unchanged; the jump panel's emblem and list are the only things edworld changes in what the game draws. Checked in
-the game alone in front of EDHM, and through edloader together with EDHM. MIT licence (LICENSE).
+unchanged; the jump panel's emblem and list and the navballs are the only things edworld changes in what the game draws. edworld runs on its own as
+the game's `d3d11.dll`, passing the calls on to one other d3d11 mod (`next`), or through
+[edloader](https://github.com/arturbac/edloader) together with several; the release zip carries edloader in its
+`edloader` folder. Checked in the game: alone in front of EDHM; through edloader with EDHM; through edloader with
+EDHM and EDVR 0.18.0 (EDHM listed before EDVR) for the jump panel. The navballs are checked through edloader with
+EDHM, not yet with EDVR. MIT licence (LICENSE).
 
 ## Credits
 
