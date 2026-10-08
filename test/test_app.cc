@@ -187,6 +187,17 @@ int main()
   check(edworld::mix_rgb(0x080e1eu, 0x5096ffu, 0.f) == 0x080e1eu and edworld::mix_rgb(0x080e1eu, 0x5096ffu, 1.f) == 0x5096ffu,
         "spheres: a mix's ends are its colours");
   check(edworld::mix_rgb(0x000000u, 0xff8040u, 0.5f) == 0x804020u, "spheres: a mix halfway, each channel on its own");
+  auto const pad{edworld::pad_offsets(edworld::direction_of(-80.f, 0.f))};
+  check(std::fabs(pad.forward - 10.f) < 0.01f and std::fabs(pad.right) < 0.01f and std::fabs(pad.off_vertical - 10.f) < 0.01f,
+        "approach: 80 degrees below the nose is 10 degrees ahead of the vertical");
+  auto const aft{edworld::pad_offsets(edworld::compass_direction(0.f, 54.f, 54.f, false))};
+  check(std::fabs(aft.forward) < 0.01f and std::fabs(aft.off_vertical) < 0.01f, "approach: the dot on the rim is straight down");
+  check(edworld::approach_view(false, true, true, -25.f, 20.f) and not edworld::approach_view(false, true, true, -15.f, 20.f),
+        "approach: on at 20 degrees below the wings");
+  check(edworld::approach_view(true, true, true, -15.f, 20.f) and not edworld::approach_view(true, true, true, -5.f, 20.f),
+        "approach: kept down to 10 degrees, off above");
+  check(not edworld::approach_view(true, false, true, -80.f, 20.f) and edworld::approach_view(true, true, false, 0.f, 20.f),
+        "approach: off outside normal flight, kept without a reading");
   }
   wchar_t exe[MAX_PATH]{};
   GetModuleFileNameW(nullptr, exe, MAX_PATH);

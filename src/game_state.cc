@@ -120,10 +120,11 @@ namespace edworld
       }
 
     ///\brief the flight fields of a complete Status.json; the path angle from the previous fix that differed
-    auto read_flight(std::string_view text, std::uint64_t flags, flight_t & last) -> void
+    auto read_flight(std::string_view text, std::uint64_t flags, std::uint64_t flags2, flight_t & last) -> void
       {
       flight_t f{};
       f.flags = flags;
+      f.flags2 = flags2;
       bool la{}, lo{}, al{}, pr{}, hd{};
       f.latitude = real_after(text, "\"Latitude\"", 0, la);
       f.longitude = real_after(text, "\"Longitude\"", 0, lo);
@@ -163,6 +164,7 @@ namespace edworld
       else
         {
         last.flags = f.flags;
+        last.flags2 = f.flags2;
         last.heading = f.heading;
         last.destination_body = f.destination_body;
         std::memcpy(last.destination_name, f.destination_name, sizeof f.destination_name);
@@ -347,7 +349,7 @@ namespace edworld
           };
           charging.store(now_charging, std::memory_order_relaxed);
           if(complete)
-            read_flight(text, flags, last_fix);
+            read_flight(text, flags, flags2, last_fix);
           auto const dest_at{text.find("\"Destination\"")};
           bool have_dest{};
           std::uint64_t const dest{

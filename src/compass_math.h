@@ -159,6 +159,37 @@ namespace edworld
     return compass_direction_t{std::cos(u) * std::sin(r), std::sin(u), std::cos(u) * std::cos(r)};
     }
 
+  // ---- the approach to a landing pad (PoC): the target below the ship, seen from above ----
+  ///\brief the target below the ship as angles off the ship's vertical (its down): ahead (+) or behind (-) in the plane
+  /// of nose and vertical, right (+) or left (-) in the plane of wings and vertical, and the whole angle off it
+  struct pad_offsets_t
+    {
+    float forward;
+    float right;
+    float off_vertical;
+    };
+
+  [[nodiscard]]
+  inline auto pad_offsets(compass_direction_t const & d) noexcept -> pad_offsets_t
+    {
+    float const down{-d.y};
+    return pad_offsets_t{std::atan2(d.z, down) * compass_degrees, std::atan2(d.x, down) * compass_degrees,
+                         std::acos(std::clamp(down, -1.f, 1.f)) * compass_degrees};
+    }
+
+  ///\brief whether the approach view shows: on once the target is below degrees or more under the wings' plane in
+  /// normal flight, off again once it rises above below - 10 or the ship leaves normal flight; a frame without a
+  /// reading keeps what was
+  [[nodiscard]]
+  constexpr auto approach_view(bool was_on, bool normal_flight, bool have, float up, float below) noexcept -> bool
+    {
+    if(not normal_flight)
+      return false;
+    if(not have)
+      return was_on;
+    return was_on ? up <= -(below - 10.f) : up <= -below;
+    }
+
   ///\brief 0xRRGGBB a fraction t (0..1) of the way from a to b, each channel rounded
   [[nodiscard]]
   constexpr auto mix_rgb(std::uint32_t a, std::uint32_t b, float t) noexcept -> std::uint32_t

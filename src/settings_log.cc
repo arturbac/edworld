@@ -224,6 +224,10 @@ namespace edworld
         if(auto const v{parse_hash(value)}; target and v and *v <= 0xffffffu)
           *target = static_cast<std::uint32_t>(*v);
         }
+      else if(key == "compass_approach_below")
+        current.compass_approach_below = to_float(value, current.compass_approach_below);
+      else if(key == "compass_approach_radius")
+        current.compass_approach_radius = to_float(value, current.compass_approach_radius);
       else if(key == "compass_log_ms")
         current.compass_log_ms = to_uint(value, current.compass_log_ms);
       else if(key == "edsm")

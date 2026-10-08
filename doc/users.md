@@ -83,6 +83,8 @@ comment line. Every setting has a default; the file is needed only to change one
 | `compass_text` | `0` | `1` = the angles also written above the radar |
 | `compass_hide_game` | `0` | `1` = the game's own compass hidden once read (the left sphere stands in for it) |
 | `compass_should_dive` | `35` | the dive, in degrees below the horizon, the right sphere steers towards near a planet |
+| `compass_approach_below` | `20` | in normal flight with the target this many degrees or more below the wings, the approach view: the left sphere shows the target from above (straight down in its middle, `FWD`/`AFT` and `LT`/`RT` off the vertical), the right one only the half under the ship's floor; `0` = never |
+| `compass_approach_radius` | `54.8` | the dot's distance from the compass's centre with the target on its rim (pixels of the HUD surface); the angle ahead or behind near a pad comes from how far short of it the dot is |
 | `compass_colour_disc` | `101214` | the spheres' colours, `RRGGBB` (see "Navball colours"): the disc behind a sphere |
 | `compass_colour_grid` | `5A6068` | the rings at 30° and 60° and the meridians |
 | `compass_colour_rim` | `A8AEB5` | the left sphere's rim and the wings' plane on the right one |
@@ -153,5 +155,9 @@ Delete edworld's `d3d11.dll` and its ini; put back the mod's dll you renamed, as
 - Navballs (beta): placed and checked in the Kestrel's cockpit only; other cockpits are larger or smaller, so the
   spheres may sit too close to or too far from the radar. The lines near a planet are not yet checked in the game.
   The game does not draw its compass every frame; a sphere keeps its last reading in between.
+- Approach view (proof of concept): near a pad the game's compass puts the target on its rim, so ahead or behind is
+  read from a fraction of a pixel there (a few degrees at best), left or right to about a degree. Below the
+  planet's glide the right sphere is always cut at the ship's floor; the floor is the ship's, not the ground's
+  (Status.json gives neither pitch nor roll).
 - The Empire's, the Federation's and the independents' words on the panel were measured on screenshots; a word
   edworld does not recognise leaves the game's emblem and says so in the log.

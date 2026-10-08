@@ -4,6 +4,9 @@
 
 - **Navball colours.** The spheres' colours are settings (`compass_colour_*`, `RRGGBB`), a muted grey by default;
   `doc/users.md` has the beta's blue as an example.
+- **Approach view (proof of concept).** In normal flight with the target 20° or more below the wings, the left
+  sphere shows it from above and the right one the half of the sphere under the ship's floor; after a planet's
+  glide the right sphere is always cut there and the dive guidance shows only in orbital cruise and glide.
 
 ## 1.1.0-beta.1
 

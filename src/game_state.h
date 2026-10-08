@@ -32,6 +32,8 @@ namespace edworld
   struct flight_t
     {
     std::uint64_t flags;
+    ///\brief Status.json Flags2 (bit 12: gliding, checked 2026-10-08 in EHT's recorded Status: set in normal space with an altitude)
+    std::uint64_t flags2;
     bool has_position;
     double latitude, longitude, altitude, planet_radius, heading;
     ///\brief degrees, + climbing, from the last two fixes that differed; NaN until there are two

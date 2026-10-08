@@ -152,6 +152,14 @@ namespace edworld
     /// sphere standing in for it; the game's returns whenever edworld is not there
     std::uint32_t compass_hide_game{0};
     float compass_sphere_gain{1.f};
+    ///\brief the approach view (PoC): in normal flight (not supercruise, not gliding, neither docked nor landed) with the
+    /// target this many degrees or more below the wings' plane, the left sphere shows the target from above (straight
+    /// down in its middle) and the right one the lower half of the sphere under the ship's floor; 0 = never
+    float compass_approach_below{20.f};
+    ///\brief the dot's distance from the disc's centre when the target is on the rim, for the approach view: near a pad
+    /// the dot sits there and the angle ahead or behind comes from how far short of it the dot is (Sjona's five dockings
+    /// of 2026-10-07: the dot at 54.72..54.79 px with the pad below, compass_radius 54.46 from the rim's ring)
+    float compass_approach_radius{54.8f};
     ///\brief the spheres' colours, 0xRRGGBB: a muted grey by default (doc/users.md has the 1.1.0-beta.1 blue as an
     /// example); the fainter shades (the far side, the disc's middle, the outline) are mixed from these
     ///\brief the disc behind a sphere, at its rim; its middle is a fifth of the way to compass_colour_rim
