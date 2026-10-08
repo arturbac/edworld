@@ -173,6 +173,14 @@ int main()
   double const g{edworld::flight_path_angle(-13.579245, 55.208015, 879953.0, -12.421914, 52.95866, 719708.0, 884209.9375)};
   check(std::fabs(g + 65.6) < 0.1, "compass: the flight path angle of two fixes (-65.6 degrees, the run of 2026-10-06)");
   check(std::isnan(edworld::flight_path_angle(1.0, 2.0, 3.0, 1.0, 2.0, 3.0, 1000.0)), "compass: no angle without a move");
+  auto const over{edworld::glide_to(10.0, 20.0, 5000.0, 10.0, 20.0, 1.0e6)};
+  check(std::fabs(over.below - 90.0) < 1e-9 and over.distance == 0.0, "glide: the place under the ship is straight down");
+  // 0.01 rad over a sphere of 1000 km, 1 km up: the ground falls away by 50 m on the way
+  auto const ten{edworld::glide_to(0.0, 0.0, 1000.0, 0.0, 0.57295779513, 1.0e6)};
+  check(std::fabs(ten.distance - 10000.0) < 0.1 and std::fabs(ten.below - 5.994) < 0.01,
+        "glide: 10 km away and 1 km up is 6 degrees down, the curve included");
+  auto const level{edworld::glide_to(0.0, 0.0, 0.0, 0.0, 0.57295779513, 1.0e6)};
+  check(level.below > 0.28 and level.below < 0.29, "glide: from the ground a place 10 km off lies under the horizon");
   auto const ahead{edworld::compass_direction(0.f, 0.f, radius, true)};
   check(std::fabs(ahead.z - 1.f) < 1e-6f and std::fabs(ahead.x) < 1e-6f, "spheres: the dot in the middle is the nose");
   auto const d{edworld::compass_direction(0.f, 27.f, radius, true)};

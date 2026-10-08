@@ -1787,6 +1787,31 @@ namespace edworld
             std::snprintf(climb, sizeof climb, "%+.0f m/s", f.vertical_speed);
           }
         }
+      else if(f.has_position and f.has_place)
+        {
+        // a place on the surface as the target (where it stands from the data source): the straight line to it
+        // against the line flown; flown steeper, the ship comes down short of it, shallower, it flies over it
+        glide_t const g{glide_to(f.latitude, f.longitude, f.altitude, f.place_latitude, f.place_longitude, f.planet_radius)};
+        std::snprintf(c1, sizeof c1, "TARGET %.0f%s %s", std::fabs(g.below), degree, g.below >= 0.0 ? "DOWN" : "UP");
+        if(std::isnan(f.path_angle))
+          std::snprintf(c2, sizeof c2, "PATH ?");
+        else
+          {
+          double const off{-f.path_angle - g.below};
+          if(std::fabs(off) < 2.0)
+            {
+            std::snprintf(c2, sizeof c2, "ON PATH");
+            c2_colour = green_line;
+            }
+          else
+            {
+            std::snprintf(c2, sizeof c2, "%s %.0f%s", off > 0.0 ? "SHALLOWER" : "STEEPER", std::fabs(off), degree);
+            c2_colour = orange;
+            }
+          }
+        std::snprintf(alt, sizeof alt, "ALT %.1f km", f.altitude / 1000.0);
+        std::snprintf(climb, sizeof climb, "%.1f km TO GO", g.distance / 1000.0);
+        }
       else if(f.has_position)
         {
         // with the planet as the target: the nose below the horizon is 90 minus the target off the nose
@@ -1846,7 +1871,7 @@ namespace edworld
             if(cut)
               draw_sphere_dome(dl, centre, dp, have, not f.has_position);
             else
-              draw_sphere_oblique(dl, centre, d, have, f.has_position, should);
+              draw_sphere_oblique(dl, centre, d, have, f.has_position and not f.has_place, should);
             if(f.has_position)
               {
               // at a planet the game writes its latitude, longitude and gravity in the middle of the band, not always at the
@@ -1891,7 +1916,7 @@ namespace edworld
             if(cut)
               draw_sphere_dome(dl, centre, dp, have, not f.has_position);
             else
-              draw_sphere_oblique(dl, centre, d, have, f.has_position, should);
+              draw_sphere_oblique(dl, centre, d, have, f.has_position and not f.has_place, should);
             y += sphere_line(dl, 0.f, below_w, y, 80.f, yellow, c1);
             if(c2[0])
               y += sphere_line(dl, 0.f, below_w, y, 72.f, c2_colour, c2);

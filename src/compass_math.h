@@ -129,6 +129,29 @@ namespace edworld
     return std::atan2(vertical, horizontal) / rad;
     }
 
+  ///\brief the straight line from the ship to a place on the surface
+  struct glide_t
+    {
+    double distance;  ///< metres over the ground, along the surface
+    double below;     ///< degrees below the local horizon (negative: the place stands over it)
+    };
+
+  ///\brief the line to a place at the surface (latitude, longitude) from the ship's fix over a sphere of radius
+  /// planet_radius: the place taken at the radius itself, its own height unknown
+  [[nodiscard]]
+  inline auto glide_to(double lat, double lon, double alt, double place_lat, double place_lon, double planet_radius) noexcept
+    -> glide_t
+    {
+    constexpr double rad{3.14159265358979323846 / 180.0};
+    double const a1{lat * rad}, a2{place_lat * rad}, dl{(place_lon - lon) * rad};
+    // haversine: the cosine rule loses metres near the place, where they count
+    double const sl{std::sin((a2 - a1) / 2.0)}, so{std::sin(dl / 2.0)};
+    double const c{2.0 * std::asin(std::min(1.0, std::sqrt(sl * sl + std::cos(a1) * std::cos(a2) * so * so)))};
+    double const horizontal{planet_radius * std::sin(c)};
+    double const vertical{planet_radius + alt - planet_radius * std::cos(c)};
+    return glide_t{c * planet_radius, horizontal == 0.0 and vertical == 0.0 ? 0.0 : std::atan2(vertical, horizontal) / rad};
+    }
+
   // ---- the spheres drawn beside the dashboard (PoC): the target's direction in the ship's frame, and a view of it ----
   ///\brief a direction in the ship's frame: x right, y up, z forward (unit length)
   struct compass_direction_t

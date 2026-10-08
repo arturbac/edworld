@@ -169,9 +169,7 @@ namespace edworld
         last.destination_body = f.destination_body;
         std::memcpy(last.destination_name, f.destination_name, sizeof f.destination_name);
         }
-      AcquireSRWLockExclusive(&flight_lock);
-      flight_now = last;
-      ReleaseSRWLockExclusive(&flight_lock);
+      // published by apply_place, with the destination's place
       }
 
     auto to_allegiance(std::string_view name) -> allegiance_e
@@ -312,10 +310,98 @@ namespace edworld
         }
       return false;
       }
+
+    // ---- where the destination stands on its body (EHT's `surface`) ----
+    surface_t const * surface_view{};
+    DWORD next_surface_try{};
+
+    auto map_surface() -> void
+      {
+      if(surface_view or settings().shm_dir.empty())
+        return;
+      DWORD const now{GetTickCount()};
+      if(static_cast<LONG>(now - next_surface_try) < 0)
+        return;
+      next_surface_try = now + 2000;
+      std::wstring const path{settings().shm_dir + L"\\surface"};
+      HANDLE const file{CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                                    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr)};
+      if(file == INVALID_HANDLE_VALUE)
+        return;
+      LARGE_INTEGER size{};
+      GetFileSizeEx(file, &size);
+      if(size.QuadPart < static_cast<LONGLONG>(sizeof(surface_t)))
+        {
+        CloseHandle(file);
+        return;
+        }
+      HANDLE const mapping{CreateFileMappingW(file, nullptr, PAGE_READONLY, 0, sizeof(surface_t), nullptr)};
+      CloseHandle(file);
+      if(not mapping)
+        return;
+      surface_view = static_cast<surface_t const *>(MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, sizeof(surface_t)));
+      CloseHandle(mapping);
+      if(surface_view)
+        log_line("state: reading where the destination stands from %S", path.c_str());
+      }
+
+    ///\brief a consistent copy of the surface record; false when there is none or it is not one
+    auto read_surface(surface_t & copy) -> bool
+      {
+      map_surface();
+      if(not surface_view)
+        return false;
+      for(int attempt{}; attempt != 8; ++attempt)
+        {
+        // plain loads only, as for the target: the view is read-only
+        auto const sequence{[]() noexcept -> std::uint32_t
+          { return *static_cast<std::uint32_t const volatile *>(&surface_view->sequence); }};
+        std::uint32_t const before{sequence()};
+        MemoryBarrier();
+        if(before & 1u)
+          continue;
+        std::memcpy(&copy, surface_view, sizeof copy);
+        MemoryBarrier();
+        if(sequence() != before)
+          continue;
+        return copy.magic == surface_magic and copy.version == surface_version;
+        }
+      return false;
+      }
 #else
     ///\brief edworld alone has no data source: EDSM is asked at once
     auto read_target(target_t &, std::uint32_t &) -> bool { return false; }
+
+    ///\brief nor anyone to say where the destination stands
+    auto read_surface(surface_t &) -> bool { return false; }
 #endif
+
+    ///\brief the destination's place on its body, when the data source tells it for the body and place Status.json
+    /// names now; logged once a change
+    auto apply_place(flight_t & last) -> void
+      {
+      static char logged[96]{};
+      surface_t s{};
+      bool const have{read_surface(s) and s.known != 0u and last.destination_body != 0u and s.body_id == last.destination_body
+                      and std::strncmp(s.name, last.destination_name, sizeof s.name) == 0};
+      last.has_place = have;
+      last.place_latitude = have ? s.latitude : 0.0;
+      last.place_longitude = have ? s.longitude : 0.0;
+      char key[96];
+      std::snprintf(key, sizeof key, "%d %.63s", have ? 1 : 0, last.destination_name);
+      if(std::strcmp(key, logged) != 0)
+        {
+        std::memcpy(logged, key, sizeof logged);
+        if(have)
+          log_line("state: the destination %.63s stands at %.4f, %.4f (from the data source)", last.destination_name,
+                   last.place_latitude, last.place_longitude);
+        else if(last.destination_body != 0u)
+          log_line("state: where the destination %.63s stands is not known", last.destination_name);
+        }
+      AcquireSRWLockExclusive(&flight_lock);
+      flight_now = last;
+      ReleaseSRWLockExclusive(&flight_lock);
+      }
 
     DWORD WINAPI poll_thread(LPVOID)
       {
@@ -349,7 +435,10 @@ namespace edworld
           };
           charging.store(now_charging, std::memory_order_relaxed);
           if(complete)
+            {
             read_flight(text, flags, flags2, last_fix);
+            apply_place(last_fix);
+            }
           auto const dest_at{text.find("\"Destination\"")};
           bool have_dest{};
           std::uint64_t const dest{

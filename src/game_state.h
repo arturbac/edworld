@@ -43,6 +43,10 @@ namespace edworld
     ///\brief the destination's body (Destination.Body; 0 = none or the system) and its name as Status.json gives it
     std::uint32_t destination_body;
     char destination_name[64];
+    ///\brief where the destination stands on its body, from the data source (edworld_eht) while it names the same
+    /// body and place; false without one
+    bool has_place;
+    double place_latitude, place_longitude;
     };
 
   [[nodiscard]]
