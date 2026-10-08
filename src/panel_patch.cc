@@ -1334,6 +1334,11 @@ namespace edworld
       bool told_hide{};
       ///\brief the approach view shows (approach_view)
       bool approach{};
+      ///\brief the dot's place averaged over the plausible readings while the approach view shows (else the last one), and
+      /// when it was last moved (seconds of the performance counter)
+      compass_reading_t smooth{};
+      bool have_smooth{};
+      double smooth_at{};
       };
 
     compass_state_t cs;
@@ -1586,8 +1591,9 @@ namespace edworld
     ///\brief the right sphere as a dome standing on the pad (Artur, 2026-10-08: as the game's own landing view, the pad below
     /// and the ship over it): its centre the target, its base the floor through it (parallel to the ship's wings), the ship
     /// a point on the dome on a stalk from the base (the direction from the target to the ship, -d); straight over the target
-    /// is the top. Seen from behind, the left and above
-    auto draw_sphere_dome(ImDrawList * dl, ImVec2 c, compass_direction_t const & d, bool have) -> void
+    /// is the top. Seen from behind, the left and above. full (in space, Artur 2026-10-08): the half under the base too,
+    /// fainter, and the base as a tinted plane with a grid; near a planet only the dome (the ground is flat there)
+    auto draw_sphere_dome(ImDrawList * dl, ImVec2 c, compass_direction_t const & d, bool have, bool full) -> void
       {
       constexpr float yaw{35.f}, pitch{30.f};
       float const radius{200.f};
@@ -1613,6 +1619,18 @@ namespace edworld
           a = b;
           }
         };
+      if(full)
+        {
+        // the half under the base, faint, drawn first so that the base tints it
+        ImU32 const under{col(mix_rgb(disc, grid, 0.6f))};
+        for(float const a: {-30.f, -60.f})
+          {
+          float const sa{std::sin(a / compass_degrees)}, ca{std::cos(a / compass_degrees)};
+          curve([&](float t) { return compass_direction_t{ca * std::cos(t), sa, ca * std::sin(t)}; }, 0.f, 2.f * pi, under, 1.5f);
+          }
+        curve([](float t) { return compass_direction_t{0.f, std::sin(t), std::cos(t)}; }, pi, 2.f * pi, under, 1.5f);
+        curve([](float t) { return compass_direction_t{std::cos(t), std::sin(t), 0.f}; }, pi, 2.f * pi, under, 1.5f);
+        }
       // the base: the floor through the target, translucent, its edge the wings' plane
       ImVec2 base[steps];
       for(int i{}; i != steps; ++i)
@@ -1620,7 +1638,18 @@ namespace edworld
         float const t{2.f * pi * static_cast<float>(i) / steps};
         base[i] = at({std::cos(t), 0.f, std::sin(t)});
         }
-      dl->AddConvexPolyFilled(base, steps, col(mix_rgb(disc, grid, 0.5f), 150));
+      dl->AddConvexPolyFilled(base, steps, col(mix_rgb(disc, grid, 0.5f), full ? 190 : 150));
+      if(full)
+        {
+        // the plane's grid: chords along and across the nose every quarter radius
+        ImU32 const chord{col(mix_rgb(grid, rim, 0.15f), 170)};
+        for(float const u: {-0.75f, -0.5f, -0.25f, 0.f, 0.25f, 0.5f, 0.75f})
+          {
+          float const h{std::sqrt(1.f - u * u)};
+          dl->AddLine(at({u, 0.f, -h}), at({u, 0.f, h}), chord, 1.5f);
+          dl->AddLine(at({-h, 0.f, u}), at({h, 0.f, u}), chord, 1.5f);
+          }
+        }
       // the target in the middle of the base, as a small pad
       ImU32 const target{col(s.compass_colour_target)};
       ImVec2 const o{at({0.f, 0.f, 0.f})};
@@ -1713,7 +1742,8 @@ namespace edworld
         log_line("compass: the approach view %s (the target %.1f degrees below the wings)", cs.approach ? "on" : "off",
                  static_cast<double>(-a.up));
       bool const cut{cs.approach or (normal_flight and f.has_position)};
-      compass_direction_t const dp{compass_direction(c.x, c.y, s.compass_approach_radius, c.filled)};
+      compass_reading_t const & sm{cs.approach and cs.have_smooth ? cs.smooth : c};
+      compass_direction_t const dp{compass_direction(sm.x, sm.y, s.compass_approach_radius, sm.filled)};
       pad_offsets_t const po{pad_offsets(dp)};
       // under A: the angles, large; under C: the approach against where it should be (near a planet), else how far off
       ImU32 const blue{col(s.compass_colour_text_left)}, orange{col(s.compass_colour_behind)}, yellow{col(s.compass_colour_text_right)};
@@ -1806,7 +1836,7 @@ namespace edworld
           else
             {
             if(cut)
-              draw_sphere_dome(dl, centre, dp, have);
+              draw_sphere_dome(dl, centre, dp, have, not f.has_position);
             else
               draw_sphere_oblique(dl, centre, d, have, f.has_position, should);
             float const used{sphere_line(dl, 0.f, above_w, 8.f, 66.f, yellow, c1, c2_colour, c2)};
@@ -1835,7 +1865,7 @@ namespace edworld
           else
             {
             if(cut)
-              draw_sphere_dome(dl, centre, dp, have);
+              draw_sphere_dome(dl, centre, dp, have, not f.has_position);
             else
               draw_sphere_oblique(dl, centre, d, have, f.has_position, should);
             y += sphere_line(dl, 0.f, below_w, y, 80.f, yellow, c1);
@@ -1970,6 +2000,21 @@ namespace edworld
             cs.shown = cs.reading;
             cs.have_shown = true;
             cs.held = 0;
+            LARGE_INTEGER t{}, fq{};
+            QueryPerformanceCounter(&t);
+            QueryPerformanceFrequency(&fq);
+            double const now_s{static_cast<double>(t.QuadPart) / static_cast<double>(fq.QuadPart)};
+            if(cs.approach and cs.have_smooth)
+              {
+              float const k{smoothing_weight(static_cast<float>(now_s - cs.smooth_at), s.compass_approach_smooth_s)};
+              cs.smooth.x += k * (cs.reading.x - cs.smooth.x);
+              cs.smooth.y += k * (cs.reading.y - cs.smooth.y);
+              cs.smooth.filled = cs.reading.filled;
+              }
+            else
+              cs.smooth = cs.reading;
+            cs.have_smooth = true;
+            cs.smooth_at = now_s;
             }
           else
             {

@@ -226,6 +226,8 @@ namespace edworld
         }
       else if(key == "compass_approach_below")
         current.compass_approach_below = to_float(value, current.compass_approach_below);
+      else if(key == "compass_approach_smooth_s")
+        current.compass_approach_smooth_s = to_float(value, current.compass_approach_smooth_s);
       else if(key == "compass_approach_radius")
         current.compass_approach_radius = to_float(value, current.compass_approach_radius);
       else if(key == "compass_log_ms")

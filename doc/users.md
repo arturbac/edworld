@@ -83,8 +83,9 @@ comment line. Every setting has a default; the file is needed only to change one
 | `compass_text` | `0` | `1` = the angles also written above the radar |
 | `compass_hide_game` | `0` | `1` = the game's own compass hidden once read (the left sphere stands in for it) |
 | `compass_should_dive` | `35` | the dive, in degrees below the horizon, the right sphere steers towards near a planet |
-| `compass_approach_below` | `20` | in normal flight with the target this many degrees or more below the wings, the approach view: the left sphere shows the target from above (straight down in its middle, `FWD`/`AFT` and `LT`/`RT` off the vertical), the right one a dome standing on the target with the ship a point on it (straight over the target at its top); `0` = never |
+| `compass_approach_below` | `20` | in normal flight with the target this many degrees or more below the wings, the approach view: the left sphere shows the target from above (straight down in its middle, `FWD`/`AFT` and `LT`/`RT` off the vertical), the right one a dome standing on the target with the ship a point on it (straight over the target at its top; in space the whole sphere, the base a plane with a grid); `0` = never |
 | `compass_approach_radius` | `54.8` | the dot's distance from the compass's centre with the target on its rim (pixels of the HUD surface); the angle ahead or behind near a pad comes from how far short of it the dot is |
+| `compass_approach_smooth_s` | `0.4` | in the approach view the dot's place is averaged with this time constant (seconds), so the spheres do not shake near a pad; `0` = no averaging |
 | `compass_colour_disc` | `101214` | the spheres' colours, `RRGGBB` (see "Navball colours"): the disc behind a sphere |
 | `compass_colour_grid` | `5A6068` | the rings at 30° and 60° and the meridians |
 | `compass_colour_rim` | `A8AEB5` | the left sphere's rim and the wings' plane on the right one |

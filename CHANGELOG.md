@@ -5,8 +5,10 @@
 - **Navball colours.** The spheres' colours are settings (`compass_colour_*`, `RRGGBB`), a muted grey by default;
   `doc/users.md` has the beta's blue as an example.
 - **Approach view (proof of concept).** In normal flight with the target 20° or more below the wings, the left
-  sphere shows it from above and the right one a dome standing on it, the ship a point on the dome; after a planet's
-  glide the right sphere is always the dome and the dive guidance shows only in orbital cruise and glide.
+  sphere shows it from above and the right one a dome standing on it, the ship a point on the dome (in space the
+  whole sphere with the base as a gridded plane); after a planet's
+  glide the right sphere is always the dome and the dive guidance shows only in orbital cruise and glide. The dot's
+  place is averaged there (`compass_approach_smooth_s`, 0.4 s).
 
 ## 1.1.0-beta.1
 

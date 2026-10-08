@@ -196,6 +196,9 @@ int main()
         "approach: on at 20 degrees below the wings");
   check(edworld::approach_view(true, true, true, -15.f, 20.f) and not edworld::approach_view(true, true, true, -5.f, 20.f),
         "approach: kept down to 10 degrees, off above");
+  check(std::fabs(edworld::smoothing_weight(0.4f, 0.4f) - 0.63212f) < 1e-4f and edworld::smoothing_weight(0.f, 0.4f) == 0.f
+          and edworld::smoothing_weight(0.1f, 0.f) == 1.f,
+        "approach: the smoothing's weight, none after no time, all without a time constant");
   check(not edworld::approach_view(true, false, true, -80.f, 20.f) and edworld::approach_view(true, true, false, 0.f, 20.f),
         "approach: off outside normal flight, kept without a reading");
   }

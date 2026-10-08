@@ -160,6 +160,9 @@ namespace edworld
     /// the dot sits there and the angle ahead or behind comes from how far short of it the dot is (Sjona's five dockings
     /// of 2026-10-07: the dot at 54.72..54.79 px with the pad below, compass_radius 54.46 from the rim's ring)
     float compass_approach_radius{54.8f};
+    ///\brief in the approach view the dot's place is an exponential average of the readings with this time constant
+    /// (seconds): near the rim a tenth of a pixel is a few degrees ahead or behind, and the sphere shook; 0 = no smoothing
+    float compass_approach_smooth_s{0.4f};
     ///\brief the spheres' colours, 0xRRGGBB: a muted grey by default (doc/users.md has the 1.1.0-beta.1 blue as an
     /// example); the fainter shades (the far side, the disc's middle, the outline) are mixed from these
     ///\brief the disc behind a sphere, at its rim; its middle is a fifth of the way to compass_colour_rim

@@ -190,6 +190,16 @@ namespace edworld
     return was_on ? up <= -(below - 10.f) : up <= -below;
     }
 
+  ///\brief how far an exponential average with the time constant tau (seconds) moves towards a reading seconds after the
+  /// previous one: 1 - exp(-seconds / tau); a reading at once after another hardly moves it, one a long time after replaces it
+  [[nodiscard]]
+  inline auto smoothing_weight(float seconds, float tau) noexcept -> float
+    {
+    if(tau <= 0.f)
+      return 1.f;
+    return 1.f - std::exp(-std::max(0.f, seconds) / tau);
+    }
+
   ///\brief 0xRRGGBB a fraction t (0..1) of the way from a to b, each channel rounded
   [[nodiscard]]
   constexpr auto mix_rgb(std::uint32_t a, std::uint32_t b, float t) noexcept -> std::uint32_t
