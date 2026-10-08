@@ -184,6 +184,9 @@ int main()
         "spheres: seen from behind, the left and above, the nose points away, up the picture and to its left");
   auto const below{edworld::sphere_view({0.f, -1.f, 0.f}, 35.f, 20.f)};
   check(below.y < -0.9f and std::fabs(below.x) < 1e-5f, "spheres: straight down is down the picture");
+  check(edworld::mix_rgb(0x080e1eu, 0x5096ffu, 0.f) == 0x080e1eu and edworld::mix_rgb(0x080e1eu, 0x5096ffu, 1.f) == 0x5096ffu,
+        "spheres: a mix's ends are its colours");
+  check(edworld::mix_rgb(0x000000u, 0xff8040u, 0.5f) == 0x804020u, "spheres: a mix halfway, each channel on its own");
   }
   wchar_t exe[MAX_PATH]{};
   GetModuleFileNameW(nullptr, exe, MAX_PATH);

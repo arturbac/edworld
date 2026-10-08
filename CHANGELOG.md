@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Navball colours.** The spheres' colours are settings (`compass_colour_*`, `RRGGBB`), a muted grey by default;
+  `doc/users.md` has the beta's blue as an example.
+
 ## 1.1.0-beta.1
 
 A beta: testers wanted (README).

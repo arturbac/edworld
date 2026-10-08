@@ -83,8 +83,38 @@ comment line. Every setting has a default; the file is needed only to change one
 | `compass_text` | `0` | `1` = the angles also written above the radar |
 | `compass_hide_game` | `0` | `1` = the game's own compass hidden once read (the left sphere stands in for it) |
 | `compass_should_dive` | `35` | the dive, in degrees below the horizon, the right sphere steers towards near a planet |
+| `compass_colour_disc` | `101214` | the spheres' colours, `RRGGBB` (see "Navball colours"): the disc behind a sphere |
+| `compass_colour_grid` | `5A6068` | the rings at 30° and 60° and the meridians |
+| `compass_colour_rim` | `A8AEB5` | the left sphere's rim and the wings' plane on the right one |
+| `compass_colour_target` | `FFFFFF` | the target's dot |
+| `compass_colour_behind` | `D9A15A` | the target behind, where it should be, `PUSH DOWN` / `PULL UP` |
+| `compass_colour_nose` | `8CC9A0` | the nose's arrow |
+| `compass_colour_text_left` | `C9CED4` | the left sphere's angles |
+| `compass_colour_text_right` | `D6CFB4` | the right sphere's lines |
+| `compass_colour_ok` | `9AD3A8` | `ON PATH` |
 
 The rest of the settings (`doc/developers.md`) are for finding things in the game.
+
+### Navball colours
+
+The spheres are a muted grey by default. Each `compass_colour_*` setting takes a colour as `RRGGBB` (hex, no `#`);
+the fainter shades (the far side of the right sphere, the middle of the disc, the outline) are mixed from them. For
+example, the blue of 1.1.0-beta.1:
+
+```ini
+compass_colour_disc = 080E1E
+compass_colour_grid = 325596
+compass_colour_rim = 5096FF
+compass_colour_target = FFFFFF
+compass_colour_behind = FF9628
+compass_colour_nose = 50FF8C
+compass_colour_text_left = 96E6FF
+compass_colour_text_right = FFE678
+compass_colour_ok = 78FFA0
+```
+
+To make your own, change the lines you want; a setting left out keeps its grey. The ini is read when the game
+starts. `compass_sphere_gain` makes all of them lighter or darker.
 
 EDSM is asked once per new destination, with the system's id only.
 

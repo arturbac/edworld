@@ -1446,7 +1446,11 @@ namespace edworld
       return true;
       }
 
-    auto rgba(int r_, int g_, int b_, int a_) -> ImU32 { return IM_COL32(r_, g_, b_, a_); }
+    ///\brief 0xRRGGBB (a sphere colour from the settings) with an alpha, for ImGui
+    auto col(std::uint32_t rgb, int alpha = 255) -> ImU32
+      {
+      return IM_COL32((rgb >> 16) & 0xffu, (rgb >> 8) & 0xffu, rgb & 0xffu, static_cast<unsigned>(alpha));
+      }
 
     ///\brief the spheres' lines' font, else the list's
     auto sphere_font() -> ImFont * { return r.sphere_font ? r.sphere_font : r.font; }
@@ -1454,11 +1458,12 @@ namespace edworld
     ///\brief the disc behind a sphere: dark, a little lighter towards its middle, translucent
     auto sphere_ground(ImDrawList * dl, ImVec2 c, float radius, int alpha) -> void
       {
+      settings_t const & s{settings()};
+      std::uint32_t const middle{mix_rgb(s.compass_colour_disc, s.compass_colour_rim, 0.2f)};
       for(int i{24}; i >= 1; --i)
         {
         float const f{static_cast<float>(i) / 24.f};
-        int const k{static_cast<int>(40.f * (1.f - f))};
-        dl->AddCircleFilled(c, radius * f, rgba(8 + k / 3, 14 + k / 2, 30 + k, alpha), 96);
+        dl->AddCircleFilled(c, radius * f, col(mix_rgb(s.compass_colour_disc, middle, 1.f - f), alpha), 96);
         }
       }
 
@@ -1466,20 +1471,21 @@ namespace edworld
     auto draw_sphere_front(ImDrawList * dl, ImVec2 c, compass_direction_t const & d, bool have) -> void
       {
       float const radius{200.f};
+      settings_t const & s{settings()};
       sphere_ground(dl, c, radius, 215);
-      ImU32 const dim{rgba(50, 85, 150, 255)};
+      ImU32 const dim{col(s.compass_colour_grid)};
       for(float const a: {30.f, 60.f})
         dl->AddCircle(c, radius * std::sin(a / compass_degrees), dim, 96, 2.f);
       dl->AddLine(ImVec2{c.x - radius, c.y}, ImVec2{c.x + radius, c.y}, dim, 2.f);
       dl->AddLine(ImVec2{c.x, c.y - radius}, ImVec2{c.x, c.y + radius}, dim, 2.f);
-      dl->AddCircle(c, radius, rgba(80, 150, 255, 255), 96, 5.f);
+      dl->AddCircle(c, radius, col(s.compass_colour_rim), 96, 5.f);
       if(have)
         {
         ImVec2 const p{c.x + d.x * radius, c.y - d.y * radius};
         if(d.z >= 0.f)
-          dl->AddCircleFilled(p, 15.f, rgba(255, 255, 255, 255), 32);
+          dl->AddCircleFilled(p, 15.f, col(s.compass_colour_target), 32);
         else
-          dl->AddCircle(p, 13.f, rgba(255, 150, 40, 255), 32, 5.f);
+          dl->AddCircle(p, 13.f, col(s.compass_colour_behind), 32, 5.f);
         }
       }
 
@@ -1496,8 +1502,10 @@ namespace edworld
         return ImVec2{c.x + p.x * radius, c.y - p.y * radius};
         };
       auto const facing = [&](compass_direction_t const & v) -> bool { return not sphere_view(v, yaw, pitch).on_far_side; };
+      settings_t const & s{settings()};
+      std::uint32_t const disc{s.compass_colour_disc}, grid{s.compass_colour_grid}, rim{s.compass_colour_rim};
       sphere_ground(dl, c, radius, 200);
-      dl->AddCircle(c, radius, rgba(40, 70, 130, 255), 96, 2.f);
+      dl->AddCircle(c, radius, col(mix_rgb(disc, grid, 0.7f)), 96, 2.f);
       constexpr float pi2{6.2831853f};
       auto const curve = [&](auto && point, ImU32 bright, ImU32 faint, float width)
         {
@@ -1510,17 +1518,18 @@ namespace edworld
           a = b;
           }
         };
-      ImU32 const faint{rgba(30, 50, 95, 255)};
+      ImU32 const faint{col(mix_rgb(disc, grid, 0.5f))};
       for(float const a: {-30.f, -60.f})
         {
         float const sa{std::sin(a / compass_degrees)}, ca{std::cos(a / compass_degrees)};
-        curve([&](float t) { return compass_direction_t{ca * std::cos(t), sa, ca * std::sin(t)}; }, rgba(45, 75, 130, 255), faint, 1.5f);
+        curve([&](float t) { return compass_direction_t{ca * std::cos(t), sa, ca * std::sin(t)}; }, col(mix_rgb(disc, grid, 0.85f)), faint, 1.5f);
         }
-      curve([](float t) { return compass_direction_t{0.f, std::sin(t), std::cos(t)}; }, rgba(60, 100, 170, 255), faint, 2.f);
-      curve([](float t) { return compass_direction_t{std::cos(t), std::sin(t), 0.f}; }, rgba(60, 100, 170, 255), faint, 2.f);
-      curve([](float t) { return compass_direction_t{std::cos(t), 0.f, std::sin(t)}; }, rgba(80, 150, 255, 255), faint, 5.f);
+      ImU32 const meridian{col(mix_rgb(grid, rim, 0.33f))};
+      curve([](float t) { return compass_direction_t{0.f, std::sin(t), std::cos(t)}; }, meridian, faint, 2.f);
+      curve([](float t) { return compass_direction_t{std::cos(t), std::sin(t), 0.f}; }, meridian, faint, 2.f);
+      curve([](float t) { return compass_direction_t{std::cos(t), 0.f, std::sin(t)}; }, col(rim), faint, 5.f);
       // the nose: an arrow forward in the wings' plane
-      ImU32 const green{rgba(80, 255, 140, 255)};
+      ImU32 const green{col(s.compass_colour_nose)};
       ImVec2 const o{at({0.f, 0.f, 0.f})}, n{at({0.f, 0.f, 1.f})};
       dl->AddLine(o, n, green, 5.f);
       float const dx{n.x - o.x}, dy{n.y - o.y}, len{std::max(1.f, std::sqrt(dx * dx + dy * dy))}, ux{dx / len}, uy{dy / len};
@@ -1539,9 +1548,9 @@ namespace edworld
           dl->AddCircleFilled(p, 15.f, colour, 32);
         };
       if(show_should)
-        mark(should, rgba(255, 150, 40, 255), true);
+        mark(should, col(s.compass_colour_behind), true);
       if(have)
-        mark(d, rgba(255, 255, 255, 255), false);
+        mark(d, col(s.compass_colour_target), false);
       }
 
 
@@ -1588,8 +1597,9 @@ namespace edworld
       compass_angles_t const a{compass_angles(c.x, c.y, s.compass_radius, c.filled)};
       compass_direction_t const should{direction_of(-(90.f - s.compass_should_dive), 0.f)};
       // under A: the angles, large; under C: the approach against where it should be (near a planet), else how far off
-      ImU32 const blue{rgba(150, 230, 255, 255)}, orange{rgba(255, 150, 40, 255)}, yellow{rgba(255, 230, 120, 255)};
-      ImU32 const green_line{rgba(120, 255, 160, 255)};
+      ImU32 const blue{col(s.compass_colour_text_left)}, orange{col(s.compass_colour_behind)}, yellow{col(s.compass_colour_text_right)};
+      ImU32 const green_line{col(s.compass_colour_ok)};
+      ImU32 const name_colour{col(mix_rgb(s.compass_colour_grid, s.compass_colour_text_left, 0.5f), 200)};
       bool const behind{have and not c.filled};
       char a1[48], a2[48], c1[48], c2[48], c3[64];
       a2[0] = c2[0] = c3[0] = '\0';
@@ -1640,7 +1650,7 @@ namespace edworld
         if(above)
           {
           // a band over the sphere, dark under the lines (they may stand over a bright sky or a planet)
-          dl->AddRectFilled(ImVec2{8.f, 0.f}, ImVec2{above_w - 8.f, above_band - 6.f}, rgba(4, 8, 16, 170), 14.f);
+          dl->AddRectFilled(ImVec2{8.f, 0.f}, ImVec2{above_w - 8.f, above_band - 6.f}, col(mix_rgb(s.compass_colour_disc, 0u, 0.5f), 170), 14.f);
           if(k == 0)
             {
             draw_sphere_front(dl, centre, d, have);
@@ -1650,7 +1660,7 @@ namespace edworld
             if(behind)
               sphere_line(dl, 0.f, above_w, 10.f + used + 2.f, 30.f, orange, "BEHIND");
             ImVec2 const name{name_font->CalcTextSizeA(26.f, FLT_MAX, 0.f, "edworld")};
-            dl->AddText(name_font, 26.f, ImVec2{above_w / 2.f + 256.f - name.x - 10.f, above_h - name.y - 6.f}, rgba(110, 140, 180, 200),
+            dl->AddText(name_font, 26.f, ImVec2{above_w / 2.f + 256.f - name.x - 10.f, above_h - name.y - 6.f}, name_colour,
                         "edworld");
             }
           else
@@ -1674,7 +1684,7 @@ namespace edworld
               sphere_line(dl, 0.f, below_w, y, 44.f, orange, "BEHIND");
             // the plugin's name, small, in the corner under the angles
             ImVec2 const name{name_font->CalcTextSizeA(26.f, FLT_MAX, 0.f, "edworld")};
-            dl->AddText(name_font, 26.f, ImVec2{below_w - name.x - 10.f, below_h - name.y - 6.f}, rgba(110, 140, 180, 200), "edworld");
+            dl->AddText(name_font, 26.f, ImVec2{below_w - name.x - 10.f, below_h - name.y - 6.f}, name_colour, "edworld");
             }
           else
             {

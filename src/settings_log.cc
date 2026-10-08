@@ -208,6 +208,22 @@ namespace edworld
         current.compass_text = to_uint(value, current.compass_text);
       else if(key == "compass_hide_game")
         current.compass_hide_game = to_uint(value, current.compass_hide_game);
+      else if(key.starts_with("compass_colour_"))
+        {
+        std::string_view const name{key.substr(15)};
+        std::uint32_t * const target{name == "disc"         ? &current.compass_colour_disc
+                                     : name == "grid"       ? &current.compass_colour_grid
+                                     : name == "rim"        ? &current.compass_colour_rim
+                                     : name == "target"     ? &current.compass_colour_target
+                                     : name == "behind"     ? &current.compass_colour_behind
+                                     : name == "nose"       ? &current.compass_colour_nose
+                                     : name == "text_left"  ? &current.compass_colour_text_left
+                                     : name == "text_right" ? &current.compass_colour_text_right
+                                     : name == "ok"         ? &current.compass_colour_ok
+                                                            : nullptr};
+        if(auto const v{parse_hash(value)}; target and v and *v <= 0xffffffu)
+          *target = static_cast<std::uint32_t>(*v);
+        }
       else if(key == "compass_log_ms")
         current.compass_log_ms = to_uint(value, current.compass_log_ms);
       else if(key == "edsm")

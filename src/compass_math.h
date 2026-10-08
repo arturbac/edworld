@@ -159,6 +159,20 @@ namespace edworld
     return compass_direction_t{std::cos(u) * std::sin(r), std::sin(u), std::cos(u) * std::cos(r)};
     }
 
+  ///\brief 0xRRGGBB a fraction t (0..1) of the way from a to b, each channel rounded
+  [[nodiscard]]
+  constexpr auto mix_rgb(std::uint32_t a, std::uint32_t b, float t) noexcept -> std::uint32_t
+    {
+    std::uint32_t out{};
+    for(std::uint32_t shift{0u}; shift != 24u; shift += 8u)
+      {
+      float const ca{static_cast<float>((a >> shift) & 0xffu)}, cb{static_cast<float>((b >> shift) & 0xffu)};
+      float const c{std::clamp(ca + (cb - ca) * t, 0.f, 255.f)};
+      out |= static_cast<std::uint32_t>(c + 0.5f) << shift;
+      }
+    return out;
+    }
+
   ///\brief a point of the unit sphere as a camera behind, to the left and above sees it: x right and y up on the
   /// picture (the sphere's outline is the unit circle), on_far_side: on the far side of the sphere from the camera
   struct sphere_point_t

@@ -152,6 +152,26 @@ namespace edworld
     /// sphere standing in for it; the game's returns whenever edworld is not there
     std::uint32_t compass_hide_game{0};
     float compass_sphere_gain{1.f};
+    ///\brief the spheres' colours, 0xRRGGBB: a muted grey by default (doc/users.md has the 1.1.0-beta.1 blue as an
+    /// example); the fainter shades (the far side, the disc's middle, the outline) are mixed from these
+    ///\brief the disc behind a sphere, at its rim; its middle is a fifth of the way to compass_colour_rim
+    std::uint32_t compass_colour_disc{0x101214u};
+    ///\brief the rings at 30 and 60 degrees and the meridians
+    std::uint32_t compass_colour_grid{0x5a6068u};
+    ///\brief the front sphere's rim and the wings' plane on the right one
+    std::uint32_t compass_colour_rim{0xa8aeb5u};
+    ///\brief the target's dot
+    std::uint32_t compass_colour_target{0xffffffu};
+    ///\brief the target behind, where it should be, PUSH DOWN / PULL UP
+    std::uint32_t compass_colour_behind{0xd9a15au};
+    ///\brief the nose's arrow
+    std::uint32_t compass_colour_nose{0x8cc9a0u};
+    ///\brief the left sphere's angles
+    std::uint32_t compass_colour_text_left{0xc9ced4u};
+    ///\brief the right sphere's lines
+    std::uint32_t compass_colour_text_right{0xd6cfb4u};
+    ///\brief ON PATH
+    std::uint32_t compass_colour_ok{0x9ad3a8u};
     };
 
   auto settings() noexcept -> settings_t const &;
