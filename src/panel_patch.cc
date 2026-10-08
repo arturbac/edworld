@@ -1638,9 +1638,13 @@ namespace edworld
         float const t{2.f * pi * static_cast<float>(i) / steps};
         base[i] = at({std::cos(t), 0.f, std::sin(t)});
         }
-      // the base tinted by the side the ship is on (Artur, 2026-10-08): green over it, red under it
+      // the base tinted by the side the ship is on (Artur, 2026-10-08): green over it, red under it. The side is the target
+      // under or over the wings, so a nose put down far from the pad turns it red; near a planet the pad is on the ground
+      // and the ship can not be under it, so it stays green there (Artur, 2026-10-08)
       std::uint32_t const floor_colour{mix_rgb(disc, grid, 0.5f)};
-      std::uint32_t const side{not have ? floor_colour : d.y <= 0.f ? s.compass_colour_ok : s.compass_colour_wrong};
+      std::uint32_t const side{not have                  ? floor_colour
+                               : not full or d.y <= 0.f ? s.compass_colour_ok
+                                                         : s.compass_colour_wrong};
       dl->AddConvexPolyFilled(base, steps, col(have ? mix_rgb(floor_colour, side, 0.35f) : floor_colour, full ? 190 : 150));
       if(full)
         {

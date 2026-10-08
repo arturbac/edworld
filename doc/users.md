@@ -95,7 +95,7 @@ comment line. Every setting has a default; the file is needed only to change one
 | `compass_colour_text_left` | `C9CED4` | the left sphere's angles |
 | `compass_colour_text_right` | `D6CFB4` | the right sphere's lines |
 | `compass_colour_ok` | `9AD3A8` | `ON PATH`; the approach view's base while the ship is over it |
-| `compass_colour_wrong` | `C0504D` | the approach view's base while the ship is under it |
+| `compass_colour_wrong` | `C0504D` | the approach view's base while the ship is under it (in space only: near a planet the pad is on the ground and the base stays `compass_colour_ok`) |
 
 The rest of the settings (`doc/developers.md`) are for finding things in the game.
 
