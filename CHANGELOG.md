@@ -1,14 +1,24 @@
 # Changelog
 
-## Unreleased
+## 1.1.0-beta.2
 
+A beta: the approach view, checked in the game at an outpost in space and at a surface port.
+
+- **Screen resolution.** `doc/users.md` warns that the navballs are checked at one resolution only (9000×2160, the
+  cockpit on the middle 3840×2160) and what to expect at 1920×1080 or lower.
+- **At a planet** the base of the approach view stays green (the ship can not be under the pad there), and the right
+  sphere's lines stand in two columns with the middle left to the game's own readout.
 - **Navball colours.** The spheres' colours are settings (`compass_colour_*`, `RRGGBB`), a muted grey by default;
   `doc/users.md` has the beta's blue as an example.
-- **Approach view (proof of concept).** In normal flight with the target 20° or more below the wings, the left
+- **Approach view.** In normal flight with the target 20° or more below the wings, the left
   sphere shows it from above and the right one a dome standing on it, the ship a point on the dome (in space the
   whole sphere with the base as a gridded plane, tinted green with the ship over it and red under it); after a planet's
   glide the right sphere is always the dome and the dive guidance shows only in orbital cruise and glide. The dot's
   place is averaged there (`compass_approach_smooth_s`, 0.4 s).
+
+Known: the lines in the two columns are small (about 10 px tall at 3840×2160); ahead or behind near a pad is read
+from a fraction of a pixel (a few degrees at best); with a settlement or a surface port targeted, `NOSE` and
+`PUSH DOWN` / `PULL UP` in orbital cruise and glide still take the planet's centre as the target and are wrong there.
 
 ## 1.1.0-beta.1
 

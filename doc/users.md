@@ -11,7 +11,7 @@ edworld fixes the panel the game shows while the frame shift drive charges for a
 
 Both move with the panel when the cockpit camera swings.
 
-**Navballs (beta, 1.1.0-beta.1).** Two spheres beside the radar show where the selected target is. The left one is
+**Navballs (beta, 1.1.0-beta.2).** Two spheres beside the radar show where the selected target is. The left one is
 the sphere seen from the front, as the game's compass shows it, with the angles above it: `UP`/`DN` above or below
 the wings' plane, `LT`/`RT` left or right of the nose, `BEHIND` when the target is behind you, `NO DOT` when no
 target's dot is read. The right one is the same direction seen from behind, the left and above, with the nose marked and `OFF`,
@@ -169,9 +169,11 @@ Delete edworld's `d3d11.dll` and its ini; put back the mod's dll you renamed, as
 - After an on-foot conflict zone edworld once saw no panel for about four minutes; the jump panel kept the game's
   emblem until then.
 - Navballs (beta): placed and checked in the Kestrel's cockpit only; other cockpits are larger or smaller, so the
-  spheres may sit too close to or too far from the radar. The lines near a planet are not yet checked in the game.
+  spheres may sit too close to or too far from the radar. Near a planet the lines are checked at one surface port
+  (two landings); in the two columns they are small, about 10 px tall at 3840×2160. With a settlement or a surface
+  port targeted, `NOSE` and `PUSH DOWN` / `PULL UP` still take the planet's centre as the target and are wrong there.
   The game does not draw its compass every frame; a sphere keeps its last reading in between.
-- Approach view (proof of concept): near a pad the game's compass puts the target on its rim, so ahead or behind is
+- Approach view (beta; checked at an outpost in space and at a surface port): near a pad the game's compass puts the target on its rim, so ahead or behind is
   read from a fraction of a pixel there (a few degrees at best), left or right to about a degree. Below the
   planet's glide the right sphere is always the dome; its base is parallel to the ship's wings, not to the ground
   (Status.json gives neither pitch nor roll).
