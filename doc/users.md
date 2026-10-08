@@ -79,7 +79,7 @@ comment line. Every setting has a default; the file is needed only to change one
 | `compass_anchor_scale` | `1.9` | a sphere's diameter, in the game compass's diameters |
 | `compass_anchor_a_dx`, `compass_anchor_a_dy` | `-0.41`, `0.45` | the left sphere's centre from the compass, in compass diameters (x right, y up) |
 | `compass_anchor_c_dx`, `compass_anchor_c_dy` | `1.22`, `0.83` | the right sphere's centre from the speed readout, in compass diameters |
-| `compass_sphere_text_above` | `1` | `1` the spheres' lines over them, `0` under them |
+| `compass_sphere_text_above` | `1` | `1` the spheres' lines over them, `0` under them. Over them at a planet, the right sphere's lines go in two columns by the band's edges: the game writes its latitude, longitude and gravity in the middle |
 | `compass_text` | `0` | `1` = the angles also written above the radar |
 | `compass_hide_game` | `0` | `1` = the game's own compass hidden once read (the left sphere stands in for it) |
 | `compass_should_dive` | `35` | the dive, in degrees below the horizon, the right sphere steers towards near a planet |

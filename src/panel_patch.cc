@@ -1757,8 +1757,9 @@ namespace edworld
       ImU32 const green_line{col(s.compass_colour_ok)};
       ImU32 const name_colour{col(mix_rgb(s.compass_colour_grid, s.compass_colour_text_left, 0.5f), 200)};
       bool const behind{have and not c.filled and not cs.approach};
-      char a1[48], a2[48], c1[48], c2[48], c3[64];
-      a2[0] = c2[0] = c3[0] = '\0';
+      // c3 the altitude and the vertical speed in one line; alt and climb the same apart, for the two columns at a planet
+      char a1[48], a2[48], c1[48], c2[48], c3[64], alt[32], climb[32];
+      a2[0] = c2[0] = c3[0] = alt[0] = climb[0] = '\0';
       if(have and cs.approach)
         {
         std::snprintf(a1, sizeof a1, "%s %.1f%s", po.forward < 0.f ? "AFT" : "FWD", static_cast<double>(std::fabs(po.forward)), degree);
@@ -1781,10 +1782,9 @@ namespace edworld
         std::snprintf(c2, sizeof c2, "OFF VERTICAL %.0f%s", static_cast<double>(po.off_vertical), degree);
         if(f.has_position)
           {
-          if(std::isnan(f.vertical_speed))
-            std::snprintf(c3, sizeof c3, "ALT %.2f km", f.altitude / 1000.0);
-          else
-            std::snprintf(c3, sizeof c3, "ALT %.2f km  %+.0f m/s", f.altitude / 1000.0, f.vertical_speed);
+          std::snprintf(alt, sizeof alt, "ALT %.2f km", f.altitude / 1000.0);
+          if(not std::isnan(f.vertical_speed))
+            std::snprintf(climb, sizeof climb, "%+.0f m/s", f.vertical_speed);
           }
         }
       else if(f.has_position)
@@ -1803,13 +1803,14 @@ namespace edworld
           std::snprintf(c2, sizeof c2, "%s %.0f%s", off_path > 0.f ? "PUSH DOWN" : "PULL UP", static_cast<double>(std::fabs(off_path)), degree);
           c2_colour = orange;
           }
-        if(std::isnan(f.vertical_speed))
-          std::snprintf(c3, sizeof c3, "ALT %.1f km", f.altitude / 1000.0);
-        else
-          std::snprintf(c3, sizeof c3, "ALT %.1f km  %+.2f km/s", f.altitude / 1000.0, f.vertical_speed / 1000.0);
+        std::snprintf(alt, sizeof alt, "ALT %.1f km", f.altitude / 1000.0);
+        if(not std::isnan(f.vertical_speed))
+          std::snprintf(climb, sizeof climb, "%+.2f km/s", f.vertical_speed / 1000.0);
         }
       else
         std::snprintf(c1, sizeof c1, "OFF %.0f%s", static_cast<double>(a.off_nose), degree);
+      if(alt[0])
+        std::snprintf(c3, sizeof c3, "%s%s%s", alt, climb[0] ? "  " : "", climb);
       ImGui::SetCurrentContext(r.imgui);
       ImGuiIO & io{ImGui::GetIO()};
       io.DisplaySize = ImVec2{static_cast<float>(sphere_w), static_cast<float>(sphere_h)};
@@ -1846,9 +1847,25 @@ namespace edworld
               draw_sphere_dome(dl, centre, dp, have, not f.has_position);
             else
               draw_sphere_oblique(dl, centre, d, have, f.has_position, should);
-            float const used{sphere_line(dl, 0.f, above_w, 8.f, 66.f, yellow, c1, c2_colour, c2)};
-            if(c3[0])
-              sphere_line(dl, 0.f, above_w, 8.f + used + 4.f, 38.f, yellow, c3);
+            if(f.has_position)
+              {
+              // at a planet the game writes its latitude, longitude and gravity in the middle of the band, not always at the
+              // same place (Artur's shots, 2026-10-08: from about a fifth to four fifths of it); the lines go in two columns
+              // by the band's edges, the middle left to the game
+              constexpr float column{above_w * 0.2f};
+              float const used{sphere_line(dl, 0.f, column, 10.f, 54.f, yellow, c1)};
+              if(alt[0])
+                sphere_line(dl, 0.f, column, 10.f + used + 4.f, 38.f, yellow, alt);
+              float const used2{c2[0] ? sphere_line(dl, above_w - column, column, 10.f, 54.f, c2_colour, c2) : 0.f};
+              if(climb[0])
+                sphere_line(dl, above_w - column, column, 10.f + used2 + 4.f, 38.f, yellow, climb);
+              }
+            else
+              {
+              float const used{sphere_line(dl, 0.f, above_w, 8.f, 66.f, yellow, c1, c2_colour, c2)};
+              if(c3[0])
+                sphere_line(dl, 0.f, above_w, 8.f + used + 4.f, 38.f, yellow, c3);
+              }
             }
           }
         else
