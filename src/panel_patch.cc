@@ -1583,11 +1583,13 @@ namespace edworld
         }
       }
 
-    ///\brief the right sphere cut at the ship's floor (the wings' plane): the floor as its base, the half under it seen from
-    /// behind, the left and above, the target on a stalk from the floor
-    auto draw_sphere_cut(ImDrawList * dl, ImVec2 c, compass_direction_t const & d, bool have) -> void
+    ///\brief the right sphere as a dome standing on the pad (Artur, 2026-10-08: as the game's own landing view, the pad below
+    /// and the ship over it): its centre the target, its base the floor through it (parallel to the ship's wings), the ship
+    /// a point on the dome on a stalk from the base (the direction from the target to the ship, -d); straight over the target
+    /// is the top. Seen from behind, the left and above
+    auto draw_sphere_dome(ImDrawList * dl, ImVec2 c, compass_direction_t const & d, bool have) -> void
       {
-      constexpr float yaw{35.f}, pitch{45.f};
+      constexpr float yaw{35.f}, pitch{30.f};
       float const radius{200.f};
       settings_t const & s{settings()};
       std::uint32_t const disc{s.compass_colour_disc}, grid{s.compass_colour_grid}, rim{s.compass_colour_rim};
@@ -1596,52 +1598,62 @@ namespace edworld
         sphere_point_t const p{sphere_view(v, yaw, pitch)};
         return ImVec2{c.x + p.x * radius, c.y - p.y * radius};
         };
+      auto const facing = [&](compass_direction_t const & v) -> bool { return not sphere_view(v, yaw, pitch).on_far_side; };
       sphere_ground(dl, c, radius, 200);
       constexpr float pi{3.14159265f};
       constexpr int steps{96};
-      auto const curve = [&](auto && point, float from, float to, ImU32 colour, float width)
+      ImU32 const faint{col(mix_rgb(disc, grid, 0.5f))};
+      auto const curve = [&](auto && point, float from, float to, ImU32 bright, float width)
         {
-        ImVec2 a{at(point(from))};
+        compass_direction_t a{point(from)};
         for(int i{1}; i <= steps; ++i)
           {
-          ImVec2 const b{at(point(from + (to - from) * static_cast<float>(i) / steps))};
-          dl->AddLine(a, b, colour, width);
+          compass_direction_t const b{point(from + (to - from) * static_cast<float>(i) / steps)};
+          dl->AddLine(at(a), at(b), facing(a) ? bright : faint, width);
           a = b;
           }
         };
-      // the floor: the base, translucent, its edge the wings' plane
-      ImVec2 floor[steps];
+      // the base: the floor through the target, translucent, its edge the wings' plane
+      ImVec2 base[steps];
       for(int i{}; i != steps; ++i)
         {
         float const t{2.f * pi * static_cast<float>(i) / steps};
-        floor[i] = at({std::cos(t), 0.f, std::sin(t)});
+        base[i] = at({std::cos(t), 0.f, std::sin(t)});
         }
-      dl->AddConvexPolyFilled(floor, steps, col(mix_rgb(disc, grid, 0.5f), 150));
-      // the half under the floor: rings at 30 and 60 degrees below it, two half meridians, straight down marked
-      ImU32 const bowl{col(mix_rgb(disc, grid, 0.85f))};
-      for(float const a: {-30.f, -60.f})
+      dl->AddConvexPolyFilled(base, steps, col(mix_rgb(disc, grid, 0.5f), 150));
+      // the target in the middle of the base, as a small pad
+      ImU32 const target{col(s.compass_colour_target)};
+      ImVec2 const o{at({0.f, 0.f, 0.f})};
+      {
+      constexpr float k{0.16f};
+      ImVec2 const pad[4]{at({-k, 0.f, -k}), at({k, 0.f, -k}), at({k, 0.f, k}), at({-k, 0.f, k})};
+      dl->AddPolyline(pad, 4, target, ImDrawFlags_Closed, 3.f);
+      }
+      // the dome: rings at 30 and 60 degrees over the base, two half meridians, the top marked
+      for(float const a: {30.f, 60.f})
         {
         float const sa{std::sin(a / compass_degrees)}, ca{std::cos(a / compass_degrees)};
-        curve([&](float t) { return compass_direction_t{ca * std::cos(t), sa, ca * std::sin(t)}; }, 0.f, 2.f * pi, bowl, 1.5f);
+        curve([&](float t) { return compass_direction_t{ca * std::cos(t), sa, ca * std::sin(t)}; }, 0.f, 2.f * pi,
+              col(mix_rgb(disc, grid, 0.85f)), 1.5f);
         }
       ImU32 const meridian{col(mix_rgb(grid, rim, 0.33f))};
-      curve([](float t) { return compass_direction_t{0.f, std::sin(t), std::cos(t)}; }, pi, 2.f * pi, meridian, 2.f);
-      curve([](float t) { return compass_direction_t{std::cos(t), std::sin(t), 0.f}; }, pi, 2.f * pi, meridian, 2.f);
-      ImVec2 const down{at({0.f, -1.f, 0.f})};
-      dl->AddLine(ImVec2{down.x - 10.f, down.y}, ImVec2{down.x + 10.f, down.y}, meridian, 2.f);
-      dl->AddLine(ImVec2{down.x, down.y - 10.f}, ImVec2{down.x, down.y + 10.f}, meridian, 2.f);
-      dl->AddPolyline(floor, steps, col(rim), ImDrawFlags_Closed, 5.f);
-      // the nose: an arrow forward on the floor
+      curve([](float t) { return compass_direction_t{0.f, std::sin(t), std::cos(t)}; }, 0.f, pi, meridian, 2.f);
+      curve([](float t) { return compass_direction_t{std::cos(t), std::sin(t), 0.f}; }, 0.f, pi, meridian, 2.f);
+      ImVec2 const top{at({0.f, 1.f, 0.f})};
+      dl->AddLine(ImVec2{top.x - 10.f, top.y}, ImVec2{top.x + 10.f, top.y}, meridian, 2.f);
+      dl->AddLine(ImVec2{top.x, top.y - 10.f}, ImVec2{top.x, top.y + 10.f}, meridian, 2.f);
+      dl->AddPolyline(base, steps, col(rim), ImDrawFlags_Closed, 5.f);
+      // the nose: an arrow forward on the base
       ImU32 const green{col(s.compass_colour_nose)};
-      ImVec2 const o{at({0.f, 0.f, 0.f})}, n{at({0.f, 0.f, 1.f})};
+      ImVec2 const n{at({0.f, 0.f, 1.f})};
       dl->AddLine(o, n, green, 5.f);
       float const dx{n.x - o.x}, dy{n.y - o.y}, len{std::max(1.f, std::sqrt(dx * dx + dy * dy))}, ux{dx / len}, uy{dy / len};
       dl->AddTriangleFilled(ImVec2{n.x + ux * 22.f, n.y + uy * 22.f}, ImVec2{n.x - uy * 13.f, n.y + ux * 13.f}, ImVec2{n.x + uy * 13.f, n.y - ux * 13.f},
                             green);
       if(have)
         {
-        ImU32 const target{col(s.compass_colour_target)};
-        ImVec2 const p{at(d)}, foot{at({d.x, 0.f, d.z})};
+        compass_direction_t const ship{-d.x, -d.y, -d.z};
+        ImVec2 const p{at(ship)}, foot{at({ship.x, 0.f, ship.z})};
         dl->AddLine(o, foot, (target & 0x00ffffffu) | 0x80000000u, 2.f);
         dl->AddLine(foot, p, target, 5.f);
         dl->AddCircle(foot, 6.f, target, 16, 3.f);
@@ -1692,7 +1704,7 @@ namespace edworld
       compass_angles_t const a{compass_angles(c.x, c.y, s.compass_radius, c.filled)};
       compass_direction_t const should{direction_of(-(90.f - s.compass_should_dive), 0.f)};
       // normal flight: not supercruise (Flags bit 4), docked (0) or landed (1), not gliding (Flags2 bit 12); there the
-      // right sphere is cut at the floor near a planet (it is flat from there), and both turn to the approach view with the
+      // right sphere is the dome on the target near a planet (it is flat from there), and both turn to the approach view with the
       // target low under the wings
       bool const normal_flight{(f.flags & 0x13u) == 0 and (f.flags2 & (1ull << 12)) == 0};
       bool const was_approach{cs.approach};
@@ -1794,7 +1806,7 @@ namespace edworld
           else
             {
             if(cut)
-              draw_sphere_cut(dl, centre, dp, have);
+              draw_sphere_dome(dl, centre, dp, have);
             else
               draw_sphere_oblique(dl, centre, d, have, f.has_position, should);
             float const used{sphere_line(dl, 0.f, above_w, 8.f, 66.f, yellow, c1, c2_colour, c2)};
@@ -1823,7 +1835,7 @@ namespace edworld
           else
             {
             if(cut)
-              draw_sphere_cut(dl, centre, dp, have);
+              draw_sphere_dome(dl, centre, dp, have);
             else
               draw_sphere_oblique(dl, centre, d, have, f.has_position, should);
             y += sphere_line(dl, 0.f, below_w, y, 80.f, yellow, c1);

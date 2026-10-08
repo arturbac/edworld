@@ -154,7 +154,7 @@ namespace edworld
     float compass_sphere_gain{1.f};
     ///\brief the approach view (PoC): in normal flight (not supercruise, not gliding, neither docked nor landed) with the
     /// target this many degrees or more below the wings' plane, the left sphere shows the target from above (straight
-    /// down in its middle) and the right one the lower half of the sphere under the ship's floor; 0 = never
+    /// down in its middle) and the right one a dome standing on the target, the ship a point on it; 0 = never
     float compass_approach_below{20.f};
     ///\brief the dot's distance from the disc's centre when the target is on the rim, for the approach view: near a pad
     /// the dot sits there and the angle ahead or behind comes from how far short of it the dot is (Sjona's five dockings
