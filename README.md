@@ -30,6 +30,8 @@ ship's type, a screenshot with both spheres and edworld's log (`edworld.log` or 
 where each sphere was placed and how large (`compass: the left sphere's centre at ...`), which is what I need to
 place them right in every cockpit. `compass = 0` in the ini turns the navballs off.
 
+Checked at 9000×2160 only; at 1920×1080 or lower expect little. See the warning in `doc/users.md`.
+
 - Players: [doc/users.md](doc/users.md): what it shows, which dll, install (alone, through edloader, with EHT),
   settings, checking it works, after a verification of the game's files, removing it.
 - Developers: [doc/developers.md](doc/developers.md): how it works in the game process, build and test, what was

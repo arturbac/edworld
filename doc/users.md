@@ -19,6 +19,19 @@ the target's angle off the nose. In a planet's gravity well it assumes the plane
 `NOSE` (the nose's angle below or above the horizon), `PUSH DOWN` / `PULL UP` towards a dive of `compass_should_dive`
 degrees (`ON PATH` within 2°) and `ALT`, the altitude with the vertical speed.
 
+> **Warning: screen resolution.** The navballs are checked at one resolution only: 9000×2160 over three screens,
+> the cockpit on the middle 3840×2160. At 1920×1080 or lower, do not expect much:
+> - edworld reads the game's compass off the HUD surface the game draws it into: 2200×1800 here
+>   (`compass_surface_width`, `compass_surface_height`), the compass about 54 px in radius (`compass_radius`).
+>   Whether the game sizes that surface by the screen resolution is not checked. If it does, edworld may not find
+>   the compass at all until those settings match. A smaller compass also reads coarser: here about 0.2° near the
+>   nose and about 2° near the rim.
+> - The spheres and their lines are drawn into textures of a fixed size laid on the cockpit, so on screen they
+>   shrink with the resolution. Here the lines in the two columns near a planet are about 10 px tall; at
+>   1920×1080 they would be about half that, too small to read.
+>
+> A report of how they work at another resolution (an issue with a screenshot) is welcome.
+
 Apart from the jump panel and the navballs nothing in the game changes.
 
 ## Which dll
