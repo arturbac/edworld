@@ -1638,7 +1638,10 @@ namespace edworld
         float const t{2.f * pi * static_cast<float>(i) / steps};
         base[i] = at({std::cos(t), 0.f, std::sin(t)});
         }
-      dl->AddConvexPolyFilled(base, steps, col(mix_rgb(disc, grid, 0.5f), full ? 190 : 150));
+      // the base tinted by the side the ship is on (Artur, 2026-10-08): green over it, red under it
+      std::uint32_t const floor_colour{mix_rgb(disc, grid, 0.5f)};
+      std::uint32_t const side{not have ? floor_colour : d.y <= 0.f ? s.compass_colour_ok : s.compass_colour_wrong};
+      dl->AddConvexPolyFilled(base, steps, col(have ? mix_rgb(floor_colour, side, 0.35f) : floor_colour, full ? 190 : 150));
       if(full)
         {
         // the plane's grid: chords along and across the nose every quarter radius

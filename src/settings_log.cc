@@ -220,6 +220,7 @@ namespace edworld
                                      : name == "text_left"  ? &current.compass_colour_text_left
                                      : name == "text_right" ? &current.compass_colour_text_right
                                      : name == "ok"         ? &current.compass_colour_ok
+                                     : name == "wrong"      ? &current.compass_colour_wrong
                                                             : nullptr};
         if(auto const v{parse_hash(value)}; target and v and *v <= 0xffffffu)
           *target = static_cast<std::uint32_t>(*v);

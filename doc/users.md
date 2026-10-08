@@ -94,7 +94,8 @@ comment line. Every setting has a default; the file is needed only to change one
 | `compass_colour_nose` | `8CC9A0` | the nose's arrow |
 | `compass_colour_text_left` | `C9CED4` | the left sphere's angles |
 | `compass_colour_text_right` | `D6CFB4` | the right sphere's lines |
-| `compass_colour_ok` | `9AD3A8` | `ON PATH` |
+| `compass_colour_ok` | `9AD3A8` | `ON PATH`; the approach view's base while the ship is over it |
+| `compass_colour_wrong` | `C0504D` | the approach view's base while the ship is under it |
 
 The rest of the settings (`doc/developers.md`) are for finding things in the game.
 
@@ -114,6 +115,7 @@ compass_colour_nose = 50FF8C
 compass_colour_text_left = 96E6FF
 compass_colour_text_right = FFE678
 compass_colour_ok = 78FFA0
+compass_colour_wrong = FF5050
 ```
 
 To make your own, change the lines you want; a setting left out keeps its grey. The ini is read when the game

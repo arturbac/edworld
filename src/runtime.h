@@ -181,8 +181,10 @@ namespace edworld
     std::uint32_t compass_colour_text_left{0xc9ced4u};
     ///\brief the right sphere's lines
     std::uint32_t compass_colour_text_right{0xd6cfb4u};
-    ///\brief ON PATH
+    ///\brief ON PATH; in the approach view the dome's base while the ship is over it
     std::uint32_t compass_colour_ok{0x9ad3a8u};
+    ///\brief in the approach view the base while the ship is under it (the target above the wings)
+    std::uint32_t compass_colour_wrong{0xc0504du};
     };
 
   auto settings() noexcept -> settings_t const &;
