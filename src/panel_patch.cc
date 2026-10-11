@@ -1698,18 +1698,19 @@ namespace edworld
       }
 
     ///\brief a line of text under a sphere, centred, as large as asked but never wider than the texture; returns its height
-    ///\brief one line of up to two parts in their own colours, centred in [x0, x0 + width), as large as asked but never wider;
+    ///\brief one line of up to three parts in their own colours, centred in [x0, x0 + width), as large as asked but never wider;
     /// returns its height
     auto sphere_line(ImDrawList * dl, float x0, float width, float y, float size, ImU32 colour, char const * text, ImU32 colour2 = 0,
-                     char const * text2 = nullptr) -> float
+                     char const * text2 = nullptr, ImU32 colour3 = 0, char const * text3 = nullptr) -> float
       {
       ImFont * const font{sphere_font()};
       constexpr char gap[]{"  "};
       auto const measure = [&](float sz) -> float
         {
         float w{font->CalcTextSizeA(sz, FLT_MAX, 0.f, text).x};
-        if(text2 and text2[0])
-          w += font->CalcTextSizeA(sz, FLT_MAX, 0.f, gap).x + font->CalcTextSizeA(sz, FLT_MAX, 0.f, text2).x;
+        for(char const * t : {text2, text3})
+          if(t and t[0])
+            w += font->CalcTextSizeA(sz, FLT_MAX, 0.f, gap).x + font->CalcTextSizeA(sz, FLT_MAX, 0.f, t).x;
         return w;
         };
       float const widest{width - 16.f};
@@ -1721,11 +1722,14 @@ namespace edworld
         }
       float x{x0 + (width - total) / 2.f};
       dl->AddText(font, size, ImVec2{x, y}, colour, text);
-      if(text2 and text2[0])
-        {
-        x += font->CalcTextSizeA(size, FLT_MAX, 0.f, text).x + font->CalcTextSizeA(size, FLT_MAX, 0.f, gap).x;
-        dl->AddText(font, size, ImVec2{x, y}, colour2, text2);
-        }
+      char const * last{text};
+      for(auto const & [t, c] : {std::pair{text2, colour2}, std::pair{text3, colour3}})
+        if(t and t[0])
+          {
+          x += font->CalcTextSizeA(size, FLT_MAX, 0.f, last).x + font->CalcTextSizeA(size, FLT_MAX, 0.f, gap).x;
+          dl->AddText(font, size, ImVec2{x, y}, c, t);
+          last = t;
+          }
       return font->CalcTextSizeA(size, FLT_MAX, 0.f, text).y;
       }
 
@@ -1757,9 +1761,12 @@ namespace edworld
       ImU32 const green_line{col(s.compass_colour_ok)};
       ImU32 const name_colour{col(mix_rgb(s.compass_colour_grid, s.compass_colour_text_left, 0.5f), 200)};
       bool const behind{have and not c.filled and not cs.approach};
-      // c3 the altitude and the vertical speed in one line; alt and climb the same apart, for the two columns at a planet
-      char a1[48], a2[48], c1[48], c2[48], c3[64], alt[32], climb[32];
-      a2[0] = c2[0] = c3[0] = alt[0] = climb[0] = '\0';
+      // docked (Flags bit 0) or landed (1): nothing to fly to, the right sphere without lines
+      bool const grounded{(f.flags & 0x3u) != 0};
+      // c3 the altitude and the vertical speed in one line; alt and climb the same apart, and to_go, for the line under the angles at a planet
+      // to_go the distance to a place on the surface, for the left sphere's band at a planet
+      char a1[48], a2[48], c1[48], c2[48], c3[64], alt[32], climb[32], to_go[32];
+      a2[0] = c2[0] = c3[0] = alt[0] = climb[0] = to_go[0] = '\0';
       if(have and cs.approach)
         {
         std::snprintf(a1, sizeof a1, "%s %.1f%s", po.forward < 0.f ? "AFT" : "FWD", static_cast<double>(std::fabs(po.forward)), degree);
@@ -1811,6 +1818,7 @@ namespace edworld
           }
         std::snprintf(alt, sizeof alt, "ALT %.1f km", f.altitude / 1000.0);
         std::snprintf(climb, sizeof climb, "%.1f km TO GO", g.distance / 1000.0);
+        std::snprintf(to_go, sizeof to_go, "%s", climb);
         }
       else if(f.has_position)
         {
@@ -1834,6 +1842,7 @@ namespace edworld
         }
       else
         std::snprintf(c1, sizeof c1, "OFF %.0f%s", static_cast<double>(a.off_nose), degree);
+      bool const planet_lines{have and f.has_position and not grounded};
       if(alt[0])
         std::snprintf(c3, sizeof c3, "%s%s%s", alt, climb[0] ? "  " : "", climb);
       ImGui::SetCurrentContext(r.imgui);
@@ -1859,9 +1868,20 @@ namespace edworld
               draw_sphere_front(dl, centre, d, have);
             char wide[96];
             std::snprintf(wide, sizeof wide, "%s%s%s", a1, a2[0] ? "  " : "", a2);
-            float const used{sphere_line(dl, 0.f, above_w, 10.f, 76.f, behind ? orange : blue, wide)};
-            if(behind)
-              sphere_line(dl, 0.f, above_w, 10.f + used + 2.f, 30.f, orange, "BEHIND");
+            if(planet_lines)
+              {
+              // at a planet the right sphere's band is the game's (its latitude, longitude and gravity in the middle, its
+              // altitude ladder by the left edge; Artur's shot 2026-10-11: the lines there unreadable), so they come here,
+              // under the angles, BEHIND beside them
+              float const used{sphere_line(dl, 0.f, above_w, 10.f, 64.f, behind ? orange : blue, wide, orange, behind ? "BEHIND" : nullptr)};
+              sphere_line(dl, 0.f, above_w, 10.f + used + 4.f, 44.f, yellow, c1, c2_colour, c2, yellow, to_go[0] ? to_go : alt);
+              }
+            else
+              {
+              float const used{sphere_line(dl, 0.f, above_w, 10.f, 76.f, behind ? orange : blue, wide)};
+              if(behind)
+                sphere_line(dl, 0.f, above_w, 10.f + used + 2.f, 30.f, orange, "BEHIND");
+              }
             ImVec2 const name{name_font->CalcTextSizeA(26.f, FLT_MAX, 0.f, "edworld")};
             dl->AddText(name_font, 26.f, ImVec2{above_w / 2.f + 256.f - name.x - 10.f, above_h - name.y - 6.f}, name_colour,
                         "edworld");
@@ -1872,20 +1892,7 @@ namespace edworld
               draw_sphere_dome(dl, centre, dp, have, not f.has_position);
             else
               draw_sphere_oblique(dl, centre, d, have, f.has_position and not f.has_place, should);
-            if(f.has_position)
-              {
-              // at a planet the game writes its latitude, longitude and gravity in the middle of the band, not always at the
-              // same place (Artur's shots, 2026-10-08: from about a fifth to four fifths of it); the lines go in two columns
-              // by the band's edges, the middle left to the game
-              constexpr float column{above_w * 0.2f};
-              float const used{sphere_line(dl, 0.f, column, 10.f, 54.f, yellow, c1)};
-              if(alt[0])
-                sphere_line(dl, 0.f, column, 10.f + used + 4.f, 38.f, yellow, alt);
-              float const used2{c2[0] ? sphere_line(dl, above_w - column, column, 10.f, 54.f, c2_colour, c2) : 0.f};
-              if(climb[0])
-                sphere_line(dl, above_w - column, column, 10.f + used2 + 4.f, 38.f, yellow, climb);
-              }
-            else
+            if(not f.has_position and not grounded)
               {
               float const used{sphere_line(dl, 0.f, above_w, 8.f, 66.f, yellow, c1, c2_colour, c2)};
               if(c3[0])
@@ -1917,11 +1924,14 @@ namespace edworld
               draw_sphere_dome(dl, centre, dp, have, not f.has_position);
             else
               draw_sphere_oblique(dl, centre, d, have, f.has_position and not f.has_place, should);
-            y += sphere_line(dl, 0.f, below_w, y, 80.f, yellow, c1);
-            if(c2[0])
-              y += sphere_line(dl, 0.f, below_w, y, 72.f, c2_colour, c2);
-            if(c3[0])
-              sphere_line(dl, 0.f, below_w, y + 4.f, 40.f, yellow, c3);
+            if(not grounded)
+              {
+              y += sphere_line(dl, 0.f, below_w, y, 80.f, yellow, c1);
+              if(c2[0])
+                y += sphere_line(dl, 0.f, below_w, y, 72.f, c2_colour, c2);
+              if(c3[0])
+                sphere_line(dl, 0.f, below_w, y + 4.f, 40.f, yellow, c3);
+              }
             }
           }
         ImGui::Render();
