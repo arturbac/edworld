@@ -169,6 +169,9 @@ namespace edworld
     float gate_dive{17.f};
     float gate_dive_height{0.3f};
     float gate_arc{30.f};
+    ///\brief the gates: the steepest dive, degrees below the local horizontal; a straight line at the place steeper than
+    /// this (from high over it) is set up instead (2026-10-11: Artur's dives 52-67)
+    float gate_dive_steepest{73.f};
     ///\brief the spheres' colours, 0xRRGGBB: a muted grey by default (doc/users.md has the 1.1.0-beta.1 blue as an
     /// example); the fainter shades (the far side, the disc's middle, the outline) are mixed from these
     ///\brief the disc behind a sphere, at its rim; its middle is a fifth of the way to compass_colour_rim

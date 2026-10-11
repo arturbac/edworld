@@ -89,6 +89,7 @@ comment line. Every setting has a default; the file is needed only to change one
 | `gate_dive` | `17` | the gates down to a place (proof of concept, not drawn yet): the dive, in degrees below the planet's visible edge |
 | `gate_dive_height` | `0.3` | the gates: the height of the point the dive starts from, in planet radii |
 | `gate_arc` | `30` | the gates: the largest turn, in degrees, onto the flat line (the nose on the planet's edge) before the dive |
+| `gate_dive_steepest` | `73` | the gates: the steepest dive, in degrees below the local horizontal; from high over the place, where the straight line at it would be steeper, the gates set up the approach instead |
 | `compass_colour_disc` | `101214` | the spheres' colours, `RRGGBB` (see "Navball colours"): the disc behind a sphere |
 | `compass_colour_grid` | `5A6068` | the rings at 30° and 60° and the meridians |
 | `compass_colour_rim` | `A8AEB5` | the left sphere's rim and the wings' plane on the right one |

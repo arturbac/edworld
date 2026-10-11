@@ -217,8 +217,9 @@ int main()
               and std::fabs(nose_below - edworld::limb_dip(1.3 * RK, RK) / edworld::gate_rad) < 1e-6 and std::fabs(turn - 30.0) < 1e-6;
     }
   check(flat_ok, "gates: Kisekka still flat: to Q with a 30 degree turn, along the line with the nose on the edge, E at 0.3 R");
-  auto const moller_dive{edworld::approach_path(10.273772, 157.013962, 221041.0, 0.248625, 148.506454, RM, 17.0, 0.3, 30.0, 90.0)};
-  check(moller_dive.phase == edworld::approach_phase_e::dive and moller_dive.count == 2u, "gates: Moller at 18 below the edge: the dive");
+  auto const moller_dive{edworld::approach_path(10.273772, 157.013962, 221041.0, 0.248625, 148.506454, RM, 17.0, 0.3, 30.0, 73.0)};
+  check(moller_dive.phase == edworld::approach_phase_e::dive and moller_dive.count == 2u,
+        "gates: Moller at 18 below the edge (64 below the horizontal): the dive, within the steepest 73");
   // head on from 14 R: no Q gives a turn of 30 or less, straight to E (a turn of 64 there); from 2 R straight over the
   // place 19.5 below the edge: the dive, straight down, unless the steepest dive is limited
   auto const head_on{edworld::approach_path(-11.595967, -135.406815, 14.0 * RK, -11.595967, -135.406815, RK, 17.0, 0.3, 30.0, 90.0)};

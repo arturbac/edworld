@@ -235,6 +235,8 @@ namespace edworld
         current.gate_dive_height = to_float(value, current.gate_dive_height);
       else if(key == "gate_arc")
         current.gate_arc = to_float(value, current.gate_arc);
+      else if(key == "gate_dive_steepest")
+        current.gate_dive_steepest = to_float(value, current.gate_dive_steepest);
       else if(key == "compass_approach_radius")
         current.compass_approach_radius = to_float(value, current.compass_approach_radius);
       else if(key == "compass_log_ms")

@@ -7,7 +7,8 @@
 - **Gates down to a place (proof of concept, arithmetic only).** Every angle from the planet's visible edge. The path
   from the ship: onto a flat line (the nose on the edge) with a turn of at most `gate_arc` (30°), along it to the dive
   point at `gate_dive_height` (0.3 planet radii), then straight down to the place once it stands `gate_dive` (17°) below
-  the edge; worked out afresh from where the ship is. Gates along that path narrowing towards the place, the ship's
+  the edge and the line at it is no steeper than `gate_dive_steepest` (73° below the local horizontal); worked out
+  afresh from where the ship is. Gates along that path narrowing towards the place, the ship's
   attitude from the compass and Status.json's heading, and their projection; not drawn yet.
 - **Navball colours.** The spheres' colours are settings (`compass_colour_*`, `RRGGBB`), a muted grey by default;
   `doc/users.md` has the beta's blue as an example.
