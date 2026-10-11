@@ -187,18 +187,57 @@ int main()
   auto const d{edworld::compass_direction(0.f, 27.f, radius, true)};
   auto const back{edworld::direction_of(-30.f, 0.f)};
   check(std::fabs(d.y - back.y) < 1e-5f and std::fabs(d.z - back.z) < 1e-5f, "spheres: the dot and the angles give one direction");
-  // the gates down (PoC): the recorded descent to Berdo Forge on 2026-10-11 (Status.json, R 1957 km): at 04:25:20 the
-  // place stood 45.0 degrees below the horizon, so the way down starts within a few hundred metres of that fix
+  // the gates down (PoC), every angle from the planet's visible edge: the dive point at the ship's height above Berdo
+  // Forge (R 1957 km) sees the place 17 degrees below the edge
   {
   double const R{1957252.5};
-  auto const start{edworld::descent_start(-32.877357, 62.797558, 432586.0, -26.187031, 47.741756, R, 45.0)};
-  double const r{edworld::length(start.point)};
-  double const lat{std::asin(start.point.z / r) / edworld::gate_rad}, lon{std::atan2(start.point.y, start.point.x) / edworld::gate_rad};
-  auto const from{edworld::glide_to(lat, lon, r - R, -26.187031, 47.741756, R)};
-  auto const ship{edworld::glide_to(-32.877357, 62.797558, 432586.0, -26.187031, 47.741756, R)};
-  check(start.found and std::fabs(from.below - 45.0) < 1e-6, "gates: from the start the place stands 45 degrees below");
-  check(std::fabs(start.central_angle * R - ship.distance) < 1000.0, "gates: the recorded fix at 45 degrees is at the start");
-  check(not edworld::descent_start(0.0, 0.0, 0.5 * R, 1.0, 1.0, R, 45.0).found, "gates: too high, no point sees the place at 45");
+  auto const start{edworld::descent_start(-32.877357, 62.797558, 432586.0, -26.187031, 47.741756, R, 17.0)};
+  check(start.found and std::fabs(edworld::below_limb(start.point, edworld::planet_point(-26.187031, 47.741756, R), R) - 17.0) < 1e-6
+          and std::fabs(edworld::length(start.point) - R - 432586.0) < 1e-3,
+        "gates: from the start, at the ship's height, the place stands 17 degrees below the edge");
+  check(not edworld::descent_start(0.0, 0.0, 2.5 * R, 1.0, 1.0, R, 17.0).found and edworld::descent_start(0.0, 0.0, 2.3 * R, 1.0, 1.0, R, 17.0).found,
+        "gates: from above R / sin(17) = 3.42 R no point sees the place 17 below the edge");
+  // the recorded dives (Status.json 2026-10-11): Moller's Fortress (R 504 km) at 16:21:45, the nose put down, the place
+  // 18 below the edge; Kisekka Tourist Lodge (R 5391 km) at 15:19:58, still flat, 11.7 below
+  double const RM{504163.4375}, RK{5391284.0};
+  edworld::dvec3_t const moller{edworld::planet_point(0.248625, 148.506454, RM)}, kisekka{edworld::planet_point(-11.595967, -135.406815, RK)};
+  check(std::fabs(edworld::below_limb(edworld::planet_point(10.273772, 157.013962, RM + 221041.0), moller, RM) - 18.0) < 0.05,
+        "gates: Moller's dive started with the place 18 degrees below the edge");
+  auto const flat{edworld::approach_path(-7.162842, -154.094452, 2834866.0, -11.595967, -135.406815, RK, 17.0, 0.3, 30.0, 90.0)};
+  bool flat_ok{flat.phase == edworld::approach_phase_e::setup and flat.count == 4u and flat.dive_from == 2u
+               and std::fabs(flat.below_limb - 11.70) < 0.05};
+  if(flat_ok)
+    {
+    // E at 0.3 R sees the place 17 below the edge; the line Q-E has the nose on the edge seen from E; the turn at Q is 30
+    edworld::dvec3_t const e{flat.point[2]}, qp{flat.point[1]};
+    edworld::dvec3_t const f{edworld::unit(e - qp)};
+    double const nose_below{std::asin(-edworld::dot(f, edworld::unit(e))) / edworld::gate_rad};
+    double const turn{std::acos(edworld::dot(edworld::unit(qp - flat.point[0]), f)) / edworld::gate_rad};
+    flat_ok = std::fabs(edworld::length(e) - 1.3 * RK) < 1e-3 and std::fabs(edworld::below_limb(e, kisekka, RK) - 17.0) < 1e-6
+              and std::fabs(nose_below - edworld::limb_dip(1.3 * RK, RK) / edworld::gate_rad) < 1e-6 and std::fabs(turn - 30.0) < 1e-6;
+    }
+  check(flat_ok, "gates: Kisekka still flat: to Q with a 30 degree turn, along the line with the nose on the edge, E at 0.3 R");
+  auto const moller_dive{edworld::approach_path(10.273772, 157.013962, 221041.0, 0.248625, 148.506454, RM, 17.0, 0.3, 30.0, 90.0)};
+  check(moller_dive.phase == edworld::approach_phase_e::dive and moller_dive.count == 2u, "gates: Moller at 18 below the edge: the dive");
+  // head on from 14 R: no Q gives a turn of 30 or less, straight to E (a turn of 64 there); from 2 R straight over the
+  // place 19.5 below the edge: the dive, straight down, unless the steepest dive is limited
+  auto const head_on{edworld::approach_path(-11.595967, -135.406815, 14.0 * RK, -11.595967, -135.406815, RK, 17.0, 0.3, 30.0, 90.0)};
+  check(head_on.phase == edworld::approach_phase_e::setup and head_on.count == 3u and head_on.dive_from == 1u and head_on.turn > 60.0 and head_on.turn < 66.0,
+        "gates: head on from far, straight to E and a sharp turn there");
+  auto const over{edworld::approach_path(-11.595967, -135.406815, 2.0 * RK, -11.595967, -135.406815, RK, 17.0, 0.3, 30.0, 90.0)};
+  auto const over_limited{edworld::approach_path(-11.595967, -135.406815, 2.0 * RK, -11.595967, -135.406815, RK, 17.0, 0.3, 30.0, 73.0)};
+  check(over.phase == edworld::approach_phase_e::dive and over_limited.phase == edworld::approach_phase_e::setup,
+        "gates: straight over the place from 2 R the dive is vertical, set up instead with the steepest at 73");
+  auto const pg{edworld::path_gates(flat, 12u, 0.05, 50.0)};
+  bool pg_ok{pg.count == 12u and edworld::length(pg.gate[0].gate.centre - flat.point[0]) < 1e-6 and not pg.gate[0].dive and pg.gate[11].dive};
+  for(std::size_t i{1u}; i != pg.count; ++i)
+    pg_ok = pg_ok and (pg.gate[i].dive or not pg.gate[i - 1u].dive)
+            and edworld::length(pg.gate[i].gate.corner[0] - pg.gate[i].gate.centre) < edworld::length(pg.gate[i - 1u].gate.corner[0] - pg.gate[i - 1u].gate.centre);
+  check(pg_ok, "gates: along the whole path from the ship, the setup ones first then the dive ones, narrowing");
+  }
+  {
+  double const R{1957252.5};
+  auto const start{edworld::descent_start(-32.877357, 62.797558, 432586.0, -26.187031, 47.741756, R, 17.0)};
   edworld::dvec3_t const place{edworld::planet_point(-26.187031, 47.741756, R)};
   auto const gates{edworld::descent_gates(start.point, place, 10u, 0.05, 50.0)};
   edworld::dvec3_t const along{edworld::unit(place - start.point)};

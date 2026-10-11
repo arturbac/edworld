@@ -163,6 +163,12 @@ namespace edworld
     ///\brief in the approach view the dot's place is an exponential average of the readings with this time constant
     /// (seconds): near the rim a tenth of a pixel is a few degrees ahead or behind, and the sphere shook; 0 = no smoothing
     float compass_approach_smooth_s{0.4f};
+    ///\brief the gates down to a place (PoC, not drawn yet; src/gate_math.h approach_path): the dive, degrees below the
+    /// planet's visible edge (both recorded dives 2026-10-11 started at 16-18), the dive point's height in planet radii
+    /// (Kisekka dived at 0.22, Moller at 0.44), and the largest turn onto the flat line, degrees (Kisekka's arc ~26)
+    float gate_dive{17.f};
+    float gate_dive_height{0.3f};
+    float gate_arc{30.f};
     ///\brief the spheres' colours, 0xRRGGBB: a muted grey by default (doc/users.md has the 1.1.0-beta.1 blue as an
     /// example); the fainter shades (the far side, the disc's middle, the outline) are mixed from these
     ///\brief the disc behind a sphere, at its rim; its middle is a fifth of the way to compass_colour_rim

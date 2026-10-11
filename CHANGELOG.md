@@ -4,8 +4,10 @@
 
 - **Dive 45°.** `compass_should_dive` is 45 by default (was 35): the dive a pilot flies straight at a place once it
   stands 45° below the horizon.
-- **Gates down to a place (proof of concept, arithmetic only).** Where the way down starts (the place 45° below the
-  horizon at the ship's height), gates along the straight line from there to the place narrowing towards it, the ship's
+- **Gates down to a place (proof of concept, arithmetic only).** Every angle from the planet's visible edge. The path
+  from the ship: onto a flat line (the nose on the edge) with a turn of at most `gate_arc` (30°), along it to the dive
+  point at `gate_dive_height` (0.3 planet radii), then straight down to the place once it stands `gate_dive` (17°) below
+  the edge; worked out afresh from where the ship is. Gates along that path narrowing towards the place, the ship's
   attitude from the compass and Status.json's heading, and their projection; not drawn yet.
 - **Navball colours.** The spheres' colours are settings (`compass_colour_*`, `RRGGBB`), a muted grey by default;
   `doc/users.md` has the beta's blue as an example.

@@ -86,6 +86,9 @@ comment line. Every setting has a default; the file is needed only to change one
 | `compass_approach_below` | `20` | in normal flight with the target this many degrees or more below the wings, the approach view: the left sphere shows the target from above (straight down in its middle, `FWD`/`AFT` and `LT`/`RT` off the vertical), the right one a dome standing on the target with the ship a point on it (straight over the target at its top; in space the whole sphere, the base a plane with a grid); `0` = never |
 | `compass_approach_radius` | `54.8` | the dot's distance from the compass's centre with the target on its rim (pixels of the HUD surface); the angle ahead or behind near a pad comes from how far short of it the dot is |
 | `compass_approach_smooth_s` | `0.4` | in the approach view the dot's place is averaged with this time constant (seconds), so the spheres do not shake near a pad; `0` = no averaging |
+| `gate_dive` | `17` | the gates down to a place (proof of concept, not drawn yet): the dive, in degrees below the planet's visible edge |
+| `gate_dive_height` | `0.3` | the gates: the height of the point the dive starts from, in planet radii |
+| `gate_arc` | `30` | the gates: the largest turn, in degrees, onto the flat line (the nose on the planet's edge) before the dive |
 | `compass_colour_disc` | `101214` | the spheres' colours, `RRGGBB` (see "Navball colours"): the disc behind a sphere |
 | `compass_colour_grid` | `5A6068` | the rings at 30° and 60° and the meridians |
 | `compass_colour_rim` | `A8AEB5` | the left sphere's rim and the wings' plane on the right one |

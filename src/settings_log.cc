@@ -229,6 +229,12 @@ namespace edworld
         current.compass_approach_below = to_float(value, current.compass_approach_below);
       else if(key == "compass_approach_smooth_s")
         current.compass_approach_smooth_s = to_float(value, current.compass_approach_smooth_s);
+      else if(key == "gate_dive")
+        current.gate_dive = to_float(value, current.gate_dive);
+      else if(key == "gate_dive_height")
+        current.gate_dive_height = to_float(value, current.gate_dive_height);
+      else if(key == "gate_arc")
+        current.gate_arc = to_float(value, current.gate_arc);
       else if(key == "compass_approach_radius")
         current.compass_approach_radius = to_float(value, current.compass_approach_radius);
       else if(key == "compass_log_ms")
