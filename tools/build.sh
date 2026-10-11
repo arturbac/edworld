@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds edworld's d3d11.dll on Linux through msvc-wine (cl, ml64, link).
-# Environment: MSVC_WINE_ENV (msvc-wine's env.sh), FXC (fxc.exe of a Windows SDK), RELEASE_DLL (a released EDVR d3d11.dll).
-# Exports: the Windows d3d11 list read from a released EDVR d3d11.dll (RELEASE_DLL), thunked by EDVR's generator.
+# Environment: MSVC_WINE_ENV (msvc-wine's env.sh), FXC (fxc.exe of a Windows SDK).
+# Exports: the Windows d3d11 names from tools/d3d11_exports.txt, thunked by EDVR's generator.
 # Two builds of one source: edworld (on its own) and edworld_eht (EDWORLD_EHT: works with EHT); README "Two builds".
 # Usage: tools/build.sh   (output: build/edworld/edworld.dll + .pdb, build/edworld_eht/edworld_eht.dll + .pdb)
 set -euo pipefail
@@ -9,14 +9,13 @@ HERE=$(cd "$(dirname "$0")/.." && pwd)
 need() { [[ -n ${!1:-} ]] || { echo "$0: set $1 ($2)" >&2; exit 1; }; }
 need MSVC_WINE_ENV "msvc-wine's env.sh"
 need FXC "fxc.exe of a Windows SDK"
-need RELEASE_DLL "a released EDVR d3d11.dll: its export list"
 source "$MSVC_WINE_ENV"
 cd "$HERE"
 VER="$(git describe --tags --always --dirty 2>/dev/null || echo dev)"
 mkdir -p build/gen
 OBJ=$(mktemp -d build/obj.XXXXXX)   # fresh per run, nothing deleted
 python3 tools/gen_exports.py --self-test >/dev/null
-python3 tools/gen_exports_from_release.py --source "$RELEASE_DLL" --tag d3d11 --out build/gen \
+python3 tools/gen_exports_from_list.py --source tools/d3d11_exports.txt --tag d3d11 --out build/gen \
     --wrap D3D11CreateDevice --wrap D3D11CreateDeviceAndSwapChain
 # Dear ImGui's D3D11 backend shaders, compiled here so the game needs no d3dcompiler_XX.dll (third_party/imgui/README.md)
 WINEDEBUG=-all wine "$FXC" /nologo /O3 /T vs_4_0 /E vs_main /Vn g_imgui_vs /Fh build/gen/imgui_vs.h shaders/imgui.hlsl >/dev/null

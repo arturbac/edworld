@@ -116,7 +116,8 @@ The ini and log names are fixed by the build, not taken from the dll's file name
 | `src/emblems.h`, `tools/gen_emblems.py`, `assets/*.svg` | the emblems as coverage masks, generated from EDAssets |
 | `src/imgui_config.h`, `shaders/imgui.hlsl`, `third_party/imgui/` | Dear ImGui build options, backend shaders, the vendored sources |
 | `third_party/fonts/`, `tools/gen_font.py` | the list's font (Noto Sans Mono, SIL OFL 1.1), embedded at build time as `build/gen/list_font.h` |
-| `tools/build.sh` | build through msvc-wine; exports read from a released EDVR d3d11.dll (environment: `MSVC_WINE_ENV`, `FXC`, `RELEASE_DLL`) |
+| `tools/build.sh` | build through msvc-wine; exports from `tools/d3d11_exports.txt` (environment: `MSVC_WINE_ENV`, `FXC`) |
+| `tools/d3d11_exports.txt`, `tools/gen_exports_from_list.py` | the Windows d3d11 export names, and the run of EDVR's generator on them |
 | `tools/test.sh <scratch>` | smoke test under wine without the game, both builds (each as `d3d11.dll`), plain and chained, patch and list pixels checked, EDSM's answer read from a saved one (`test/data/`) (environment: `MSVC_WINE_ENV`, `FXC`, `EDWORLD_WINEPREFIX`) |
 | `tools/edworld_watch.py [path]` | live view of the shared file |
 | `tools/dump_to_png.py <dir>` | surface dumps to PNG |
@@ -221,8 +222,8 @@ edworld is one example of a d3d11 proxy plugin for Elite Dangerous; edloader run
 What a plugin of this kind needs, as edworld does it:
 
 1. **Be a `d3d11.dll`.** Export every d3d11 function. edworld's exports are thunks generated at build time from
-   the export list of a released d3d11 proxy (`tools/gen_exports_from_release.py` runs EDVR's
-   `tools/gen_exports.py` on it); each thunk jumps to the next d3d11's function.
+   the Windows d3d11 export names in `tools/d3d11_exports.txt` (`tools/gen_exports_from_list.py` runs EDVR's
+   `tools/gen_exports.py` on them); each thunk jumps to the next d3d11's function.
 2. **Find the next d3d11 without the loader lock.** In `DllMain` load nothing but the system's `d3d11.dll`; load
    the next proxy (`next` in the ini) on the first export call. Ask for the next one by the name your settings
    give: `d3d11.dll` reaches edloader, which passes the call on down its list (doc/developers.md in edloader).
