@@ -15,6 +15,7 @@
 #include "../src/compass_math.h"
 #include "../src/edworld_share.h"
 #include "../src/faction_list.h"
+#include "../src/gate_math.h"
 #include "../src/panel_math.h"
 #include "found_vs.h"
 #include "other_vs.h"
@@ -186,6 +187,61 @@ int main()
   auto const d{edworld::compass_direction(0.f, 27.f, radius, true)};
   auto const back{edworld::direction_of(-30.f, 0.f)};
   check(std::fabs(d.y - back.y) < 1e-5f and std::fabs(d.z - back.z) < 1e-5f, "spheres: the dot and the angles give one direction");
+  // the gates down (PoC): the recorded descent to Berdo Forge on 2026-10-11 (Status.json, R 1957 km): at 04:25:20 the
+  // place stood 45.0 degrees below the horizon, so the way down starts within a few hundred metres of that fix
+  {
+  double const R{1957252.5};
+  auto const start{edworld::descent_start(-32.877357, 62.797558, 432586.0, -26.187031, 47.741756, R, 45.0)};
+  double const r{edworld::length(start.point)};
+  double const lat{std::asin(start.point.z / r) / edworld::gate_rad}, lon{std::atan2(start.point.y, start.point.x) / edworld::gate_rad};
+  auto const from{edworld::glide_to(lat, lon, r - R, -26.187031, 47.741756, R)};
+  auto const ship{edworld::glide_to(-32.877357, 62.797558, 432586.0, -26.187031, 47.741756, R)};
+  check(start.found and std::fabs(from.below - 45.0) < 1e-6, "gates: from the start the place stands 45 degrees below");
+  check(std::fabs(start.central_angle * R - ship.distance) < 1000.0, "gates: the recorded fix at 45 degrees is at the start");
+  check(not edworld::descent_start(0.0, 0.0, 0.5 * R, 1.0, 1.0, R, 45.0).found, "gates: too high, no point sees the place at 45");
+  edworld::dvec3_t const place{edworld::planet_point(-26.187031, 47.741756, R)};
+  auto const gates{edworld::descent_gates(start.point, place, 10u, 0.05, 50.0)};
+  edworld::dvec3_t const along{edworld::unit(place - start.point)};
+  bool on_line{true}, square{true}, narrowing{true};
+  for(std::size_t i{}; i != gates.count; ++i)
+    {
+    auto const & g{gates.gate[i]};
+    edworld::dvec3_t const off{g.centre - start.point};
+    on_line = on_line and edworld::length(off - along * edworld::dot(off, along)) < 1e-3;
+    for(auto const & c : g.corner)
+      square = square and std::fabs(edworld::dot(c - g.centre, along)) < 1e-3;
+    if(i != 0u)
+      narrowing = narrowing and edworld::length(g.corner[0] - g.centre) < edworld::length(gates.gate[i - 1u].corner[0] - gates.gate[i - 1u].centre);
+    }
+  check(gates.count == 10u and edworld::length(gates.gate[0].centre - start.point) < 1e-6 and on_line and square and narrowing,
+        "gates: along the line from the start, square to it, narrowing towards the place");
+  // the attitude back from the place's direction as the compass would show it, for a few headings, pitches and rolls
+  bool attitude_ok{true};
+  edworld::local_frame_t const at{edworld::local_frame(-30.0, 55.0)};
+  edworld::dvec3_t const toward{edworld::unit(at.east * 0.3 + at.north * 0.5 - at.up * 0.8)};
+  for(double heading : {0.0, 45.0, 299.0})
+    for(double pitch : {-50.0, -10.0, 20.0})
+      for(double roll : {0.0, 30.0, -100.0})
+        {
+        double const h{heading * edworld::gate_rad}, p{pitch * edworld::gate_rad}, f{roll * edworld::gate_rad};
+        edworld::dvec3_t const level{at.east * std::sin(h) + at.north * std::cos(h)};
+        edworld::dvec3_t const forward{level * std::cos(p) + at.up * std::sin(p)};
+        edworld::dvec3_t const right0{at.east * std::cos(h) - at.north * std::sin(h)};
+        edworld::dvec3_t const up0{edworld::cross(right0, forward)};
+        edworld::dvec3_t const right{right0 * std::cos(f) - up0 * std::sin(f)}, up{right0 * std::sin(f) + up0 * std::cos(f)};
+        edworld::compass_direction_t const seen{static_cast<float>(edworld::dot(toward, right)), static_cast<float>(edworld::dot(toward, up)),
+                                                static_cast<float>(edworld::dot(toward, forward))};
+        auto const a{edworld::attitude_from(at, toward, seen, heading, pitch + 3.0)};
+        attitude_ok = attitude_ok and a.found and std::fabs(a.pitch - pitch) < 0.01 and std::fabs(std::remainder(a.roll - roll, 360.0)) < 0.01;
+        }
+  check(attitude_ok, "gates: the attitude from the compass and the heading comes back for 27 attitudes");
+  edworld::attitude_t const axes{true, {1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}, 0.0, 0.0};
+  auto const middle{edworld::project({0.0, 0.0, 100.0}, {}, axes, 60.0, 1920.0, 1080.0)};
+  auto const top{edworld::project({0.0, 100.0 * std::tan(30.0 * edworld::gate_rad), 100.0}, {}, axes, 60.0, 1920.0, 1080.0)};
+  check(middle.in_front and std::fabs(middle.x - 960.0) < 1e-9 and std::fabs(middle.y - 540.0) < 1e-9 and std::fabs(top.y) < 1e-6
+          and not edworld::project({0.0, 0.0, -1.0}, {}, axes, 60.0, 1920.0, 1080.0).in_front,
+        "gates: the projection puts the nose in the middle, half the field at the edge, nothing behind");
+  }
   auto const nose{edworld::sphere_view({0.f, 0.f, 1.f}, 35.f, 20.f)};
   auto const tail{edworld::sphere_view({0.f, 0.f, -1.f}, 35.f, 20.f)};
   check(nose.on_far_side and not tail.on_far_side and nose.x < 0.f and nose.y > 0.f,

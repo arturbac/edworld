@@ -113,6 +113,7 @@ The ini and log names are fixed by the build, not taken from the dll's file name
 | `src/settings_log.cc` | `<plugin>.ini`, `<plugin>.log` |
 | `src/edworld_share.h` | the published layout (plain C++, shared with the Linux side) |
 | `src/panel_math.h` | FNV-1a, anchor and projection arithmetic |
+| `src/gate_math.h` | gates down to a place (PoC): where the way down starts, the gates along it, the ship's attitude from the compass and the heading, the projection |
 | `src/emblems.h`, `tools/gen_emblems.py`, `assets/*.svg` | the emblems as coverage masks, generated from EDAssets |
 | `src/imgui_config.h`, `shaders/imgui.hlsl`, `third_party/imgui/` | Dear ImGui build options, backend shaders, the vendored sources |
 | `third_party/fonts/`, `tools/gen_font.py` | the list's font (Noto Sans Mono, SIL OFL 1.1), embedded at build time as `build/gen/list_font.h` |

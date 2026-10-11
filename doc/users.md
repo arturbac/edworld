@@ -82,7 +82,7 @@ comment line. Every setting has a default; the file is needed only to change one
 | `compass_sphere_text_above` | `1` | `1` the spheres' lines over them, `0` under them. Over them at a planet, the right sphere's lines go to the left sphere's band, one line under the angles: the right band is the game's (its latitude, longitude and gravity in the middle, its altitude ladder by the edge). Docked or landed, the right sphere has no lines |
 | `compass_text` | `0` | `1` = the angles also written above the radar |
 | `compass_hide_game` | `0` | `1` = the game's own compass hidden once read (the left sphere stands in for it) |
-| `compass_should_dive` | `35` | the dive, in degrees below the horizon, the right sphere steers towards near a planet |
+| `compass_should_dive` | `45` | the dive, in degrees below the horizon, the right sphere steers towards near a planet |
 | `compass_approach_below` | `20` | in normal flight with the target this many degrees or more below the wings, the approach view: the left sphere shows the target from above (straight down in its middle, `FWD`/`AFT` and `LT`/`RT` off the vertical), the right one a dome standing on the target with the ship a point on it (straight over the target at its top; in space the whole sphere, the base a plane with a grid); `0` = never |
 | `compass_approach_radius` | `54.8` | the dot's distance from the compass's centre with the target on its rim (pixels of the HUD surface); the angle ahead or behind near a pad comes from how far short of it the dot is |
 | `compass_approach_smooth_s` | `0.4` | in the approach view the dot's place is averaged with this time constant (seconds), so the spheres do not shake near a pad; `0` = no averaging |

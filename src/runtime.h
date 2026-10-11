@@ -124,7 +124,7 @@ namespace edworld
     float compass_sphere_c_y{-0.289f};
     ///\brief the nose this many degrees below the horizon is the approach to show (PoC: fixed); with the planet as the
     /// target, the target then is 90 minus this below the nose
-    float compass_should_dive{35.f};
+    float compass_should_dive{45.f};
     ///\brief the spheres' colours taken from sRGB back to linear with this gamma (the cockpit is linear HDR: without it they
     /// came out half again as light and paler, 2026-10-06; 0 = as drawn), then scaled by the gain
     float compass_sphere_gamma{2.2f};

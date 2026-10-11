@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Dive 45°.** `compass_should_dive` is 45 by default (was 35): the dive a pilot flies straight at a place once it
+  stands 45° below the horizon.
+- **Gates down to a place (proof of concept, arithmetic only).** Where the way down starts (the place 45° below the
+  horizon at the ship's height), gates along the straight line from there to the place narrowing towards it, the ship's
+  attitude from the compass and Status.json's heading, and their projection; not drawn yet.
 - **Navball colours.** The spheres' colours are settings (`compass_colour_*`, `RRGGBB`), a muted grey by default;
   `doc/users.md` has the beta's blue as an example.
 - **Approach view (proof of concept).** In normal flight with the target 20° or more below the wings, the left
