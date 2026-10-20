@@ -153,7 +153,7 @@ int main()
           filled.pixels > 100u,
         "compass: a filled dot found where it is drawn");
   clear();
-  dot(cx - 40.f, cy + 10.f, 6.6f, 5.8f);  // a ring as thin as the game's (~25-30 lit pixels)
+  dot(cx - 40.f, cy + 10.f, 7.f, 4.4f);  // a ring as the game's since 2026-10-20 (~93 lit pixels; it had ~111)
   auto const hollow{edworld::read_compass(area.data(), w * 4u, w, h, cx, cy, radius * 1.25f)};
   check(hollow.found and not hollow.filled and std::fabs(hollow.x + 40.f) < 0.3f and std::fabs(hollow.y - 10.f) < 0.3f,
         "compass: a hollow dot found and told from a filled one");
@@ -163,6 +163,55 @@ int main()
         "compass: a few lit pixels or the whole disc lit is no dot");
   clear();
   check(not edworld::read_compass(area.data(), w * 4u, w, h, cx, cy, radius * 1.25f).found, "compass: no dot on a bare disc");
+  check(filled.dot_hue < 0.f and filled.disc_hue > 200.f and filled.disc_hue < 240.f, "compass: a white dot has no hue, the disc its blue");
+  // the game's own HUD since its update of 2026-10-20: an orange disc, a cyan dot (130, 255, 255), read off Sjona's
+  // surface dumps; the same reading, no colour of its own
+  auto const paint = [&](std::uint8_t r, std::uint8_t g, std::uint8_t b, float x, float y, float outer, float inner)
+    {
+    for(std::int32_t py{}; py != h; ++py)
+      for(std::int32_t px{}; px != w; ++px)
+        {
+        float const d{std::hypot(static_cast<float>(px) - x, static_cast<float>(py) - y)};
+        if(d <= outer and d >= inner)
+          {
+          std::uint8_t * const p{&area[(static_cast<std::size_t>(py) * w + px) * 4u]};
+          p[0] = r; p[1] = g; p[2] = b; p[3] = 255;
+          }
+        }
+    };
+  auto const orange_disc = [&]
+    {
+    std::fill(area.begin(), area.end(), std::uint8_t{0});
+    paint(60, 25, 5, cx, cy, radius, 0.f);           // the dark grid's orange
+    paint(230, 110, 20, cx, cy, radius + 2.f, radius - 3.f);  // the rim
+    };
+  orange_disc();
+  paint(130, 255, 255, cx + 1.f, cy + 21.f, 8.f, 0.f);
+  auto const cyan{edworld::read_compass(area.data(), w * 4u, w, h, cx, cy, radius * 1.25f)};
+  check(cyan.found and cyan.filled and std::fabs(cyan.x - 1.f) < 0.3f and std::fabs(cyan.y - 21.f) < 0.3f and
+          edworld::compass_plausible(cyan),
+        "compass: a cyan dot on the game's orange disc, read and plausible");
+  check(std::fabs(cyan.dot_hue - 180.f) < 1.f and std::fabs(cyan.disc_hue - 25.f) < 0.1f, "compass: the dot's and the disc's hues");
+  orange_disc();
+  paint(130, 255, 255, cx + 4.f, cy + 53.f, 8.f, 0.f);  // on the rim: 90 degrees below the nose
+  auto const on_rim{edworld::read_compass(area.data(), w * 4u, w, h, cx, cy, radius * 1.25f)};
+  check(on_rim.found and on_rim.filled and std::fabs(on_rim.y - 53.f) < 0.5f, "compass: a dot over the rim, told by its hue");
+  orange_disc();
+  paint(130, 255, 255, cx + 3.f, cy + 23.f, 7.f, 4.4f);
+  auto const ring{edworld::read_compass(area.data(), w * 4u, w, h, cx, cy, radius * 1.25f)};
+  check(ring.found and not ring.filled and edworld::compass_plausible(ring), "compass: a cyan ring on the orange disc, hollow and plausible");
+  std::fill(area.begin(), area.end(), std::uint8_t{0});
+  paint(130, 255, 255, cx, cy, radius + 2.f, radius - 3.f);  // the compass flashing in the dot's colour
+  paint(130, 255, 255, cx + 1.f, cy + 21.f, 8.f, 0.f);
+  auto const flash{edworld::read_compass(area.data(), w * 4u, w, h, cx, cy, radius * 1.25f, 180.f)};
+  check(flash.flash and not flash.found and not edworld::compass_plausible(flash), "compass: a disc in the dot's hue is a flash, not read");
+  auto const first{edworld::read_compass(area.data(), w * 4u, w, h, cx, cy, radius * 1.25f)};
+  check(not first.flash, "compass: no flash told without a dot shown before");
+  check(edworld::compass_fresh(true, 0.5, 1.f) and not edworld::compass_fresh(true, 1.5, 1.f) and edworld::compass_fresh(true, 100.0, 0.f)
+          and not edworld::compass_fresh(false, 0.0, 1.f),
+        "compass: a reading holds its second, for ever with 0, never without one");
+  check(std::fabs(edworld::angle_between(edworld::direction_of(0.f, 0.f), edworld::direction_of(30.f, 0.f)) - 30.f) < 0.01f,
+        "compass: the angle between two directions");
   auto const up30{edworld::compass_angles(0.f, -27.f, radius, true)};
   check(std::fabs(up30.up - 30.f) < 0.01f and std::fabs(up30.off_nose - 30.f) < 0.01f and std::fabs(up30.right) < 0.01f,
         "compass: half the radius straight up is 30 degrees up, not 45 (the sphere's projection)");
@@ -296,15 +345,26 @@ int main()
         "approach: 80 degrees below the nose is 10 degrees ahead of the vertical");
   auto const aft{edworld::pad_offsets(edworld::compass_direction(0.f, 54.f, 54.f, false))};
   check(std::fabs(aft.forward) < 0.01f and std::fabs(aft.off_vertical) < 0.01f, "approach: the dot on the rim is straight down");
-  check(edworld::approach_view(false, true, true, -25.f, 20.f) and not edworld::approach_view(false, true, true, -15.f, 20.f),
+  check(edworld::approach_view(false, true, true, true, -25.f, 20.f) and not edworld::approach_view(false, true, true, true, -15.f, 20.f),
         "approach: on at 20 degrees below the wings");
-  check(edworld::approach_view(true, true, true, -15.f, 20.f) and not edworld::approach_view(true, true, true, -5.f, 20.f),
+  check(edworld::approach_view(true, true, true, true, -15.f, 20.f) and not edworld::approach_view(true, true, true, true, -5.f, 20.f),
         "approach: kept down to 10 degrees, off above");
+  check(not edworld::approach_view(false, true, true, false, -60.f, 20.f) and not edworld::approach_view(true, true, true, false, -60.f, 20.f),
+        "approach: never with the target far (after undocking it may stand low in another system)");
+  // near: a place 1 km off at 500 m, 20 km off; a station in this system while mass locked, the system itself
+  constexpr double r_planet{1.0e6}, km_deg{1000.0 / r_planet * 57.29577951308232};
+  check(edworld::near_target(true, true, 10.0, 20.0, 500.0, 10.0 + km_deg, 20.0, r_planet, 9u, 0u, 5.f)
+          and not edworld::near_target(true, true, 10.0, 20.0, 500.0, 10.0 + 20.0 * km_deg, 20.0, r_planet, 9u, 0u, 5.f),
+        "approach: a place within 5 km is near, 20 km is not");
+  check(edworld::near_target(false, false, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 9u, 1ull << 16, 5.f)
+          and not edworld::near_target(false, false, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 9u, 0u, 5.f)
+          and not edworld::near_target(false, false, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0u, 1ull << 16, 5.f),
+        "approach: a station in this system is near while mass locked, a system never");
   check(std::fabs(edworld::smoothing_weight(0.4f, 0.4f) - 0.63212f) < 1e-4f and edworld::smoothing_weight(0.f, 0.4f) == 0.f
           and edworld::smoothing_weight(0.1f, 0.f) == 1.f,
         "approach: the smoothing's weight, none after no time, all without a time constant");
-  check(not edworld::approach_view(true, false, true, -80.f, 20.f) and edworld::approach_view(true, true, false, 0.f, 20.f),
-        "approach: off outside normal flight, kept without a reading");
+  check(not edworld::approach_view(true, false, true, true, -80.f, 20.f) and not edworld::approach_view(true, true, false, true, -80.f, 20.f),
+        "approach: off outside normal flight and once the reading went stale");
   }
   wchar_t exe[MAX_PATH]{};
   GetModuleFileNameW(nullptr, exe, MAX_PATH);
@@ -516,10 +576,11 @@ int main()
   for(int y{34}; y != 95; ++y)
     for(int x{200}; x != 313; ++x)
       drawn[static_cast<std::size_t>(y) * 512 + x] = 0xff000000u;
-  // the compass's dot, white, 10 px right of and 10 px above its disc's centre (100, 64)
-  for(int y{48}; y != 61; ++y)
-    for(int x{104}; x != 117; ++x)
-      if((x - 110) * (x - 110) + (y - 54) * (y - 54) <= 36)
+  // the compass's dot, white, 10 px right of and 10 px above its disc's centre (100, 64); as large as the game's since
+  // 2026-10-20 (~197 px)
+  for(int y{46}; y != 63; ++y)
+    for(int x{102}; x != 119; ++x)
+      if((x - 110) * (x - 110) + (y - 54) * (y - 54) <= 64)
         drawn[static_cast<std::size_t>(y) * 512 + x] = 0xffffffffu;
   ctx->UpdateSubresource(surface, 0, nullptr, drawn.data(), 512 * 4, 0);
 

@@ -1315,6 +1315,11 @@ namespace edworld
       bool have_reading{};
       compass_reading_t shown{};  ///< the last plausible one: what the angles come from
       bool have_shown{};
+      double shown_at{};        ///< when it was read (seconds of the performance counter); it holds compass_stale_s
+      float dot_hue{-1.f};      ///< its hue (-1: white or none): a disc turned that hue is a flash (read_compass)
+      std::uint64_t flashes{};  ///< readings skipped as a flash of the compass
+      std::uint64_t gated{};    ///< readings further from the one shown than the ship can turn (compass_max_rate_dps)
+      bool was_fresh{};         ///< the reading shown held at the last frame: its going stale is logged once
       std::uint64_t held{};      ///< readings in a row not plausible (the last plausible one held meanwhile)
       std::uint64_t rejected{};  ///< all readings not plausible
       std::uint64_t lag{};  ///< frames between the copy and its reading
@@ -1342,6 +1347,26 @@ namespace edworld
       };
 
     compass_state_t cs;
+
+    ///\brief seconds of the performance counter
+    auto seconds_now() noexcept -> double
+      {
+      LARGE_INTEGER t{}, fq{};
+      QueryPerformanceCounter(&t);
+      QueryPerformanceFrequency(&fq);
+      return static_cast<double>(t.QuadPart) / static_cast<double>(fq.QuadPart);
+      }
+
+    ///\brief the reading shown still holds (compass_fresh): one came less than compass_stale_s ago
+    auto shown_fresh(settings_t const & s) noexcept -> bool
+      {
+      return compass_fresh(cs.have_shown, seconds_now() - cs.shown_at, s.compass_stale_s);
+      }
+
+    auto compass_limits(settings_t const & s) noexcept -> compass_limits_t
+      {
+      return compass_limits_t{s.compass_filled_min, s.compass_filled_max, s.compass_hollow_min, s.compass_hollow_max};
+      }
 
     auto compass_reset(ID3D11Device * device) -> void
       {
@@ -1739,7 +1764,7 @@ namespace edworld
       if(not make_list_objects() or not sphere_targets())
         return;
       compass_reading_t const & c{cs.shown};
-      bool const have{cs.have_shown};
+      bool const have{shown_fresh(s)};
       compass_direction_t const d{compass_direction(c.x, c.y, s.compass_radius, c.filled)};
       compass_angles_t const a{compass_angles(c.x, c.y, s.compass_radius, c.filled)};
       compass_direction_t const should{direction_of(-(90.f - s.compass_should_dive), 0.f)};
@@ -1748,10 +1773,13 @@ namespace edworld
       // target low under the wings
       bool const normal_flight{(f.flags & 0x13u) == 0 and (f.flags2 & (1ull << 12)) == 0};
       bool const was_approach{cs.approach};
-      cs.approach = s.compass_approach_below > 0.f and approach_view(cs.approach, normal_flight, have, a.up, s.compass_approach_below);
+      bool const close{s.compass_approach_km <= 0.f
+                      or near_target(f.has_position, f.has_place, f.latitude, f.longitude, f.altitude, f.place_latitude,
+                                     f.place_longitude, f.planet_radius, f.destination_body, f.flags, s.compass_approach_km)};
+      cs.approach = s.compass_approach_below > 0.f and approach_view(cs.approach, normal_flight, have, close, a.up, s.compass_approach_below);
       if(cs.approach != was_approach)
-        log_line("compass: the approach view %s (the target %.1f degrees below the wings)", cs.approach ? "on" : "off",
-                 static_cast<double>(-a.up));
+        log_line("compass: the approach view %s (the target %.1f degrees below the wings, %s, %s)", cs.approach ? "on" : "off",
+                 static_cast<double>(-a.up), close ? "near" : "not near", have ? "read" : "no fresh reading");
       bool const cut{cs.approach or (normal_flight and f.has_position)};
       compass_reading_t const & sm{cs.approach and cs.have_smooth ? cs.smooth : c};
       compass_direction_t const dp{compass_direction(sm.x, sm.y, s.compass_approach_radius, sm.filled)};
@@ -2050,19 +2078,38 @@ namespace edworld
         cs.copied = false;
         if(SUCCEEDED(hr) and m.pData)
           {
+          double const now_s{seconds_now()};
+          bool const fresh{compass_fresh(cs.have_shown, now_s - cs.shown_at, s.compass_stale_s)};
+          // a flash is told by the hue of the dot shown, while it holds: a stale one (another theme since) tells nothing
           cs.reading = read_compass(static_cast<std::uint8_t const *>(m.pData), m.RowPitch, static_cast<std::int32_t>(cw),
                                     static_cast<std::int32_t>(ch), s.compass_x - static_cast<float>(left),
-                                    s.compass_y - static_cast<float>(top), s.compass_radius * 1.25f);
+                                    s.compass_y - static_cast<float>(top), s.compass_radius * 1.25f, fresh ? cs.dot_hue : -1.f);
           cs.have_reading = true;
-          if(compass_plausible(cs.reading))
+          // the gate: no further from the reading shown than the ship can turn since; open once that one went stale
+          bool gated{};
+          if(s.compass_max_rate_dps > 0.f and fresh and compass_plausible(cs.reading, compass_limits(s)))
+            {
+            float const turned{angle_between(compass_direction(cs.reading.x, cs.reading.y, s.compass_radius, cs.reading.filled),
+                                             compass_direction(cs.shown.x, cs.shown.y, s.compass_radius, cs.shown.filled))};
+            gated = turned > s.compass_max_rate_dps * static_cast<float>(now_s - cs.shown_at) + 5.f;
+            }
+          if(cs.reading.flash)
+            {
+            ++cs.held;
+            ++cs.flashes;
+            }
+          else if(gated)
+            {
+            ++cs.held;
+            ++cs.gated;
+            }
+          else if(compass_plausible(cs.reading, compass_limits(s)))
             {
             cs.shown = cs.reading;
             cs.have_shown = true;
+            cs.shown_at = now_s;
+            cs.dot_hue = cs.reading.dot_hue;
             cs.held = 0;
-            LARGE_INTEGER t{}, fq{};
-            QueryPerformanceCounter(&t);
-            QueryPerformanceFrequency(&fq);
-            double const now_s{static_cast<double>(t.QuadPart) / static_cast<double>(fq.QuadPart)};
             if(cs.approach and cs.have_smooth)
               {
               float const k{smoothing_weight(static_cast<float>(now_s - cs.smooth_at), s.compass_approach_smooth_s)};
@@ -2167,8 +2214,15 @@ namespace edworld
       }
     // the angles: DN/UP below or above the wings' plane, LT/RT left or right of the nose; BEHIND under them, orange
     float y{s.compass_text_y};
-    bool const behind{cs.have_shown and not c.filled};
-    if(not cs.have_shown)
+    bool const fresh{shown_fresh(s)};
+    if(fresh != cs.was_fresh)
+      {
+      cs.was_fresh = fresh;
+      log_line("compass: %s (flashes %llu, gated %llu, rejected %llu)", fresh ? "reading" : "no fresh reading, NO DOT",
+               static_cast<unsigned long long>(cs.flashes), static_cast<unsigned long long>(cs.gated), static_cast<unsigned long long>(cs.rejected));
+      }
+    bool const behind{fresh and not c.filled};
+    if(not fresh)
       std::snprintf(line, sizeof line, "NO DOT");
     else
       std::snprintf(line, sizeof line, "%s %.1f%s  %s %.1f%s", a.up < 0.f ? "DN" : "UP", static_cast<double>(std::fabs(a.up)), degree,
@@ -2235,10 +2289,11 @@ namespace edworld
       cs.last_log = now.QuadPart;
       // the raw reading, plausible or not, and the angles shown (from the last plausible one)
       compass_reading_t const & raw{cs.reading};
-      log_line("compass: %s %s dot %+.2f %+.2f px %u %s off %.2f up %+.2f right %+.2f lag %llu | alt %.0f lat %.6f lon %.6f hdg %.0f path %+.2f "
+      log_line("compass: %s %s dot %+.2f %+.2f px %u %s hue disc %.0f dot %.0f off %.2f up %+.2f right %+.2f lag %llu | alt %.0f lat %.6f lon %.6f hdg %.0f path %+.2f "
                "flags %llx dest %u %.40s",
                raw.found ? "dot" : "none", raw.filled ? "filled" : "hollow", static_cast<double>(raw.x), static_cast<double>(raw.y), raw.pixels,
-               compass_plausible(raw) ? "ok" : "rejected", static_cast<double>(a.off_nose), static_cast<double>(a.up),
+               raw.flash ? "flash" : compass_plausible(raw, compass_limits(s)) ? "ok" : "rejected", static_cast<double>(raw.disc_hue),
+               static_cast<double>(raw.dot_hue), static_cast<double>(a.off_nose), static_cast<double>(a.up),
                static_cast<double>(a.right), static_cast<unsigned long long>(cs.lag), f.has_position ? f.altitude : -1.0, f.latitude, f.longitude, f.heading, f.path_angle,
                static_cast<unsigned long long>(f.flags), f.destination_body, f.destination_name);
       }

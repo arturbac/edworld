@@ -14,7 +14,9 @@ Both move with the panel when the cockpit camera swings.
 **Navballs (beta, 1.1.0-beta.1).** Two spheres beside the radar show where the selected target is. The left one is
 the sphere seen from the front, as the game's compass shows it, with the angles above it: `UP`/`DN` above or below
 the wings' plane, `LT`/`RT` left or right of the nose, `BEHIND` when the target is behind you, `NO DOT` when no
-target's dot is read. The right one is the same direction seen from behind, the left and above, with the nose marked and `OFF`,
+target's dot has been read for `compass_stale_s` seconds. The dot is told by its colour against the compass's own,
+not by a colour of its own, so it is read in the game's HUD colours and in any EDHM theme; a moment when the compass
+flashes in the dot's colour is skipped. The right one is the same direction seen from behind, the left and above, with the nose marked and `OFF`,
 the target's angle off the nose. In a planet's gravity well it assumes the planet is the target and gives instead
 `NOSE` (the nose's angle below or above the horizon), `PUSH DOWN` / `PULL UP` towards a dive of `compass_should_dive`
 degrees (`ON PATH` within 2°) and `ALT`, the altitude with the vertical speed.
@@ -85,6 +87,11 @@ comment line. Every setting has a default; the file is needed only to change one
 | `compass_should_dive` | `45` | the dive, in degrees below the horizon, the right sphere steers towards near a planet |
 | `compass_approach_below` | `20` | in normal flight with the target this many degrees or more below the wings, the approach view: the left sphere shows the target from above (straight down in its middle, `FWD`/`AFT` and `LT`/`RT` off the vertical), the right one a dome standing on the target with the ship a point on it (straight over the target at its top; in space the whole sphere, the base a plane with a grid); `0` = never |
 | `compass_approach_radius` | `54.8` | the dot's distance from the compass's centre with the target on its rim (pixels of the HUD surface); the angle ahead or behind near a pad comes from how far short of it the dot is |
+| `compass_approach_km` | `5` | the approach view also needs the target near: a place on a body within this many km, or a station or carrier in this system while the ship is mass locked; `0` = by the angle alone |
+| `compass_stale_s` | `1` | a dot read holds this many seconds without a new one, then `NO DOT` and the approach view goes off; `0` = held until the next one |
+| `compass_max_rate_dps` | `0` | a dot further from the last one than the ship can turn in the time between (degrees a second, plus 5) is not taken; `0` = no such check |
+| `compass_filled_min`, `compass_filled_max` | `120`, `320` | a filled dot's pixels on the HUD surface; fewer or more is not the dot |
+| `compass_hollow_min`, `compass_hollow_max` | `60`, `180` | the same for a hollow one (the target behind) |
 | `compass_approach_smooth_s` | `0.4` | in the approach view the dot's place is averaged with this time constant (seconds), so the spheres do not shake near a pad; `0` = no averaging |
 | `gate_dive` | `17` | the gates down to a place (proof of concept, not drawn yet): the dive, in degrees below the planet's visible edge |
 | `gate_dive_height` | `0.3` | the gates: the height of the point the dive starts from, in planet radii |

@@ -163,6 +163,20 @@ namespace edworld
     ///\brief in the approach view the dot's place is an exponential average of the readings with this time constant
     /// (seconds): near the rim a tenth of a pixel is a few degrees ahead or behind, and the sphere shook; 0 = no smoothing
     float compass_approach_smooth_s{0.4f};
+    ///\brief the approach view needs the target near too: a place on a body within this many km, or a station or carrier
+    /// in this system while mass locked (compass_math.h near_target); 0 = by the angle alone, as before 2026-10-20
+    float compass_approach_km{5.f};
+    ///\brief a reading shown holds this many seconds without a new plausible one, then the spheres say NO DOT and the
+    /// approach view goes off; 0 = for ever, as before 2026-10-20 (a stray reading then stayed until the next one)
+    float compass_stale_s{1.f};
+    ///\brief the dot cannot turn faster than the most agile ship does (a Kestrel at half throttle): a reading further
+    /// from the one shown than this many degrees a second, plus 5, is not the dot; 0 = no such gate (not measured yet)
+    float compass_max_rate_dps{0.f};
+    ///\brief a plausible dot's pixels, filled and hollow (compass_math.h compass_default_limits)
+    std::uint32_t compass_filled_min{120};
+    std::uint32_t compass_filled_max{320};
+    std::uint32_t compass_hollow_min{60};
+    std::uint32_t compass_hollow_max{180};
     ///\brief the gates down to a place (PoC, not drawn yet; src/gate_math.h approach_path): the dive, degrees below the
     /// planet's visible edge (both recorded dives 2026-10-11 started at 16-18), the dive point's height in planet radii
     /// (Kisekka dived at 0.22, Moller at 0.44), and the largest turn onto the flat line, degrees (Kisekka's arc ~26)
