@@ -1,22 +1,47 @@
 # Changelog
 
-## Unreleased
+## 1.1.0-beta.3
 
-- **Dive 45°.** `compass_should_dive` is 45 by default (was 35): the dive a pilot flies straight at a place once it
-  stands 45° below the horizon.
-- **Gates down to a place (proof of concept, arithmetic only).** Every angle from the planet's visible edge. The path
-  from the ship: onto a flat line (the nose on the edge) with a turn of at most `gate_arc` (30°), along it to the dive
-  point at `gate_dive_height` (0.3 planet radii), then straight down to the place once it stands `gate_dive` (17°) below
-  the edge and the line at it is no steeper than `gate_dive_steepest` (73° below the local horizontal); worked out
-  afresh from where the ship is. Gates along that path narrowing towards the place, the ship's
-  attitude from the compass and Status.json's heading, and their projection; not drawn yet.
+A beta for the game's update of 2026-10-20 (the Anaconda Mk2 update): the navballs read the new compass again.
+
+- **The new compass.** Since the update the target's dot is cyan on an orange compass (it was read only as white, an
+  EDHM theme's dot, so the navballs said `NO DOT`). The dot is now told by its hue against the compass's own,
+  worked out every frame, so it is read in the game's own colours and in any EDHM theme; a moment when the whole
+  compass flashes in the dot's colour is skipped. The dot's sizes follow the new compass (`compass_filled_min/max`,
+  `compass_hollow_min/max`).
+- **A reading goes stale.** A dot read holds `compass_stale_s` (1 s); then `NO DOT`. Before, a single stray reading
+  stayed on the spheres until the next one.
+- **The approach view only near the target.** Besides the target 20° or more below the wings, it needs the target
+  near: a place on a body within `compass_approach_km` (5 km), or a station or carrier in this system while the ship
+  is mass locked. After undocking, a target in another system no longer turns it on.
+- **`compass_max_rate_dps`** (off by default): a dot further from the last one than the ship can turn is not taken.
+- **Dive 45°.** `compass_should_dive` is 45 by default (was 35).
+- **Gates down to a place (proof of concept, arithmetic only, not drawn).**
+- **Build** without any EDVR binary: the d3d11 export names come from a list in the repository.
+
+Known: the new compass is checked in the Kestrel at 9000×2160; the approach view near a station or carrier (mass
+locked) is not yet checked in the game. On my machine both EDHM builds I had crashed the game after this update;
+edworld itself ran without EDHM.
+
+## 1.1.0-beta.2
+
+A beta: the approach view, checked in the game at an outpost in space and at a surface port.
+
+- **Screen resolution.** `doc/users.md` warns that the navballs are checked at one resolution only (9000×2160, the
+  cockpit on the middle 3840×2160) and what to expect at 1920×1080 or lower.
+- **At a planet** the base of the approach view stays green (the ship can not be under the pad there), and the right
+  sphere's lines stand in two columns with the middle left to the game's own readout.
 - **Navball colours.** The spheres' colours are settings (`compass_colour_*`, `RRGGBB`), a muted grey by default;
   `doc/users.md` has the beta's blue as an example.
-- **Approach view (proof of concept).** In normal flight with the target 20° or more below the wings, the left
+- **Approach view.** In normal flight with the target 20° or more below the wings, the left
   sphere shows it from above and the right one a dome standing on it, the ship a point on the dome (in space the
   whole sphere with the base as a gridded plane, tinted green with the ship over it and red under it); after a planet's
   glide the right sphere is always the dome and the dive guidance shows only in orbital cruise and glide. The dot's
   place is averaged there (`compass_approach_smooth_s`, 0.4 s).
+
+Known: the lines in the two columns are small (about 10 px tall at 3840×2160); ahead or behind near a pad is read
+from a fraction of a pixel (a few degrees at best); with a settlement or a surface port targeted, `NOSE` and
+`PUSH DOWN` / `PULL UP` in orbital cruise and glide still take the planet's centre as the target and are wrong there.
 
 ## 1.1.0-beta.1
 

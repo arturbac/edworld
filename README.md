@@ -16,7 +16,7 @@ starred, with the trend at the last tick and their states.
 
 ![Navballs beside the radar: the target's direction from the front (left) and from behind (right)](doc/images/navballs.jpg)
 
-Version 1.1.0-beta.1 adds two spheres beside the radar that show where the selected target is, larger and easier to
+Version 1.1.0-beta.1 added two spheres beside the radar that show where the selected target is, larger and easier to
 read than the game's compass. The left one is the sphere seen from the front, as the game's compass shows it, with
 the angles above it (`UP`/`DN`, `LT`/`RT`). The right one is the same direction seen from behind, from the left and
 from above, with the ship's nose marked and how far the target is off it (`OFF`); in a planet's gravity well, with
@@ -24,18 +24,29 @@ the planet targeted, it gives the nose's angle below the horizon, `PUSH DOWN` / 
 the altitude. The direction is read off the game's own compass; the spheres are drawn in the HUD's plane, held to
 the compass and to the speed readout, so they move with the cockpit.
 
-So far the spheres are placed in one cockpit only (the Kestrel). I need testers who fly other ships: install the
+Version 1.1.0-beta.2 adds the approach view: with the target low under the wings near a pad, the left sphere shows it
+from above (`FWD`/`AFT`, `LT`/`RT`) and the right one a dome standing on it with the ship a point on the dome (in space
+the whole sphere, the base a gridded plane, green with the ship over it and red under it), meant to let you come down to a pad
+on the spheres alone.
+
+Version 1.1.0-beta.3 reads the compass the game's update of 2026-10-20 brought (a cyan dot on an orange compass),
+in the game's own colours and in any EDHM theme.
+
+The spheres held their places in the Kestrel, the Anaconda, the Panther Clipper Mk II, the Mandalay and the Type-8.
+I need testers who fly other ships: install the
 beta (`doc/users.md`), then for each ship send me, in an [issue](https://github.com/arturbac/edworld/issues), the
 ship's type, a screenshot with both spheres and edworld's log (`edworld.log` or `edworld_eht.log`). The log records
 where each sphere was placed and how large (`compass: the left sphere's centre at ...`), which is what I need to
 place them right in every cockpit. `compass = 0` in the ini turns the navballs off.
+
+Checked at 9000×2160 only; at 1920×1080 or lower expect little. See the warning in `doc/users.md`.
 
 - Players: [doc/users.md](doc/users.md): what it shows, which dll, install (alone, through edloader, with EHT),
   settings, checking it works, after a verification of the game's files, removing it.
 - Developers: [doc/developers.md](doc/developers.md): how it works in the game process, build and test, what was
   found in the game, and how to write a d3d11 plugin of your own on the same pattern.
 
-Version 1.0.0, beta 1.1.0-beta.1 ([CHANGELOG.md](CHANGELOG.md)). Observing is read-only: every hook calls the game's call through
+Version 1.0.0, beta 1.1.0-beta.3 ([CHANGELOG.md](CHANGELOG.md)). Observing is read-only: every hook calls the game's call through
 unchanged; the jump panel's emblem and list and the navballs are the only things edworld changes in what the game draws. edworld runs on its own as
 the game's `d3d11.dll`, passing the calls on to one other d3d11 mod (`next`), or through
 [edloader](https://github.com/arturbac/edloader) together with several; the release zip carries edloader in its
