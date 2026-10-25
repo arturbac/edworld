@@ -6,8 +6,11 @@
 
 #include <d3d11.h>
 
+#include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -16,7 +19,13 @@
 #include "../src/edworld_share.h"
 #include "../src/faction_list.h"
 #include "../src/gate_math.h"
+#include "../src/hologram_math.h"
+#include "../src/holo_models.h"
+#include "../src/pad_text_read.h"
 #include "../src/panel_math.h"
+#include "../src/sample_context.h"
+#include "../src/shader_dxbc.h"
+#include "catalog_cs.h"
 #include "found_vs.h"
 #include "other_vs.h"
 #include "panel_ps.h"
@@ -42,10 +51,567 @@ namespace
   constexpr bool with_eht{false};
   constexpr wchar_t plugin_name[]{L"edworld"};
 #endif
+
+  // the hologram models' registry (holo_models.h): an asymmetric cloud of points, its fingerprint, turns and remaps
+  auto holo_cloud() -> std::vector<edworld::vec3_t>
+    {
+    std::vector<edworld::vec3_t> out;
+    std::uint32_t seed{12345u};
+    auto const next = [&seed]() -> float
+      {
+      seed = seed * 1664525u + 1013904223u;
+      return static_cast<float>(seed >> 8) / 16777216.f;
+      };
+    for(int i{}; i != 400; ++i)  // a slab 2 x 1.2 x 0.6, off centre
+      out.push_back({next() * 2.f - 0.7f, next() * 1.2f, next() * 0.6f});
+    for(int i{}; i != 60; ++i)  // a tower on one corner
+      out.push_back({1.1f + next() * 0.2f, next() * 0.2f, 0.6f + next() * 1.4f});
+    return out;
+    }
+
+  // a hologram model's sample in its context (sample_context.h): Status.json and the journal's place, a cut file null
+  auto sample_context_tests() -> void
+    {
+    using namespace edworld;
+    std::string_view const tail{"ent\":\"Music\" }\r\n{ \"timestamp\":\"2026-10-23T15:16:42Z\", \"event\":\"DockingGranted\" }\r\n{ \"ti"};
+    check(last_complete_line(tail) == R"({ "timestamp":"2026-10-23T15:16:42Z", "event":"DockingGranted" })",
+          "context: the journal's last complete line");
+    check(last_complete_line("{ \"cut").empty() and last_complete_line("").empty(), "context: no complete line");
+    std::string const whole{sample_context_text("103481344-01dd62ef6d758059_20261023T151723_499Z_1170",
+                                                "{ \"Flags\":16842765, \"Destination\":{ \"Name\":\"Bischoff \\\"L\\\"\" } }\r\n",
+                                                "Journal.2026-10-23T170745.01.log", 123456u, tail)};
+    check(whole == "{\"sample\": \"103481344-01dd62ef6d758059_20261023T151723_499Z_1170\",\n"
+                   " \"status\": { \"Flags\":16842765, \"Destination\":{ \"Name\":\"Bischoff \\\"L\\\"\" } },\n"
+                   " \"journal\": {\"file\": \"Journal.2026-10-23T170745.01.log\", \"size\": 123456, \"last_line\": "
+                   "{ \"timestamp\":\"2026-10-23T15:16:42Z\", \"event\":\"DockingGranted\" }}}\n",
+          "context: Status.json and the journal's place");
+    check(sample_context_text("s\"x", "{ \"Flags\":1", "", 0u, "") == "{\"sample\": \"s\\\"x\",\n \"status\": null,\n \"journal\": null}\n",
+          "context: Status.json cut, no journal");
+    }
+
+  // the shaders' catalog (shader_dxbc.h): the shape of bytecode fxc made here, and bytes that are no DXBC
+  auto shader_shape_tests() -> void
+    {
+    using namespace edworld;
+    auto const has = [](std::string const & words, char const * word) -> bool
+      { return (" " + words + " ").find(std::string{" "} + word + " ") != std::string::npos; };
+    dxbc_shape_t const vs{dxbc_shape(g_panel_vs, sizeof g_panel_vs)};
+    check(vs.ok and vs.stage == shader_stage_e::vertex and vs.major == 5u and vs.minor == 0u and
+            vs.inputs == "INSTANCE0 POSITION0 TEXCOORD0" and vs.outputs == "SV_Position0 TEXCOORD0" and
+            vs.decls.rfind("cb0[", 0) == 0 and vs.instructions > 0u,
+          "shader shape: the panel's VS - stage, version, signatures, its cbuffer first");
+    dxbc_shape_t const cs{dxbc_shape(g_catalog_cs, sizeof g_catalog_cs)};
+    check(cs.ok and cs.stage == shader_stage_e::compute and has(cs.decls, "cb1[3]") and has(cs.decls, "t2") and
+            has(cs.decls, "u0") and has(cs.decls, "tg8x4x1") and cs.inputs.empty() and cs.outputs.empty(),
+          "shader shape: a compute shader - its cbuffer's rows, structured input, UAV and thread group");
+    dxbc_shape_t const ps{dxbc_shape(g_panel_ps, sizeof g_panel_ps)};
+    check(ps.ok and ps.stage == shader_stage_e::pixel and std::string{stage_name(ps.stage)} == "ps", "shader shape: the panel's PS is a pixel shader");
+    std::vector<std::uint8_t> cut(g_catalog_cs, g_catalog_cs + sizeof g_catalog_cs / 2);
+    std::uint8_t const junk[64]{'D', 'X', 'B', 'C'};
+    check(not dxbc_shape(cut.data(), cut.size()).ok and not dxbc_shape(junk, sizeof junk).ok and not dxbc_shape(nullptr, 0).ok,
+          "shader shape: half a shader, a bare header or nothing is no shape");
+    // the game's own, when given (EDWORLD_SHADER_SAMPLE=<file.dxbc>[;<file.dxbc>...]): game data is not kept here
+    if(char const * const env{std::getenv("EDWORLD_SHADER_SAMPLE")})
+      for(std::string list{env}; not list.empty();)
+        {
+        std::size_t const end{list.find(';')};
+        std::string const path{list.substr(0, end)};
+        list = end == std::string::npos ? std::string{} : list.substr(end + 1);
+        std::vector<std::uint8_t> bytes;
+        if(FILE * const f{std::fopen(path.c_str(), "rb")})
+          {
+          std::uint8_t buf[4096];
+          for(std::size_t n; (n = std::fread(buf, 1, sizeof buf, f)) != 0;)
+            bytes.insert(bytes.end(), buf, buf + n);
+          std::fclose(f);
+          }
+        dxbc_shape_t const g{dxbc_shape(bytes.data(), bytes.size())};
+        std::printf("sample %s: %s %u.%u | %s | %s | %s | %u | %s\n", path.c_str(), stage_name(g.stage), g.major, g.minor, g.inputs.c_str(),
+                    g.outputs.c_str(), g.decls.c_str(), g.instructions, g.chunks.c_str());
+        check(g.ok, "shader shape: a shader of the game reads");
+        }
+    }
+
+  auto holo_models_tests() -> void
+    {
+    using namespace edworld;
+    std::vector<vec3_t> const cloud{holo_cloud()};
+    holo_fingerprint_t const f{holo_fingerprint(cloud.data(), cloud.size(), 300u)};
+    std::vector<vec3_t> shuffled{cloud};
+    std::reverse(shuffled.begin(), shuffled.end());
+    std::rotate(shuffled.begin(), shuffled.begin() + 77, shuffled.end());
+    holo_fingerprint_t const g{holo_fingerprint(shuffled.data(), shuffled.size(), 300u)};
+    check(std::memcmp(&f, &g, sizeof f) == 0, "holo models: the fingerprint does not depend on the order of the vertices");
+    check(near_eq(holo_likeness(f, f), 1.f) and f.vertices == 460u and near_eq(std::max({f.extent[0], f.extent[1], f.extent[2]}), 1.f) and f.extent[1] < 1.f,
+          "holo models: a fingerprint is like itself, the box's largest half-side 1");
+
+    bool unique{true}, proper{true};
+    for(std::size_t a{}; a != holo_turn_list.size(); ++a)
+      {
+      holo_turn_t const & t{holo_turn_list[a]};
+      int const parity{(t.perm[0] == 0 and t.perm[1] == 1) or (t.perm[0] == 1 and t.perm[1] == 2) or (t.perm[0] == 2 and t.perm[1] == 0) ? 1 : -1};
+      proper = proper and parity * t.sign[0] * t.sign[1] * t.sign[2] == 1;
+      for(std::size_t b{}; b != a; ++b)
+        unique = unique and std::memcmp(&holo_turn_list[a], &holo_turn_list[b], sizeof(holo_turn_t)) != 0;
+      }
+    check(unique and proper and holo_turn_list[0].perm == std::array<std::int8_t, 3>{0, 1, 2} and
+            holo_turn_list[0].sign == std::array<std::int8_t, 3>{1, 1, 1},
+          "holo models: 24 different turns without a mirror, the identity first");
+
+    float worst{1.f}, best_other{0.f};
+    for(std::size_t a{}; a != holo_turn_list.size(); ++a)
+      {
+      std::vector<vec3_t> moved;
+      for(vec3_t const & v: cloud)
+        moved.push_back(turn(holo_turn_list[a], v));
+      holo_fingerprint_t const m{holo_fingerprint(moved.data(), moved.size(), 300u)};
+      worst = std::min(worst, holo_likeness(m, turned(f, holo_turn_list[a])));
+      if(a)
+        best_other = std::max(best_other, holo_likeness(m, f));
+      }
+    check(worst > 0.95f and best_other < 0.9f, "holo models: a turned model's fingerprint is the turned fingerprint, not the unturned one");
+
+    // the registry: the cloud as model 0 (count 100, build "a"), a slab without the tower as model 1
+    std::vector<vec3_t> slab(cloud.begin(), cloud.begin() + 400);
+    holo_fingerprint_t const fs{holo_fingerprint(slab.data(), slab.size(), 260u)};
+    holo_model_t const models[]{{"cloud", holo_role_e::station, 100u, holo_status_e::confirmed, "a", true, f},
+                                {"slab", holo_role_e::station, 200u, holo_status_e::confirmed, "a", true, fs},
+                                {"no print", holo_role_e::ship, 300u, holo_status_e::measured, "", false, {}}};
+    auto const r_known{holo_resolve(models, 3u, 100u, "a", nullptr)};
+    auto const r_old{holo_resolve(models, 3u, 300u, "b", nullptr)};
+    auto const r_none{holo_resolve(models, 3u, 999u, "b", nullptr)};
+    check(r_known.how == holo_resolve_e::known and r_known.model == 0 and r_old.how == holo_resolve_e::known and r_old.model == 2 and
+            r_none.how == holo_resolve_e::unknown and r_none.model == -1,
+          "holo models: the count on its build, a count from before builds were logged, none without a fingerprint");
+    auto const r_stable{holo_resolve(models, 3u, 100u, "b", &f)};
+    check(r_stable.how == holo_resolve_e::stable and r_stable.model == 0, "holo models: the same count and shape on a new build is stable");
+
+    holo_turn_t const t{holo_turn_list[7]};
+    std::vector<vec3_t> moved;
+    for(vec3_t const & v: cloud)
+      moved.push_back(turn(t, v));
+    holo_fingerprint_t const fm{holo_fingerprint(moved.data(), moved.size(), 300u)};
+    auto const r_new{holo_resolve(models, 3u, 4242u, "b", &fm)};
+    bool same_turn{r_new.turn == 7};
+    check(r_new.how == holo_resolve_e::remapped and r_new.model == 0 and same_turn and r_new.score > 0.95f and r_new.second < 0.9f,
+          "holo models: a new count with the cloud's shape, turned, is the cloud with that turn");
+    auto const r_slab{holo_resolve(models, 3u, 4243u, "b", &fs)};
+    check(r_slab.how == holo_resolve_e::remapped and r_slab.model == 1 and r_slab.turn == 0, "holo models: the slab is not taken for the cloud");
+    std::vector<vec3_t> other;
+    for(int i{}; i != 300; ++i)
+      other.push_back({std::cos(i * 0.3f) * 0.2f, static_cast<float>(i) * 0.01f, std::sin(i * 0.3f) * 0.2f});
+    holo_fingerprint_t const fo{holo_fingerprint(other.data(), other.size(), 600u)};
+    check(holo_resolve(models, 3u, 4244u, "b", &fo).how == holo_resolve_e::unknown, "holo models: another shape stays unknown");
+
+    // a model drawn turned: its axes (as the T1 table names them) come back from the drawn ones
+    std::array<compass_direction_t, 3> const model_axes{{{1.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, {0.f, 0.f, 1.f}}};
+    std::array<compass_direction_t, 3> drawn{};
+    for(std::size_t k{}; k != 3; ++k)  // the drawn axis k is the model's axis perm[k], sign[k] its end
+      {
+      compass_direction_t const & a{model_axes[static_cast<std::size_t>(t.perm[k])]};
+      drawn[k] = compass_direction_t{t.sign[k] * a.x, t.sign[k] * a.y, t.sign[k] * a.z};
+      }
+    auto const back{holo_model_axes(drawn, t)};
+    bool same{true};
+    for(std::size_t k{}; k != 3; ++k)
+      same = same and near_eq(back[k].x, model_axes[k].x) and near_eq(back[k].y, model_axes[k].y) and near_eq(back[k].z, model_axes[k].z);
+    check(same, "holo models: the model's axes from a turned model's drawn axes");
+
+    bool counts_unique{true};
+    for(std::size_t a{}; a != holo_models.size(); ++a)
+      for(std::size_t b{}; b != a; ++b)
+        counts_unique = counts_unique and (holo_models[a].count == 0u or holo_models[a].count != holo_models[b].count
+                                           or std::strcmp(holo_models[a].build, holo_models[b].build) != 0);
+    check(counts_unique, "holo models: a count is one model's on one build (the generated table's empty row aside)");
+    {
+      // a model confirmed in the form on the next build beside its measured entry (2026-10-24): its count known on that
+      // build, and on a third its fingerprint finds it - its own copy no rival
+      char const next[]{"103481344-01dd62ef6d758059"}, third[]{"103400000-01dd70000000000"};
+      holo_model_t const two[]{
+        {"Sidewinder", holo_role_e::ship, 3924u, holo_status_e::measured, holo_build_2026_10_13, true, holo_fp_sidewinder},
+        {"Coriolis", holo_role_e::station, 948u, holo_status_e::measured, holo_build_2026_10_13, true, holo_fp_coriolis},
+        {"Sidewinder (own)", holo_role_e::ship, 3924u, holo_status_e::confirmed, next, true, holo_fp_sidewinder},
+      };
+      auto const on_next{holo_resolve(two, std::size(two), 3924u, next, nullptr)};
+      auto const on_third{holo_resolve(two, std::size(two), 4000u, third, &holo_fp_sidewinder)};
+      check(on_next.how == holo_resolve_e::known and on_next.model == 2 and on_third.how == holo_resolve_e::remapped
+              and on_third.model == 0 and holo_table_count(on_third, two) == 3924u,
+            "holo models: a model confirmed on the next build is known there, and its copy no rival on a third");
+    }
+    {
+      // near PRNH's pad 15 (2026-10-22): the Sidewinder (3924) on both surfaces; at an outpost the station's on the target's
+      std::uint32_t const counts[]{3924u, 3924u}, outpost[]{27885u, 5238u};
+      bool const own[]{true, false}, own2[]{true, false};
+      auto const model = [](std::uint32_t count) -> holo_model_t const *
+        {
+        holo_resolved_t const r{holo_resolve(holo_models.data(), holo_models.size(), count, holo_build_2026_10_13, nullptr)};
+        return r.model >= 0 ? &holo_models[r.model] : nullptr;
+        };
+      check(holo_shows_ship(3924u, counts, own, 2u, model(3924u)) and not holo_shows_ship(5238u, outpost, own2, 2u, model(5238u)) and
+              holo_shows_ship(106830u, outpost, own2, 2u, model(106830u)) and not holo_shows_ship(4242u, outpost, own2, 2u, model(4242u)),
+            "holo models: the own ship on the target's surface, or a registered ship, is a ship; a station or unknown is not");
+      // at Ahn Hub after a ship swap (2026-10-25): the port (2760) on the own surface, the Kestrel (27885) on the
+      // target's - the port is the target and no ship
+      std::uint32_t const swapped[]{2760u, 27885u};
+      auto const model_on = [](std::uint32_t count) -> holo_model_t const *
+        {
+        holo_resolved_t const r{holo_resolve(holo_models.data(), holo_models.size(), count, "103481344-01dd62ef6d758059", nullptr)};
+        return r.model >= 0 ? &holo_models[r.model] : nullptr;
+        };
+      check(not holo_shows_ship(2760u, swapped, own, 2u, model_on(2760u)) and holo_shows_ship(27885u, swapped, own, 2u, model_on(27885u)),
+            "holo models: a place on the own surface is no ship; the ship beside it is");
+    }
+    {
+      // the registry's build (2026-10-13) and the next one: a count is a model's on its build; on another only by its
+      // fingerprint - the Sidewinder kept or renumbered, a T1 station without a fingerprint unknown, its count free for
+      // the tables nowhere
+      char const next[]{"103481344-01dd44e0c0000000"};
+      auto const known{holo_resolve(holo_models.data(), holo_models.size(), 5238u, holo_build_2026_10_13, nullptr)};
+      auto const t1_next{holo_resolve(holo_models.data(), holo_models.size(), 5238u, next, nullptr)};
+      auto const kept{holo_resolve(holo_models.data(), holo_models.size(), 3924u, next, &holo_fp_sidewinder)};
+      auto const moved{holo_resolve(holo_models.data(), holo_models.size(), 3925u, next, &holo_fp_sidewinder)};
+      auto const taken{holo_resolve(holo_models.data(), holo_models.size(), 3924u, next, &holo_fp_coriolis)};
+      check(holo_table_count(known, holo_models.data()) == 5238u and t1_next.how == holo_resolve_e::unknown and
+              holo_table_count(t1_next, holo_models.data()) == 0u,
+            "holo models: a count on the registry's build is the tables'; on the next build, without a fingerprint, nobody's");
+      check(kept.how == holo_resolve_e::stable and holo_table_count(kept, holo_models.data()) == 3924u and
+              moved.how == holo_resolve_e::remapped and holo_table_count(moved, holo_models.data()) == 3924u and moved.turn == 0 and
+              taken.how == holo_resolve_e::remapped and holo_table_count(taken, holo_models.data()) == 948u,
+            "holo models: on the next build the Sidewinder's fingerprint keeps or carries its count; the Coriolis' under the "
+            "Sidewinder's count is the Coriolis");
+      bool clear{true};
+      for(holo_model_t const & m: holo_models)
+        if(m.has_fingerprint)
+          {
+          auto const self{holo_resolve(holo_models.data(), holo_models.size(), 1u, next, &m.fingerprint)};
+          clear = clear and self.how == holo_resolve_e::remapped and holo_models[self.model].count == m.count and self.turn == 0;
+          }
+      check(clear, "holo models: each fingerprint read in the game finds its own model on another build, unturned, clear of the rest");
+    }
+
+    check(t1_agrees(3.f, 10.f) and not t1_agrees(20.f, 10.f) and not t1_agrees(3.f, 45.f) and
+            std::fabs(nose_off_deg({0.f, 0.f, 1.f})) < 0.01f and std::fabs(nose_off_deg({1.f, 0.f, 0.f}) - 90.f) < 0.01f,
+          "T1 watch: level and nose ahead agree; a tilted plane or a nose aside deviates");
+    check(t1_verdict(t1_look_t{}, 5000u) == t1_verdict_e::none and
+            t1_verdict(t1_look_t{4000u, 2u, 5238u, 3.f, 5.f}, 5000u) == t1_verdict_e::match and
+            t1_verdict(t1_look_t{4000u, 2u, 5238u, 25.f, 5.f}, 5000u) == t1_verdict_e::deviates and
+            t1_verdict(t1_look_t{1000u, 2u, 5238u, 3.f, 5.f}, 5000u) == t1_verdict_e::no_look,
+          "T1 watch: nothing without a look on a T1 pad, MATCH, DEVIATES, NO LOOK for a look older than 3 s");
+    {
+      // the squadron carrier seen level (model axes = camera's): the beam's plane; leaning 24 degrees to +X, the wing's
+      pad_planes_t const * const sc{pad_planes_of(84969u)};
+      std::array<compass_direction_t, 3> const level{{{1.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, {0.f, 0.f, 1.f}}};
+      picked_plane_t const flat{pick_pad_plane(*sc, level)};
+      // the model's axes in the camera turned 24 degrees about Z: the wing leaning to +X is level with the ship
+      float const r{24.f / 57.29578f};
+      std::array<compass_direction_t, 3> const rolled{{{std::cos(r), std::sin(r), 0.f}, {-std::sin(r), std::cos(r), 0.f}, {0.f, 0.f, 1.f}}};
+      picked_plane_t const wing{pick_pad_plane(*sc, rolled)};
+      check(sc and not pad_planes_of(5238u) and flat.angle_deg == 0.f and std::fabs(flat.axes[0].y - 1.f) < 1e-4f and
+              wing.angle_deg == 24.f and std::fabs(wing.axes[0].y - 1.f) < 1e-3f and std::fabs(wing.axes[1].z - 1.f) < 1e-4f,
+            "carrier: the plane nearest the ship's up, the beam's level, the wing's when leaning 24 degrees");
+      // half way between the beam's and the wing's (12 degrees, a little nearer the wing): the plane held stays
+      float const h12{13.f / 57.29578f};
+      std::array<compass_direction_t, 3> const between{{{std::cos(h12), std::sin(h12), 0.f}, {-std::sin(h12), std::cos(h12), 0.f}, {0.f, 0.f, 1.f}}};
+      check(pick_pad_plane(*sc, between).angle_deg == 24.f and pick_pad_plane(*sc, between, 0.f).angle_deg == 0.f and
+              pick_pad_plane(*sc, rolled, 0.f).angle_deg == 24.f and wing.axes[1].z > 0.99f,
+            "carrier: the plane held stays until another is 4 degrees nearer; the nose along the length on every plane");
+      float const * const pad1{pad_plane_of_pad(84969u, 1u)};
+      pad_planes_t const * const site{pad_planes_of(13083u)};
+      float const * const pad18{pad_plane_of_pad(84969u, 18u)};
+      float const * const pad13{pad_plane_of_pad(84969u, 13u)};
+      float const * const pad29{pad_plane_of_pad(84969u, 29u)};
+      check(pad18 and *pad18 == -24.f and pad13 and *pad13 == 0.f and pad29 and *pad29 == -46.f and
+              not pad_plane_of_pad(84969u, 33u) and not pad_plane_of_pad(13083u, 1u),
+            "PRNH's pads by number: 18 the far wing's, 13 the beam's, 29 the far edge's; none past 32 nor of another model");
+      pad_learned_t const learned_test[]{
+        {13083u, "", 2u, 0.f, {0.f, 0.f, 1.f}}, {13083u, "Planetary Construction Site: Bischoff Legacy", 2u, 0.f, {0.f, 0.f, -1.f}},
+        {84969u, "PRNH", 18u, -24.f, {0.f, 0.f, 1.f}}, {0u, "", 0u, 0.f, {0.f, 0.f, 0.f}}};
+      pad_learned_t const * const own{pad_learned_in(learned_test, 13083u, "Planetary Construction Site: Bischoff Legacy", 2u)};
+      pad_learned_t const * const other{pad_learned_in(learned_test, 13083u, "Planetary Construction Site: Biggs Base", 2u)};
+      pad_learned_t const * const carrier18{pad_learned_in(learned_test, 84969u, "WACLAW SIERPINSKI | PRNH", 18u)};
+      check(own and own->nose[2] == -1.f and other and other->nose[2] == 1.f and carrier18 and carrier18->angle_deg == -24.f and
+              not pad_learned_in(learned_test, 84969u, "SOMEONE | XPRNH", 18u) and not pad_learned_in(learned_test, 84969u, "PRNH-2", 18u) and
+              not pad_learned_in(learned_test, 13083u, "Planetary Construction Site: Biggs Base", 3u) and
+              not pad_learned_of(84969u, "WACLAW SIERPINSKI | PRNH", 0u),
+            "learned pads: the station's own before the model's, a carrier by its callsign after ' | ', none for another pad");
+      check(site_kind_of("Planetary Construction Site: Eames Genetics Lab") == site_kind_e::construction_site and
+              site_kind_of("Orbital Construction Site: AlexanderIII's Folly") == site_kind_e::construction_site and
+              site_kind_of("Cardenas Plantations") == site_kind_e::other and site_kind_of("WACLAW SIERPINSKI | PRNH") == site_kind_e::other and
+              site_kind_of("$POIScenario_Watson_Damaged_Sidewinder_01_Assassination_Hard; $USS_ThreatLevel:#threatLevel=3;") ==
+                site_kind_e::unknown and site_kind_of("") == site_kind_e::unknown,
+            "site kinds: a construction site by the ': ' in its name (Status.json 2026-10), a key of the game no place");
+      pad_learned_t const kinds_test[]{
+        {13083u, "", 1u, 0.f, {0.f, 0.f, 1.f}}, {13083u, "", 1u, 0.f, {0.f, 0.f, -1.f}, site_kind_e::construction_site},
+        {13083u, "Planetary Construction Site: Bischoff Legacy", 1u, 0.f, {-1.f, 0.f, 0.f}},
+        {13083u, "", 3u, 0.f, {1.f, 0.f, 0.f}, site_kind_e::other}, {0u, "", 0u, 0.f, {0.f, 0.f, 0.f}}};
+      pad_learned_t const * const site_own{pad_learned_in(kinds_test, 13083u, "Planetary Construction Site: Bischoff Legacy", 1u)};
+      pad_learned_t const * const site_any{pad_learned_in(kinds_test, 13083u, "Planetary Construction Site: Bauer Command", 1u)};
+      pad_learned_t const * const settlement1{pad_learned_in(kinds_test, 13083u, "Cardenas Plantations", 1u)};
+      pad_learned_t const * const settlement3{pad_learned_in(kinds_test, 13083u, "Painter Hydroponics", 3u)};
+      check(site_own and site_own->nose[0] == -1.f and site_any and site_any->nose[2] == -1.f and settlement1 and
+              settlement1->nose[2] == 1.f and settlement3 and settlement3->nose[0] == 1.f and
+              not pad_learned_in(kinds_test, 13083u, "Planetary Construction Site: Bauer Command", 3u) and
+              not pad_learned_in(kinds_test, 13083u, "$USS_HighGradeEmissions;", 3u),
+            "learned pads: the station's own, then its kind's, then the model's; another kind's row never");
+      check(pad1 and *pad1 == 24.f and pick_pad_plane(*sc, level, 0.f, pad1).angle_deg == 24.f and
+              site and site->planes == 1u and not site->nose_along and std::fabs(pick_pad_plane(*site, rolled).axes[0].y - std::cos(r)) < 1e-4f,
+            "pads' planes: a pad known by its number keeps its plane over another (from the stern over a wing); the site's ground");
+    }
+
+    // a sample from the game, when given (EDWORLD_HOLO_SAMPLE=<ib_u16.bin>;<vb_s40.bin>;<count>): game data is not kept here
+    if(char const * const env{std::getenv("EDWORLD_HOLO_SAMPLE")})
+      {
+      std::string const spec{env};
+      auto const a{spec.find(';')}, b{spec.rfind(';')};
+      auto const read = [](std::string const & path) -> std::vector<std::uint8_t>
+        {
+        std::vector<std::uint8_t> bytes;
+        if(std::FILE * f{std::fopen(path.c_str(), "rb")})
+          {
+          std::uint8_t buf[65536];
+          for(std::size_t n; (n = std::fread(buf, 1, sizeof buf, f)) != 0;)
+            bytes.insert(bytes.end(), buf, buf + n);
+          std::fclose(f);
+          }
+        return bytes;
+        };
+      std::vector<std::uint8_t> const ib{read(spec.substr(0, a))}, vb{read(spec.substr(a + 1, b - a - 1))};
+      auto const count{static_cast<std::uint32_t>(std::strtoul(spec.c_str() + b + 1, nullptr, 10))};
+      std::vector<vec3_t> used;
+      bool const ok{ib.size() >= count * 2u and
+                    holo_used_vertices(ib.data(), 2u, count, vb.data(), static_cast<std::uint32_t>(vb.size()), used)};
+      holo_fingerprint_t const real{ok ? holo_fingerprint(used.data(), used.size(), count / 3u) : holo_fingerprint_t{}};
+      std::vector<std::uint8_t> perm_ib(ib.begin(), ib.begin() + std::min<std::size_t>(ib.size(), count * 2u));
+      for(std::size_t tri{}; tri + 6u <= perm_ib.size(); tri += 6u)  // each triangle's indices turned: the same mesh
+        std::rotate(perm_ib.begin() + static_cast<std::ptrdiff_t>(tri), perm_ib.begin() + static_cast<std::ptrdiff_t>(tri + 2u),
+                    perm_ib.begin() + static_cast<std::ptrdiff_t>(tri + 6u));
+      std::vector<vec3_t> used2;
+      bool const ok2{ok and holo_used_vertices(perm_ib.data(), 2u, count, vb.data(), static_cast<std::uint32_t>(vb.size()), used2)};
+      holo_fingerprint_t const again{ok2 ? holo_fingerprint(used2.data(), used2.size(), count / 3u) : holo_fingerprint_t{}};
+      std::vector<vec3_t> moved_real;
+      for(vec3_t const & v: used)
+        moved_real.push_back(turn(holo_turn_list[11], v));
+      holo_fingerprint_t const real_turned{holo_fingerprint(moved_real.data(), moved_real.size(), count / 3u)};
+      holo_model_t const reg[]{{"sample", holo_role_e::station, count, holo_status_e::confirmed, "a", true, real}};
+      auto const r{holo_resolve(reg, 1u, count + 1u, "b", &real_turned)};
+      std::printf("      sample: %u indices, %u vertices, likeness turned %.3f, turn %d\n", count, real.vertices, static_cast<double>(r.score), r.turn);
+      check(ok and ok2 and std::memcmp(&real, &again, sizeof real) == 0 and
+              (r.how == holo_resolve_e::remapped or r.how == holo_resolve_e::ambiguous) and r.model == 0,
+            "holo models: a game's sample: the order of indices does not count, turned it is found again");
+      }
+    }
+  // the pad's text (pad_text_read.h): the game's own glyphs of the notices' digits (the samples of 2026-10-21..25), row
+  // y's bit x lit; the first of each digit the one drawn by default. The box is 12, 13 or 14 px wide by where the number
+  // stands: the lone 8 (13 px) and the 8 of 18 (12 px), the 3 of 3, 13 and 30, the 0 of 10 and 30
+  struct pad_glyph_t
+    {
+    char digit;
+    int width;
+    std::array<std::uint16_t, 18> rows;
+    };
+
+  inline constexpr pad_glyph_t pad_glyphs[]{
+      {'1', 8, {0x00f0, 0x00f8, 0x00f8, 0x00dc, 0x00ce, 0x00c7, 0x00c2, 0x00c0, 0x00c0, 0x00c0, 0x00c0, 0x00c0, 0x00c0, 0x00c0, 0x00c0, 0x00c0, 0x00c0, 0x00c0}},  // pad 1
+      {'2', 13, {0x03f8, 0x0ffe, 0x0c06, 0x1806, 0x1806, 0x1803, 0x1800, 0x1800, 0x0c00, 0x0f80, 0x07fc, 0x003e, 0x0006, 0x0007, 0x0007, 0x0003, 0x1fff, 0x1fff}},  // pad 2
+      {'3', 13, {0x03f8, 0x0ffe, 0x0c06, 0x0c02, 0x1c03, 0x0803, 0x0c00, 0x0c00, 0x07e0, 0x07e0, 0x0c00, 0x1800, 0x1803, 0x1803, 0x1803, 0x0c07, 0x0ffe, 0x03f8}},  // pad 3
+      {'4', 15, {0x0e00, 0x0f00, 0x0f80, 0x0dc0, 0x0cc0, 0x0c60, 0x0c70, 0x0c30, 0x0c18, 0x0c0c, 0x0c0e, 0x0c06, 0x7fff, 0x7fff, 0x0c00, 0x0c00, 0x0c00, 0x0c00}},  // pad 4
+      {'5', 13, {0x0ffe, 0x0ffe, 0x0006, 0x0006, 0x0006, 0x01e6, 0x07fe, 0x0ffe, 0x1c06, 0x1800, 0x1800, 0x1800, 0x1800, 0x1803, 0x1806, 0x0c06, 0x0ffe, 0x03f8}},  // pad 5
+      {'6', 13, {0x03f8, 0x0ffe, 0x0c0e, 0x1806, 0x1807, 0x0007, 0x0007, 0x07f7, 0x0fff, 0x1c07, 0x1807, 0x1803, 0x1803, 0x1803, 0x1806, 0x1c06, 0x0ffc, 0x07f8}},  // pad 6
+      {'7', 13, {0x1fff, 0x1fff, 0x1800, 0x0c00, 0x0c00, 0x0600, 0x0700, 0x0300, 0x0380, 0x0180, 0x01c0, 0x00c0, 0x0060, 0x0070, 0x0030, 0x0038, 0x0018, 0x001c}},  // pad 7
+      {'8', 13, {0x03f8, 0x0ffe, 0x1c06, 0x1806, 0x1803, 0x1802, 0x1806, 0x0c06, 0x07fc, 0x0ffe, 0x1c06, 0x1803, 0x1803, 0x1803, 0x1803, 0x1c06, 0x0ffe, 0x07f8}},  // pad 8
+      {'9', 13, {0x03f8, 0x0ffe, 0x0c06, 0x1803, 0x1803, 0x1803, 0x1803, 0x1803, 0x1c06, 0x1ffe, 0x1bf8, 0x1800, 0x1800, 0x1803, 0x1803, 0x1c07, 0x0ffe, 0x03f8}},  // pad 9
+      {'0', 14, {0x07f8, 0x1ffc, 0x180e, 0x3806, 0x3003, 0x3003, 0x3003, 0x3003, 0x3003, 0x3003, 0x3003, 0x3003, 0x3003, 0x3003, 0x1806, 0x1806, 0x1ffc, 0x07f8}},  // pad 10, 2nd
+      {'3', 13, {0x03f8, 0x0ffc, 0x1c0e, 0x1806, 0x1806, 0x1806, 0x1800, 0x0c00, 0x0fe0, 0x0fe0, 0x1c00, 0x1800, 0x1803, 0x1803, 0x1806, 0x1c06, 0x0ffe, 0x07f8}},  // pad 13, 2nd
+      {'8', 12, {0x03fc, 0x07fe, 0x0e07, 0x0c03, 0x0c03, 0x0c03, 0x0c03, 0x0c07, 0x07fe, 0x07fe, 0x0c03, 0x0c03, 0x0c03, 0x0c03, 0x0c03, 0x0c03, 0x0fff, 0x03fc}},  // pad 18, 2nd
+      {'3', 12, {0x03fc, 0x07fe, 0x0e07, 0x0c03, 0x0c03, 0x0c03, 0x0c00, 0x0e00, 0x07e0, 0x07e0, 0x0c00, 0x0c00, 0x0c03, 0x0c03, 0x0c03, 0x0c03, 0x0ffe, 0x03fc}},  // pad 30, 1st
+      {'0', 14, {0x07f8, 0x0ffe, 0x1c06, 0x1803, 0x1803, 0x3003, 0x3003, 0x3003, 0x3003, 0x3003, 0x3003, 0x3803, 0x3803, 0x3803, 0x1803, 0x1c06, 0x0ffe, 0x07f8}},  // pad 30, 2nd
+  };
+
+  struct pad_box_t
+    {
+    std::vector<std::uint8_t> px = std::vector<std::uint8_t>(static_cast<std::size_t>(edworld::pad_text_width) * edworld::pad_text_height * 4u);
+
+    pad_box_t()
+      {
+      for(std::size_t i{}; i != px.size(); i += 4u)
+        px[i] = px[i + 1u] = px[i + 2u] = 12u, px[i + 3u] = 128u;
+      }
+
+    auto set(int x, int y) -> void
+      {
+      std::size_t const at{(static_cast<std::size_t>(y) * edworld::pad_text_width + static_cast<std::size_t>(x)) * 4u};
+      px[at] = px[at + 1u] = px[at + 2u] = 240u;
+      px[at + 3u] = 255u;
+      }
+
+    auto block(int x, int y, int w, int h) -> int  ///< a glyph like a letter, its right edge returned
+      {
+      for(int j{}; j != h; ++j)
+        for(int i{}; i != w; ++i)
+          set(x + i, y + j);
+      return x + w;
+      }
+
+    auto glyph(int x, int y, pad_glyph_t const & g) -> int
+      {
+      for(int j{}; j != 18; ++j)
+        for(int i{}; i != g.width; ++i)
+          if(g.rows[static_cast<std::size_t>(j)] >> i & 1u)
+            set(x + i, y + j);
+      return x + g.width;
+      }
+
+    ///\brief the digit's first glyph, the n-th of that digit with `nth`
+    auto digit(int x, int y, char d, int nth = 0) -> int
+      {
+      for(pad_glyph_t const & g: pad_glyphs)
+        if(g.digit == d and nth-- == 0)
+          return glyph(x, y, g);
+      return x;
+      }
+
+    ///\brief "AAA AA <number> -" over "m:ss", the game's sizes: lines 18 px high, letters 2 px apart, digits 7, words 12;
+    /// each digit of the number its `nth` glyph (digits of nth, '0' = the first)
+    auto notice(char const * number, char const * clock, char const * nth = nullptr) -> pad_box_t &
+      {
+      int x{40};
+      for(int w: {3, 2})
+        {
+        for(int i{}; i != w; ++i)
+          x = block(x, 19, 12, 18) + 2;
+        x += 10;
+        }
+      for(char const * d{number}; *d; ++d)
+        x = digit(x, 19, *d, nth ? nth[d - number] - '0' : 0) + 7;
+      block(x + 5, 27, 7, 3);
+      x = 170;
+      x = digit(x, 47, clock[0]) + 2;
+      block(x, 50, 3, 3);
+      block(x, 60, 3, 3);
+      x += 5;
+      x = digit(x, 47, clock[2]) + 2;
+      digit(x, 47, clock[3]);
+      return *this;
+      }
+
+    auto read() const -> edworld::pad_text_read_t
+      {
+      static edworld::pad_text_bitmap_t b;
+      edworld::pad_text_bitmap(px.data(), static_cast<std::uint32_t>(edworld::pad_text_width) * 4u, b);
+      return edworld::pad_text_read(b);
+      }
+    };
+
+  auto pad_text_tests() -> void
+    {
+    using namespace edworld;
+    check(std::size(pad_digits) == 10u, "pad text: a template for each digit");
+    pad_text_read_t const two{pad_box_t{}.notice("21", "9:58").read()}, one{pad_box_t{}.notice("7", "0:05").read()};
+    check(two.notice and two.sure and two.pad == 21u and two.seconds_left == 9u * 60u + 58u and one.notice and one.pad == 7u
+            and one.seconds_left == 5u,
+          "pad text: the tower's notice read: the pad's number of one or two digits and the countdown");
+    bool every{true};
+    for(char const * n: {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "38", "83"})
+      {
+      pad_text_read_t const r{pad_box_t{}.notice(n, "4:31").read()};
+      every = every and r.notice and r.sure and r.pad == static_cast<std::uint32_t>(std::atoi(n)) and r.seconds_left == 271u;
+      }
+    check(every, "pad text: each digit of the game's own glyphs read sure");
+    {
+      // the number by where it stands (2026-10-25): the lone 8 and the 8 of 18, the 3 of 13 and of 30, the 0 of 30
+      pad_text_read_t const eight{pad_box_t{}.notice("8", "9:59").read()}, eighteen{pad_box_t{}.notice("18", "9:59", "01").read()},
+        thirteen{pad_box_t{}.notice("13", "9:59", "01").read()}, thirty{pad_box_t{}.notice("30", "9:59", "21").read()};
+      check(eight.sure and eight.pad == 8u and eighteen.sure and eighteen.pad == 18u and thirteen.sure and thirteen.pad == 13u
+              and thirty.sure and thirty.pad == 30u,
+            "pad text: each glyph of a digit read sure, its box 12, 13 or 14 px wide (8, 18, 13, 30)");
+    }
+    {
+      // a block for a digit is no digit: unsure, no pad from it
+      pad_box_t blocked{};
+      blocked.notice("4", "9:59");
+      blocked.block(130, 19, 15, 18);  // over the 4 (x 130, 15 px wide)
+      pad_text_read_t const r{blocked.read()};
+      check(r.notice and not r.sure, "pad text: a glyph like no digit read unsure");
+    }
+    {
+      // the zones in per mille, integers: a lit box all 1000; a box 8 px wide lit on its left half: the two left zones
+      static pad_text_bitmap_t b{};
+      for(int y{}; y != 18; ++y)
+        for(int x{}; x != 4; ++x)
+          b.on[static_cast<std::size_t>(y + 2) * pad_text_width + static_cast<std::size_t>(x + 3)] = 1u;
+      auto const half{detail::pad_text_zones(b, pad_text_glyph_t{3, 11, 2, 20})};
+      auto const lit{detail::pad_text_zones(b, pad_text_glyph_t{3, 7, 2, 20})};
+      bool ok{true};
+      for(std::size_t k{}; k != half.size(); ++k)
+        ok = ok and half[k] == (k % 4u < 2u ? 1000u : 0u) and lit[k] == 1000u;
+      check(ok, "pad text: the zones' shares of lit pixels in per mille");
+    }
+    pad_box_t bare{}, one_line{}, no_dash{};
+    one_line.block(40, 30, 12, 18);
+    one_line.digit(60, 30, '4');
+    no_dash.notice("21", "9:58");
+    for(int y{27}; y != 30; ++y)  // the dash wiped
+      for(int x{0}; x != edworld::pad_text_width; ++x)
+        {
+        std::size_t const at{(static_cast<std::size_t>(y) * edworld::pad_text_width + static_cast<std::size_t>(x)) * 4u};
+        if(x >= 175 and no_dash.px[at] == 240u)
+          no_dash.px[at] = no_dash.px[at + 1u] = no_dash.px[at + 2u] = 12u;
+        }
+    check(not bare.read().notice and not one_line.read().notice and not no_dash.read().notice,
+          "pad text: an empty box, one line (LEAVE STATION - m:ss, GRAVITY WELL) or no dash is no notice");
+    pad_text_vote_t v{};
+    pad_text_read_t const unsure{true, false, 21u, 500u};
+    check(v.add(two) == 0u and v.add(two) == 21u and v.add(unsure) == 0u and v.add(two) == 0u and v.add(two) == 21u,
+          "pad text: a pad taken when read sure twice in a row");
+    // Marth's Inheritance, 2026-10-24: pad 5 at 9:13 left, then misread 9:18 and read 9:12 half a second on - the same
+    // grant; asked anew from 9:59 a minute on, or another pad, a new one
+    std::int64_t const g{1'000'000'000'000};
+    check(not pad_text_new_grant(5u, g + 5000, 5u, g) and not pad_text_new_grant(5u, g - 1000, 5u, g)
+            and pad_text_new_grant(5u, g + 46000, 5u, g) and pad_text_new_grant(6u, g, 5u, g) and pad_text_new_grant(5u, g, 0u, 0),
+          "pad text: the same pad is a new grant only with its countdown well up; another pad always");
+    // the samples of the game, when given (EDWORLD_PADTEXT_DIR: an edworld_padtext directory): game data is not kept here
+    if(char const * const dir{std::getenv("EDWORLD_PADTEXT_DIR")})
+      {
+      std::uint32_t right{}, wrong{}, unsure{}, notices{}, samples{};
+      WIN32_FIND_DATAA fd{};
+      HANDLE const h{FindFirstFileA((std::string{dir} + "\\pad_*_src*_410x81_pitch*.raw").c_str(), &fd)};
+      static pad_text_bitmap_t b;
+      for(bool more{h != INVALID_HANDLE_VALUE}; more; more = FindNextFileA(h, &fd) != 0)
+        {
+        std::string const name{fd.cFileName};
+        auto const label{static_cast<std::uint32_t>(std::strtoul(name.c_str() + name.find("_src") + 4u, nullptr, 10))};
+        auto const pitch{static_cast<std::uint32_t>(std::strtoul(name.c_str() + name.find("pitch") + 5u, nullptr, 10))};
+        std::vector<std::uint8_t> bytes(static_cast<std::size_t>(pitch) * pad_text_height);
+        std::FILE * f{std::fopen((std::string{dir} + "\\" + name).c_str(), "rb")};
+        if(not f)
+          continue;
+        bool const whole{std::fread(bytes.data(), 1, bytes.size(), f) == bytes.size()};
+        std::fclose(f);
+        if(not whole)
+          continue;
+        ++samples;
+        pad_text_bitmap(bytes.data(), pitch, b);
+        pad_text_read_t const r{pad_text_read(b)};
+        notices += r.notice ? 1u : 0u;
+        if(r.notice and label != 0u)
+          ++(not r.sure ? unsure : r.pad == label ? right : wrong);
+        }
+      if(h != INVALID_HANDLE_VALUE)
+        FindClose(h);
+      std::printf("      samples %u, notices %u, the data source's pad read right %u, unsure %u, wrong %u\n", samples, notices, right,
+                  unsure, wrong);
+      check(samples != 0u and right != 0u and wrong == 0u and unsure == 0u,
+            "pad text: the game's samples read sure, as the data source named the pad");
+      }
+    }
   }  // namespace
 
 int main()
   {
+  sample_context_tests();
+  pad_text_tests();
+  shader_shape_tests();
+  holo_models_tests();
   // the jump panel's four vertices as the game drew them on 2026-10-05 (ed-lab, geometry dump g10): local
   // x +-0.1196, y +-0.0588, shown at surface pixels x 1031..2045, y 2..493 of 3072x660
   {
@@ -212,6 +778,256 @@ int main()
         "compass: a reading holds its second, for ever with 0, never without one");
   check(std::fabs(edworld::angle_between(edworld::direction_of(0.f, 0.f), edworld::direction_of(30.f, 0.f)) - 30.f) < 0.01f,
         "compass: the angle between two directions");
+  {
+  // the target's hologram (2026-10-20, Brescia Platform): the record's orientation as unorm16, docked and in flight
+  auto const record = [](std::uint16_t a, std::uint16_t b, std::uint16_t c, std::uint16_t d)
+    {
+    std::uint8_t r[16]{};
+    std::uint16_t const u[4]{a, b, c, d};
+    std::memcpy(r + 8, u, sizeof u);
+    return edworld::hologram_orientation(r);
+    };
+  auto const length = [](edworld::quat_t const & q) { return std::sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w); };
+  edworld::quat_t const docked{record(32733, 56926, 32804, 54904)}, flying{record(25262, 20617, 30955, 62202)};
+  check(std::fabs(length(docked) - 1.f) < 1e-3f and std::fabs(length(flying) - 1.f) < 1e-3f, "hologram: the decoded orientations are unit");
+  check(std::fabs(flying.x + 0.2290f) < 1e-3f and std::fabs(flying.y + 0.3708f) < 1e-3f and std::fabs(flying.w - 0.8983f) < 1e-3f,
+        "hologram: the orientation as the shader decodes it (u / 32767 - 1)");
+  edworld::vec3_t const x{edworld::rotate(flying, {1.f, 0.f, 0.f})};
+  check(std::fabs(x.x - 0.7189f) < 2e-3f and std::fabs(x.y - 0.0705f) < 2e-3f and std::fabs(x.z - 0.6915f) < 2e-3f,
+        "hologram: q v q* turns X to the rotation's first column");
+  float const ortho[4][4]{{2.f, 0.f, 0.f, 0.f}, {0.f, 3.f, 0.f, 0.f}, {0.f, 0.f, 0.5f, 0.f}, {7.f, 8.f, 0.1f, 1.f}};
+  auto const cam{edworld::camera_axes(ortho)};
+  check(cam and std::fabs(cam->right.x - 1.f) < 1e-5f and std::fabs(cam->up.y - 1.f) < 1e-5f and std::fabs(cam->forward.z - 1.f) < 1e-5f,
+        "hologram: an orthographic camera's axes from its columns");
+  // a perspective camera turned 90 degrees to the right: it looks along world +X, its right is world -Z
+  float const turned[4][4]{{0.f, 0.f, 0.5f, 1.f}, {0.f, 1.f, 0.f, 0.f}, {-1.f, 0.f, 0.f, 0.f}, {0.f, 0.f, -0.1f, 0.f}};
+  auto const persp{edworld::camera_axes(turned)};
+  check(persp and std::fabs(persp->forward.x - 1.f) < 1e-5f and std::fabs(persp->right.z + 1.f) < 1e-5f and std::fabs(persp->up.y - 1.f) < 1e-5f,
+        "hologram: a perspective camera's forward from its w column");
+  auto const axes{edworld::hologram_axes(edworld::quat_t{0.f, 0.f, 0.f, 1.f}, *persp)};
+  check(std::fabs(axes[0].z - 1.f) < 1e-5f and std::fabs(axes[2].x + 1.f) < 1e-5f and std::fabs(axes[1].y - 1.f) < 1e-5f,
+        "hologram: the model's X ahead and Z to the left for that camera");
+  float const empty[4][4]{};
+  check(not edworld::camera_axes(empty), "hologram: no camera from empty rows");
+  // the pad's plane (2026-10-21): X from the logs on the pad at Brewer Site (up) and over it at Brescia Platform (down)
+  check(edworld::pad_tilt_deg({0.f, 1.f, 0.f}) < 0.01f and edworld::pad_tilt_deg({0.f, -1.f, 0.f}) < 0.01f,
+        "pad plane: level whichever way X points");
+  check(std::fabs(edworld::pad_tilt_deg({0.01f, 0.99f, -0.14f}) - 8.1f) < 0.2f, "pad plane: Brewer's approach, about 8 degrees");
+  check(std::fabs(edworld::pad_tilt_deg({1.f, 0.f, 0.f}) - 90.f) < 0.01f and edworld::pad_tilt_deg({0.f, 0.f, 0.f}) == 90.f,
+        "pad plane: square to the ship, and no normal");
+  check(edworld::pad_up_sign({0.f, 1.f, 0.f}, {0.f, -1.f, 0.f}) == 1 and edworld::pad_up_sign({0.f, -1.f, 0.f}, {0.f, -1.f, 0.f}) == -1,
+        "pad plane: the pads' up towards the ship, the target below (Brewer +X, Brescia -X)");
+  check(edworld::pad_up_sign({0.f, 1.f, 0.f}, {0.f, -0.1f, 1.f}) == 0 and edworld::pad_up_sign({0.f, 1.f, 0.f}, {0.f, 0.f, 0.f}) == 0,
+        "pad plane: no sign with the target near the pads' plane, nor without a direction");
+  check(std::fabs(edworld::pad_tilt_deg({0.f, -1.f, 0.f}, 1) - 180.f) < 0.01f and edworld::pad_tilt_deg({0.f, -1.f, 0.f}, -1) < 0.01f,
+        "pad plane: upside down over the pads is 180 degrees once the up is known");
+  check(std::fabs(edworld::pad_tilt_deg({0.f, -0.5f, 0.866f}, 1) - 120.f) < 0.1f and
+          std::fabs(edworld::pad_tilt_deg({0.f, -0.5f, 0.866f}) - 60.f) < 0.1f,
+        "pad plane: 120 degrees stays 120 with the up known, folds to 60 without");
+  {
+    // Dunkan at a construction site (2026-10-22): the Panther's own hologram first (smaller scale), the site's second
+    edworld::holo_part_t const site[]{{0.0024f, 106830u, false}, {0.009f, 13083u, true}};
+    check(edworld::holo_target_part(site, 2u) == 1, "hologram: the target is drawn to the surface laid over second, not the smaller scale");
+    // Sjona at an outpost (2026-10-21): the Kestrel, then the station's parts; the smallest scale of them, most indices
+    edworld::holo_part_t const outpost[]{{0.0055f, 27885u, false}, {0.0004f, 780u, true}, {0.0004f, 3534u, true}, {0.0009f, 5238u, true}};
+    check(edworld::holo_target_part(outpost, 4u) == 2, "hologram: of the target's parts the smallest scale, the most indices among equal ones");
+    edworld::holo_part_t const own[]{{0.0024f, 106830u, false}};
+    check(edworld::holo_target_part(own, 1u) == -1 and edworld::holo_target_part(own, 0u) == -1,
+          "hologram: no target without its surface");
+    edworld::holo_part_t const unread[]{{0.f, 13083u, true}};
+    check(edworld::holo_target_part(unread, 1u) == -1, "hologram: a target's draw without a scale read is no target");
+    // the target by what it shows (Artur 2026-10-25): Dunkan at Ahn Hub after a ship swap, the Kestrel laid over second
+    // and the port (2760, a place) first
+    edworld::holo_part_t const swapped[]{{0.0055f, 27885u, true, false, false}, {0.0004f, 2760u, false, true, true}};
+    check(edworld::holo_target_part(swapped, 2u) == 1, "hologram: a place on the own surface is the target when the target's shows a ship");
+    edworld::holo_part_t const both[]{{0.0004f, 2760u, false, true, true}, {0.0009f, 13083u, true, false, true}};
+    check(edworld::holo_target_part(both, 2u) == 1, "hologram: a place on the target's surface before one on the own");
+    edworld::holo_part_t const ships[]{{0.0055f, 27885u, false, true, false}, {0.0024f, 106830u, true, false, false},
+                                       {0.0030f, 62688u, true, false, false}};
+    check(edworld::holo_target_part(ships, 3u) == 1, "hologram: two ships: the target's surface, the smallest scale");
+    edworld::holo_part_t const unknown[]{{0.0004f, 9999u, false, true, false}, {0.0055f, 27885u, true, false, false}};
+    check(edworld::holo_target_part(unknown, 2u) == 1, "hologram: an unknown model on the own surface is no place: the target's surface");
+    edworld::holo_part_t const aside[]{{0.0004f, 2760u, false, false, true}};
+    check(edworld::holo_target_part(aside, 1u) == -1, "hologram: a place on a surface not laid over is no target");
+    edworld::holo_part_t const own_place[]{{0.0004f, 84969u, false, true, true}};
+    check(edworld::holo_target_part(own_place, 1u) == 0, "hologram: a carrier drawn to the own surface at its pad is the target");
+  }
+  check(edworld::pad_tilt_deg({-0.001f, 1.f, -0.003f}) < 0.5f and std::fabs(edworld::pad_tilt_deg({0.996f, 0.f, -0.087f}) - 90.f) < 0.1f,
+        "pad plane: hovering level over Carrel Agricultural, level on Y and square on X");
+  check(edworld::t1_pad(5478u, 5u) and edworld::t1_pad(5478u, 5u)->up_axis == 1 and edworld::t1_pad(5478u, 5u)->up_sign == -1 and
+          edworld::t1_pad(1953u, 4u)->up_axis == 0 and edworld::t1_pad(1953u, 4u)->up_sign == -1 and
+          not edworld::t1_pad(5478u, 6u) and not edworld::t1_pad(27885u, 1u),
+        "pad plane: the T1 table's pads (Civilian 5, Commercial 4), none for a pad or model not in it");
+  {
+    float head{-1.f};
+    bool head_first{true};
+    for(edworld::pad_mark_segment_t const & m: edworld::pad_mark)
+      head = std::max(head, std::max(m.a, m.c));
+    head_first = edworld::pad_mark[0].a == head and edworld::pad_mark[1].a == head and std::size(edworld::pad_mark) == 5u;
+    check(head_first, "pad plane: the mark < ||| has its head furthest towards the nose, then three bars");
+  }
+  {
+    bool rule{true};  // the ship's frame on each pad: up, nose and right on three different axes, so no entry repeats an axis
+    for(edworld::t1_pad_t const & e: edworld::t1_pads)
+      rule = rule and e.up_axis != e.nose_axis and (e.up_sign == 1 or e.up_sign == -1) and (e.nose_sign == 1 or e.nose_sign == -1);
+    check(rule, "pad plane: every T1 entry's up and nose on two different axes");
+  }
+  {
+    // the pad's text: the box's fill (alpha 136, dark) as in the dumps, white text over a fifth, and an empty surface
+    std::vector<std::uint8_t> box(static_cast<std::size_t>(edworld::pad_box_width) * edworld::pad_box_height * 4u);
+    for(std::size_t i{}; i < box.size(); i += 4u)
+      {
+      box[i] = 8u;
+      box[i + 1u] = 12u;
+      box[i + 2u] = 16u;
+      box[i + 3u] = 136u;
+      }
+    auto const pitch{static_cast<std::uint32_t>(edworld::pad_box_width) * 4u};
+    check(edworld::pad_box_present(box.data(), pitch, edworld::pad_box_width, edworld::pad_box_height), "pad text: the box's fill shows");
+    for(std::size_t i{}; i < box.size() / 5u; i += 4u)
+      box[i] = box[i + 1u] = box[i + 2u] = box[i + 3u] = 255u;
+    check(edworld::pad_box_present(box.data(), pitch, edworld::pad_box_width, edworld::pad_box_height), "pad text: with its text over a fifth");
+    std::vector<std::uint8_t> const empty(box.size());
+    check(not edworld::pad_box_present(empty.data(), pitch, edworld::pad_box_width, edworld::pad_box_height) and
+            not edworld::pad_box_present(nullptr, pitch, 1, 1),
+          "pad text: no box on an empty surface, nor without pixels");
+    std::vector<std::uint8_t> kept(static_cast<std::size_t>(edworld::pad_box_width) * edworld::pad_box_height);
+    for(std::size_t i{}; i != kept.size(); ++i)
+      kept[i] = box[i * 4u + 3u];
+    check(not edworld::pad_box_changed(box.data(), pitch, edworld::pad_box_width, edworld::pad_box_height, kept.data()),
+          "pad text: the same text is no change");
+    for(std::size_t i{box.size() / 2u}; i < box.size() * 3u / 5u; i += 4u)
+      box[i + 3u] = 255u;
+    check(edworld::pad_box_changed(box.data(), pitch, edworld::pad_box_width, edworld::pad_box_height, kept.data()) and
+            edworld::pad_box_changed(box.data(), pitch, edworld::pad_box_width, edworld::pad_box_height, nullptr),
+          "pad text: another text over a tenth is a change, and so is the first");
+    check(edworld::pad_burst_due(2000u, 1000u, 11500u) and not edworld::pad_burst_due(1500u, 1000u, 11500u) and
+            not edworld::pad_burst_due(11600u, 10600u, 11500u),
+          "pad text: a burst's sample a second, none after its end");
+  }
+  {
+  // the vote on the pads' up (v7): Brewer 09:37 - the pads' normal X mostly the ship's up, one look from a climb away
+  // with the target behind, then looks ahead from the way down
+  using edworld::pad_up_event_e;
+  edworld::compass_direction_t const x{0.f, 1.f, 0.f};
+  edworld::pad_up_vote_t v{};
+  check(pad_up_vote(v, x, {0.f, 0.3f, -1.f}) == pad_up_event_e::none and v.plus + v.minus == 0,
+        "pad up vote: no vote with the target behind (a hollow dot)");
+  check(pad_up_vote(v, x, {0.f, 0.05f, 1.f}) == pad_up_event_e::none and v.plus + v.minus == 0,
+        "pad up vote: no vote with the target near the pads' plane");
+  check(pad_up_vote(v, x, {0.f, -0.5f, 1.f}) == pad_up_event_e::none and v.plus == 1, "pad up vote: one vote from ahead");
+  check(pad_up_vote(v, x, {0.f, -0.51f, 1.f}) == pad_up_event_e::none and v.plus == 1,
+        "pad up vote: no second vote from nearly the same direction (under 3 degrees)");
+  check(pad_up_vote(v, x, {0.f, -0.8f, 1.f}) == pad_up_event_e::none and v.plus == 2, "pad up vote: a second from another angle");
+  check(pad_up_vote(v, x, {0.f, -1.2f, 1.f}) == pad_up_event_e::decided and v.decided == 1 and v.plus == 3,
+        "pad up vote: three agreeing decide +X");
+  edworld::pad_up_vote_t split{};
+  pad_up_vote(split, x, {0.f, -0.5f, 1.f});
+  pad_up_vote(split, x, {0.f, 0.5f, 1.f});
+  pad_up_vote(split, x, {0.2f, -0.8f, 1.f});
+  pad_up_vote(split, x, {0.2f, 0.8f, 1.f});
+  check(split.decided == 0 and split.plus == 2 and split.minus == 2, "pad up vote: two to two decide nothing");
+  check(pad_up_vote(split, x, {-0.3f, -1.f, 1.f}) == pad_up_event_e::decided and split.decided == 1,
+        "pad up vote: a fifth settles two to two");
+  edworld::pad_up_vote_t wrong{};
+  pad_up_vote(wrong, x, {0.f, 0.5f, 1.f});
+  pad_up_vote(wrong, x, {0.f, 0.8f, 1.f});
+  pad_up_vote(wrong, x, {0.f, 1.2f, 1.f});
+  check(wrong.decided == -1, "pad up vote: a wrong start decides -X");
+  check(pad_up_vote(wrong, x, {0.f, -0.3f, 1.f}) == pad_up_event_e::none and wrong.against == 0,
+        "pad up vote: a weak vote against does not count towards turning");
+  pad_up_vote(wrong, x, {0.f, -1.f, 1.f});
+  pad_up_vote(wrong, x, {0.f, -1.5f, 1.f});
+  check(pad_up_vote(wrong, x, {0.f, -2.5f, 1.f}) == pad_up_event_e::turned and wrong.decided == 1,
+        "pad up vote: three strong votes in a row against turn it to +X");
+  }
+  check(edworld::pad_granted(1000, 1000 + 9 * 60 * 1000) and not edworld::pad_granted(1000, 1000 + 10 * 60 * 1000)
+          and not edworld::pad_granted(0, 5000),
+        "pad granted: held ten minutes at most, none without a grant");
+  check(edworld::pad_upside_down(120.f, 1) and not edworld::pad_upside_down(90.f, 1) and not edworld::pad_upside_down(60.f, -1)
+          and not edworld::pad_upside_down(120.f, 0),
+        "pad plane: upside down past 90 degrees, only with the pads' up known");
+  check(edworld::pad_tilt_colour(4.f, 10.f, 20.f) == 0x40c060u and edworld::pad_tilt_colour(10.f, 10.f, 20.f) == 0x40c060u,
+        "pad plane: green up to the first limit");
+  check(edworld::pad_tilt_colour(15.f, 10.f, 20.f) == 0xd8c040u and edworld::pad_tilt_colour(25.f, 10.f, 20.f) == 0xd04030u,
+        "pad plane: yellow half way, red past the second limit");
+  std::uint32_t const early{edworld::pad_tilt_colour(12.5f, 10.f, 20.f)};
+  check(early != 0x40c060u and early != 0xd8c040u and ((early >> 16) & 0xffu) > 0x40u and ((early >> 16) & 0xffu) < 0xd8u,
+        "pad plane: a hue between green and yellow, not a step");
+  check(edworld::pad_tilt_colour(12.f, 10.f, 10.f) == 0xd04030u, "pad plane: equal limits make a plain step");
+  using edworld::holo_place_e;
+  check(edworld::holo_place_has_plane(holo_place_e::outpost_t1) and edworld::holo_place_has_plane(holo_place_e::planet) and
+          edworld::holo_place_has_plane(holo_place_e::carrier),
+        "pad plane: orbital outposts, places on a planet and carriers show their pads");
+  check(not edworld::holo_place_has_plane(holo_place_e::big_station) and not edworld::holo_place_has_plane(holo_place_e::none) and
+          not edworld::holo_place_has_plane(holo_place_e::construction_orbital),
+        "pad plane: not the big stations, no model known, nor the orbital construction site yet");
+  check(edworld::pad_planes_of(84969u) and edworld::pad_planes_of(73389u) and not edworld::pad_planes_of(5238u),
+        "pad plane: the squadron carrier and a fleet carrier have their rows of planes, a T1 outpost none");
+  // a fleet carrier's pads by number, against the ship's up measured on them (Maria Sklodowska, 2026-10-24)
+  {
+  edworld::pad_planes_t const & fc{*edworld::pad_planes_of(73389u)};
+  std::array<edworld::compass_direction_t, 3> const model{{{1.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, {0.f, 0.f, 1.f}}};
+  auto const off = [](edworld::compass_direction_t const & a, float x, float y, float z) -> float
+    {
+    float const d{(a.x * x + a.y * y + a.z * z) / std::sqrt(x * x + y * y + z * z)};
+    return std::acos(std::clamp(d, -1.f, 1.f)) * 57.29578f;
+    };
+  auto const plane_of = [&](std::uint32_t pad) { return edworld::pick_pad_plane(fc, model, 1000.f, edworld::pad_plane_of_pad(73389u, pad)); };
+  auto const p2{plane_of(2u)}, p7{plane_of(7u)}, p13{plane_of(13u)}, p11{plane_of(11u)};
+  check(off(p2.axes[0], 0.015f, 0.984f, 0.176f) < 1.f and off(p7.axes[0], 0.015f, 0.984f, 0.176f) < 1.f and
+          off(p13.axes[0], -0.383f, 0.924f, 0.003f) < 1.f and off(p11.axes[0], 0.383f, 0.924f, 0.003f) < 1.f,
+        "fleet carrier: the planes of pads 2, 7, 13 and 11 are the ship's up measured on them, within a degree");
+  check(off(p2.axes[1], -0.004f, -0.176f, 0.984f) < 1.f and off(p13.axes[1], 0.f, 0.f, 1.f) < 1.f and fc.nose_along,
+        "fleet carrier: the nose along its length, on the deck leaning with it");
+  }
+  check(edworld::holo_place_of_station_type("Outpost") == holo_place_e::outpost_t1 and
+          edworld::holo_place_of_station_type("CraterOutpost") == holo_place_e::planet and
+          edworld::holo_place_of_station_type("OnFootSettlement") == holo_place_e::planet and
+          edworld::holo_place_of_station_type("PlanetaryConstructionDepot") == holo_place_e::planet and
+          edworld::holo_place_of_station_type("FleetCarrier") == holo_place_e::carrier and
+          edworld::holo_place_of_station_type("Coriolis") == holo_place_e::big_station and
+          edworld::holo_place_of_station_type("Bernal") == holo_place_e::big_station and
+          edworld::holo_place_of_station_type("SpaceConstructionDepot") == holo_place_e::construction_orbital and
+          edworld::holo_place_of_station_type("MegaShip") == holo_place_e::none and
+          edworld::holo_place_of_station_type("") == holo_place_e::none,
+        "place: the journal's StationType as the kind of place edworld_eht checks the model's against");
+  // the registry's places: the T1 parts with the pads' table, the construction site, the carrier, the Coriolis
+  auto const place_of = [](std::uint32_t count) -> holo_place_e
+    {
+    edworld::holo_resolved_t const r{
+      edworld::holo_resolve(edworld::holo_models.data(), edworld::holo_models.size(), count, edworld::holo_build_2026_10_13, nullptr)};
+    return edworld::holo_place_of(r, edworld::holo_models.data());
+    };
+  check(place_of(5238u) == holo_place_e::outpost_t1 and place_of(7023u) == holo_place_e::outpost_t1 and
+          place_of(13083u) == holo_place_e::planet and place_of(4596u) == holo_place_e::planet and
+          place_of(84969u) == holo_place_e::carrier and place_of(948u) == holo_place_e::big_station and
+          place_of(3576u) == holo_place_e::none and place_of(27885u) == holo_place_e::none and place_of(1u) == holo_place_e::none,
+        "place: the measured models' kinds of place, none for a ship, the T1 station part and a count not known");
+  // E: a place on a planet is flat, its up the model's thinnest axis (the three known models, 2026-10-24)
+  {
+  edworld::holo_flat_t const site{edworld::holo_flat_of(std::array<float, 3>{1.00f, 0.33f, 0.97f})};
+  edworld::holo_flat_t const crater{edworld::holo_flat_of(std::array<float, 3>{0.01f, 0.79f, 1.00f})};
+  edworld::holo_flat_t const park{edworld::holo_flat_of(std::array<float, 3>{0.01f, 1.00f, 0.34f})};
+  edworld::holo_flat_t const block{edworld::holo_flat_of(std::array<float, 3>{1.00f, 0.80f, 0.90f})};
+  check(site.axis == 1 and crater.axis == 0 and park.axis == 0 and site.ratio < 0.35f and crater.ratio < 0.02f and
+          park.ratio < 0.04f and block.axis == 1 and block.ratio > edworld::holo_flat_ratio_max,
+        "planet: the thinnest axis of the construction site (Y), the crater outpost and Park Site (X); a block is no slab");
+  edworld::holo_resolved_t const none{};
+  check(edworld::holo_flat_of(none, edworld::holo_models.data()).axis == -1,
+        "planet: no thinnest axis for a draw of no model");
+  // a confirmed pad's plane from the thinnest axis is the one 13083's table gave: up Y, about Z, towards X
+  edworld::pad_planes_t const * const table{edworld::pad_planes_of(13083u)};
+  edworld::pad_planes_t const slab{13083u, 1, 2, 0, 1u, {0.f}, false};
+  float const tilted{7.f};
+  std::array<edworld::compass_direction_t, 3> const model{{{0.f, 0.f, 1.f}, {0.f, 1.f, 0.f}, {1.f, 0.f, 0.f}}};
+  auto const a{edworld::pick_pad_plane(*table, model, 1000.f, &tilted)};
+  auto const b{edworld::pick_pad_plane(slab, model, 1000.f, &tilted)};
+  check(table and std::fabs(a.axes[0].x - b.axes[0].x) < 1e-6f and std::fabs(a.axes[0].y - b.axes[0].y) < 1e-6f and
+          std::fabs(a.axes[0].z - b.axes[0].z) < 1e-6f and std::fabs(a.axes[1].z - b.axes[1].z) < 1e-6f,
+        "planet: a confirmed pad's plane from the thinnest axis is the table's of before");
+  }
+  }
   auto const up30{edworld::compass_angles(0.f, -27.f, radius, true)};
   check(std::fabs(up30.up - 30.f) < 0.01f and std::fabs(up30.off_nose - 30.f) < 0.01f and std::fabs(up30.right) < 0.01f,
         "compass: half the radius straight up is 30 degrees up, not 45 (the sphere's projection)");
@@ -345,12 +1161,14 @@ int main()
         "approach: 80 degrees below the nose is 10 degrees ahead of the vertical");
   auto const aft{edworld::pad_offsets(edworld::compass_direction(0.f, 54.f, 54.f, false))};
   check(std::fabs(aft.forward) < 0.01f and std::fabs(aft.off_vertical) < 0.01f, "approach: the dot on the rim is straight down");
-  check(edworld::approach_view(false, true, true, true, -25.f, 20.f) and not edworld::approach_view(false, true, true, true, -15.f, 20.f),
+  check(edworld::approach_view(false, true, true, true, true, -25.f, 20.f) and not edworld::approach_view(false, true, true, true, true, -15.f, 20.f),
         "approach: on at 20 degrees below the wings");
-  check(edworld::approach_view(true, true, true, true, -15.f, 20.f) and not edworld::approach_view(true, true, true, true, -5.f, 20.f),
+  check(edworld::approach_view(true, true, true, true, true, -15.f, 20.f) and not edworld::approach_view(true, true, true, true, true, -5.f, 20.f),
         "approach: kept down to 10 degrees, off above");
-  check(not edworld::approach_view(false, true, true, false, -60.f, 20.f) and not edworld::approach_view(true, true, true, false, -60.f, 20.f),
+  check(not edworld::approach_view(false, true, true, false, true, -60.f, 20.f) and not edworld::approach_view(true, true, true, false, false, -60.f, 20.f),
         "approach: never with the target far (after undocking it may stand low in another system)");
+  check(edworld::approach_view(false, true, true, true, false, 10.f, 20.f),
+        "approach: by a station or a carrier, close is enough - its pad stands ahead until the last metres");
   // near: a place 1 km off at 500 m, 20 km off; a station in this system while mass locked, the system itself
   constexpr double r_planet{1.0e6}, km_deg{1000.0 / r_planet * 57.29577951308232};
   check(edworld::near_target(true, true, 10.0, 20.0, 500.0, 10.0 + km_deg, 20.0, r_planet, 9u, 0u, 5.f)
@@ -363,7 +1181,7 @@ int main()
   check(std::fabs(edworld::smoothing_weight(0.4f, 0.4f) - 0.63212f) < 1e-4f and edworld::smoothing_weight(0.f, 0.4f) == 0.f
           and edworld::smoothing_weight(0.1f, 0.f) == 1.f,
         "approach: the smoothing's weight, none after no time, all without a time constant");
-  check(not edworld::approach_view(true, false, true, true, -80.f, 20.f) and not edworld::approach_view(true, true, false, true, -80.f, 20.f),
+  check(not edworld::approach_view(true, false, true, true, true, -80.f, 20.f) and not edworld::approach_view(true, true, false, true, true, -80.f, 20.f),
         "approach: off outside normal flight and once the reading went stale");
   }
   wchar_t exe[MAX_PATH]{};
@@ -537,6 +1355,9 @@ int main()
   std::FILE * trigger{_wfopen((output_dir + L"\\edworld_dump").c_str(), L"wb")};
   if(trigger)
     std::fclose(trigger);
+  // and of the whole frame: every draw with its constants
+  if(std::FILE * all{_wfopen((output_dir + L"\\edworld_dump_all").c_str(), L"wb")})
+    std::fclose(all);
 
   float const quad[]{-1, -1, 0, 0, 1, 1, -1, 0, 1, 1, -1, 1, 0, 0, 0, 1, 1, 0, 1, 0};
   D3D11_BUFFER_DESC vbd{sizeof quad, D3D11_USAGE_IMMUTABLE, D3D11_BIND_VERTEX_BUFFER, 0, 0, 0};
@@ -831,6 +1652,46 @@ int main()
   if(dumps != INVALID_HANDLE_VALUE)
     FindClose(dumps);
   check(GetFileAttributesW((output_dir + L"\\edworld_dump").c_str()) == INVALID_FILE_ATTRIBUTES, "dump trigger removed");
+  {
+  std::string full_log;
+  if(std::FILE * lf{_wfopen(log_path.c_str(), L"rb")})
+    {
+    char buf[4096];
+    for(std::size_t got; (got = std::fread(buf, 1, sizeof buf, lf)) != 0;)
+      full_log.append(buf, got);
+    std::fclose(lf);
+    }
+  check(full_log.find("dump: whole frame armed") != std::string::npos and full_log.find("draw(s) recorded") != std::string::npos
+          and full_log.find("dump: whole frame's files queued") != std::string::npos,
+        "whole frame: armed, closed, its files queued");
+  // the files come from the writer thread, a moment later
+  std::string draws_text;
+  for(int tries{}; tries != 30 and draws_text.empty(); ++tries)
+    {
+    WIN32_FIND_DATAW draws_found{};
+    HANDLE const draws{FindFirstFileW((output_dir + L"\\edworld_dumps\\*_draws.txt").c_str(), &draws_found)};
+    if(draws != INVALID_HANDLE_VALUE)
+      {
+      FindClose(draws);
+      if(std::FILE * df{_wfopen((output_dir + L"\\edworld_dumps\\" + draws_found.cFileName).c_str(), L"rb")})
+        {
+        char buf[4096];
+        for(std::size_t got; (got = std::fread(buf, 1, sizeof buf, df)) != 0;)
+          draws_text.append(buf, got);
+        std::fclose(df);
+        }
+      }
+    if(draws_text.empty())
+      Sleep(100);
+    }
+  check(draws_text.rfind("a0 ", 0) == 0, "whole frame: its draws listed in <stamp>_draws.txt");
+  WIN32_FIND_DATAW cb_found{};
+  HANDLE const cbs{FindFirstFileW((output_dir + L"\\edworld_dumps\\*_a0_cb*.bin").c_str(), &cb_found)};
+  check(cbs != INVALID_HANDLE_VALUE, "whole frame: a draw's constants written");
+  if(cbs != INVALID_HANDLE_VALUE)
+    FindClose(cbs);
+  check(GetFileAttributesW((output_dir + L"\\edworld_dump_all").c_str()) == INVALID_FILE_ATTRIBUTES, "whole frame trigger removed");
+  }
   if(HMODULE const fake{GetModuleHandleW(L"fake_next.dll")})
     {
     using calls_fn = LONG (*)();
@@ -884,6 +1745,37 @@ int main()
               p.anchor_clip[0], p.anchor_clip[1], p.anchor_clip[2], p.anchor_clip[3]);
   if(GetEnvironmentVariableW(L"EDWORLD_TEST_EDSM", nullptr, 0))
     Sleep(3000);  // the state thread's question to EDSM
+  if constexpr(with_eht)
+    if(GetEnvironmentVariableW(L"EDWORLD_TEST_CATALOG", nullptr, 0))
+      {
+      // the shaders' catalog writes once no shader was created for 5 s: the panel's VS and PS, each a line and a file
+      Sleep(7500);
+      WIN32_FIND_DATAW found{};
+      std::string text;
+      std::wstring dir;
+      if(HANDLE const h{FindFirstFileW(L"edworld_shaders\\*", &found)}; h != INVALID_HANDLE_VALUE)
+        {
+        do
+          if(found.cFileName[0] != L'.' and (found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+            dir = std::wstring{L"edworld_shaders\\"} + found.cFileName;
+        while(FindNextFileW(h, &found));
+        FindClose(h);
+        }
+      if(FILE * const f{dir.empty() ? nullptr : _wfopen((dir + L"\\catalog.tsv").c_str(), L"rb")})
+        {
+        char buf[4096];
+        for(std::size_t n; (n = std::fread(buf, 1, sizeof buf, f)) != 0;)
+          text.append(buf, n);
+        std::fclose(f);
+        }
+      char vs_line[64], vs_file[96];
+      std::snprintf(vs_line, sizeof vs_line, "%016llX\tvs\t", static_cast<unsigned long long>(edworld::fnv1a64(g_panel_vs, sizeof g_panel_vs)));
+      std::snprintf(vs_file, sizeof vs_file, "\\vs_%016llX.dxbc", static_cast<unsigned long long>(edworld::fnv1a64(g_panel_vs, sizeof g_panel_vs)));
+      bool const file{not dir.empty() and GetFileAttributesW((dir + std::wstring(vs_file, vs_file + std::strlen(vs_file))).c_str()) != INVALID_FILE_ATTRIBUTES};
+      check(text.find(vs_line) != std::string::npos and text.find("\tps\t") != std::string::npos and
+              text.find("SV_Position0 TEXCOORD0") != std::string::npos and file,
+            "shader catalog: the panel's VS and PS written for the build, each with its shape and bytecode");
+      }
   std::printf("%s (%d failure(s))\n", failures ? "FAILED" : "PASSED", failures);
   return failures ? 1 : 0;
   }

@@ -33,6 +33,9 @@ namespace edworld
     ///\brief the tmpfs directory shared with EHT: `panels` is published there, `target` read from there
     /// (Z: is the Linux root under Wine); empty = neither
     std::wstring shm_dir{L"Z:\\dev\\shm\\eht"};
+    ///\brief the catalog of the game's shaders (PoC, 2026-10-23): each shader of every stage and each input layout
+    /// the game creates, once per build of the game, to edworld_shaders beside the log; 0 = none
+    std::uint32_t shader_catalog{1};
 #endif
     ///\brief a summary line of the frame's panels at most this often; 0 = never
     std::uint32_t log_interval_ms{1000};
@@ -40,6 +43,11 @@ namespace edworld
     std::uint32_t frame_gap_us{2500};
     ///\brief log the hash of every vertex shader the game creates (discovery)
     bool log_all_vs{false};
+    ///\brief vertex shaders looked into by a whole-frame dump: their bytecode (kept from creation) and, for each of
+    /// their draws, the index and vertex buffers and the t33 record pool are written too, and what their pixel shader
+    /// reads (t0..t7) is listed and copied; the target's hologram: its model drawn to 512x512 surfaces (5B0068AF), laid
+    /// over the scene among the panels (5559BD94) (2026-10-20)
+    std::vector<std::uint64_t> dump_vs{0x5B0068AF5630F96Bull, 0x5559BD94B6852E83ull};
     ///\brief edworld's output directory (edloader's log directory, else the dll's); a file `edworld_dump` there
     /// asks for one dump of every panel's interface surface into `edworld_dumps\` (raw rows; size, format and row
     /// pitch in the name)
@@ -186,6 +194,31 @@ namespace edworld
     ///\brief the gates: the steepest dive, degrees below the local horizontal; a straight line at the place steeper than
     /// this (from high over it) is set up instead (2026-10-11: Artur's dives 52-67)
     float gate_dive_steepest{73.f};
+    ///\brief the target's axes (PoC): 1 = the model's axes X, Y, Z of the target's hologram (the station the game shows on
+    /// the left panel), in the right sphere as the hologram's camera sees them; 0 = off (src/hologram_math.h)
+    std::uint32_t station_axes{1};
+    ///\brief the pad's plane (PoC, with station_axes): after the tower gives a pad where the hologram shows the pads, a
+    /// translucent disc of their plane in the right sphere, green while the ship's tilt to it is at most this many degrees,
+    /// then through yellow to red, red from pad_tilt_red_deg on (Artur 2026-10-21: a picture, not numbers)
+    float pad_tilt_green_deg{10.f};
+    float pad_tilt_red_deg{20.f};
+    ///\brief the pad's text (PoC, 2026-10-21): 1 = each time the tower's box ("PROCEED TO LANDING PAD n - m:ss", in the
+    /// game's language) shows on the 2200x1800 HUD surface, and each time its text changes (the box carries the HUD's other
+    /// notices too), its area is written to edworld_padtext as a sample for learning the digits, with a log line; 0 = off
+    /// (src/panel_math.h pad_box_*)
+    std::uint32_t pad_text_samples{0};
+    ///\brief the pad's text read (2026-10-24, src/pad_text_read.h): 1 = the tower's notice in that box gives the pad and
+    /// the grant's time - edworld alone takes them as the pad given, edworld_eht logs whether they agree with the data
+    /// source's; 0 = off
+    std::uint32_t pad_text_read{1};
+    ///\brief (2026-10-25) 1 = a notice of the tower's whose number stays unsure (pad_text_read.h) is written to
+    /// edworld_padtext once a grant as a sample, with a log line: a case the digits' templates have not met, for
+    /// tools/pad_text_digits.py; 0 = the log line only
+    std::uint32_t pad_text_unsure_sample{1};
+    ///\brief the vertex shader the game draws the hologram's model with (5B0068AF, 2026-10-20); 0: found by its draws instead
+    /// (a model shader drawing 1000 indices or more to a 512x512 target) and named in the log - only then, as the game makes
+    /// the hologram's shader only when it first shows a station (a search before took another model's, 2026-10-20)
+    std::uint64_t station_vs{0x5B0068AF5630F96Bull};
     ///\brief the spheres' colours, 0xRRGGBB: a muted grey by default (doc/users.md has the 1.1.0-beta.1 blue as an
     /// example); the fainter shades (the far side, the disc's middle, the outline) are mixed from these
     ///\brief the disc behind a sphere, at its rim; its middle is a fifth of the way to compass_colour_rim
@@ -208,6 +241,11 @@ namespace edworld
     std::uint32_t compass_colour_ok{0x9ad3a8u};
     ///\brief in the approach view the base while the ship is under it (the target above the wings)
     std::uint32_t compass_colour_wrong{0xc0504du};
+    ///\brief in the approach view the base while the pad's plane shows (PoC, Artur 2026-10-21: light blue)
+    std::uint32_t compass_colour_pad_base{0x7ab8e0u};
+    ///\brief in the approach view the left sphere's ring: the target seen from above (Artur 2026-10-21: light blue as the
+    /// game's own compass; the white dot stays where the view ahead has it)
+    std::uint32_t compass_colour_top{0x7ab8e0u};
     };
 
   auto settings() noexcept -> settings_t const &;
@@ -219,6 +257,10 @@ namespace edworld
 
   ///\brief set while edworld creates its own shaders: they are never taken for the game's panels
   inline std::atomic<bool> creating_own{false};
+
+  ///\brief a dump of one whole frame asked for (every draw: its shader, viewport, target and constants, with the
+  /// surfaces): by the data source's counter (edworld_eht, `dump` in shm_dir) or a file edworld_dump_all beside the log
+  inline std::atomic<bool> full_dump_request{false};
 
   ///\brief once per device the game gets from the chain
   auto attach_to_device(ID3D11Device * device) noexcept -> void;

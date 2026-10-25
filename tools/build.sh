@@ -36,7 +36,7 @@ for V in edworld edworld_eht; do
   mkdir -p "$OBJ/$V" "build/$V"
   cl /nologo /c /O2 /MT /std:c++latest /EHsc /W4 /Z7 /MP8 \
       /DWIN32_LEAN_AND_MEAN /DNOMINMAX /D_CRT_SECURE_NO_WARNINGS /DUNICODE /D_UNICODE "${DEFS[@]}" \
-      "/DEDWORLD_VERSION=\"$VER\"" "${IMGUI_FLAGS[@]}" /Fo$OBJ/$V/ src/proxy.cc src/hooks.cc src/settings_log.cc src/game_state.cc src/panel_patch.cc
+      "/DEDWORLD_VERSION=\"$VER\"" "${IMGUI_FLAGS[@]}" /Fo$OBJ/$V/ src/proxy.cc src/hooks.cc src/settings_log.cc src/game_state.cc src/panel_patch.cc src/shader_catalog.cc
   link /nologo /DLL /MACHINE:X64 /INCREMENTAL:NO /DEBUG:FULL /OPT:REF /OPT:ICF \
       /PDB:build/$V/$V.pdb /DEF:build/gen/edvr_d3d11.def /OUT:build/$V/$V.dll \
       $OBJ/*.obj $OBJ/$V/*.obj kernel32.lib user32.lib dxguid.lib winhttp.lib shell32.lib ole32.lib

@@ -7,6 +7,7 @@
 #include "edworld_share.h"
 
 #include "runtime.h"
+#include "sample_context.h"
 
 #include <shlobj.h>
 #include <winhttp.h>
@@ -313,6 +314,7 @@ namespace edworld
 
     // ---- where the destination stands on its body (EHT's `surface`) ----
     surface_t const * surface_view{};
+    std::uint32_t surface_mapped{};  ///< bytes of the view: the writer's layout, the first one or this one
     DWORD next_surface_try{};
 
     auto map_surface() -> void
@@ -330,22 +332,30 @@ namespace edworld
         return;
       LARGE_INTEGER size{};
       GetFileSizeEx(file, &size);
-      if(size.QuadPart < static_cast<LONGLONG>(sizeof(surface_t)))
+      // a writer of the first layout (no docking grant) is read as far as it goes, as the target
+      if(size.QuadPart < static_cast<LONGLONG>(surface_size_first))
         {
         CloseHandle(file);
         return;
         }
-      HANDLE const mapping{CreateFileMappingW(file, nullptr, PAGE_READONLY, 0, sizeof(surface_t), nullptr)};
+      DWORD const bytes{size.QuadPart < static_cast<LONGLONG>(sizeof(surface_t)) ? static_cast<DWORD>(size.QuadPart)
+                                                                                  : static_cast<DWORD>(sizeof(surface_t))};
+      HANDLE const mapping{CreateFileMappingW(file, nullptr, PAGE_READONLY, 0, bytes, nullptr)};
       CloseHandle(file);
       if(not mapping)
         return;
-      surface_view = static_cast<surface_t const *>(MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, sizeof(surface_t)));
+      surface_view = static_cast<surface_t const *>(MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, bytes));
       CloseHandle(mapping);
       if(surface_view)
-        log_line("state: reading where the destination stands from %S", path.c_str());
+        {
+        surface_mapped = bytes;
+        log_line("state: reading where the destination stands from %S (%lu bytes%s)", path.c_str(), bytes,
+                 bytes < sizeof(surface_t) ? ", without the docking grant" : "");
+        }
       }
 
-    ///\brief a consistent copy of the surface record; false when there is none or it is not one
+    ///\brief a consistent copy of the surface record (what the view lacks left zero: no docking grant); false when
+    /// there is none or it is not one
     auto read_surface(surface_t & copy) -> bool
       {
       map_surface();
@@ -360,11 +370,29 @@ namespace edworld
         MemoryBarrier();
         if(before & 1u)
           continue;
-        std::memcpy(&copy, surface_view, sizeof copy);
+        copy = surface_t{};
+        std::memcpy(&copy, surface_view, surface_mapped);
         MemoryBarrier();
         if(sequence() != before)
           continue;
-        return copy.magic == surface_magic and copy.version == surface_version;
+        if(copy.magic != surface_magic or copy.version != surface_version)
+          return false;
+        // the writer grew to the layout with the docking grant (the tool restarted in a newer version): mapped again
+        if(copy.size > surface_mapped and surface_mapped < sizeof(surface_t))
+          {
+          UnmapViewOfFile(surface_view);
+          surface_view = nullptr;
+          next_surface_try = GetTickCount();
+          log_line("state: the data source's surface grew to %u bytes, mapping it again", copy.size);
+          }
+        // a writer of the first layout says nothing of a grant, whatever its file holds beyond its record
+        if(copy.size < sizeof(surface_t))
+          {
+          copy.docking_granted_ms = 0;
+          copy.docking_pad = 0u;
+          copy.station_type[0] = '\0';
+          }
+        return true;
         }
       return false;
       }
@@ -376,17 +404,56 @@ namespace edworld
     auto read_surface(surface_t &) -> bool { return false; }
 #endif
 
+    // ---- the pad the HUD's notice gave (pad_text_read.h, 2026-10-24): edworld alone takes it where edworld_eht has the
+    // data source's; the grant's second (unix) over 8 bits and the pad under, one word so a reader sees both of one grant
+    std::atomic<std::uint64_t> text_grant{};
+
+    ///\brief edworld alone: the notice's grant until the ship leaves the pad it docked at or enters supercruise, then gone
+    auto text_grant_now(flight_t const & last) -> std::uint64_t
+      {
+      static bool was_down{};
+      bool const down{(last.flags & 1u) != 0u};
+      if((was_down and not down) or (last.flags & (1ull << 4)) != 0u)
+        text_grant.store(0u, std::memory_order_relaxed);
+      was_down = down;
+      return text_grant.load(std::memory_order_relaxed);
+      }
+
     ///\brief the destination's place on its body, when the data source tells it for the body and place Status.json
     /// names now; logged once a change
     auto apply_place(flight_t & last) -> void
       {
       static char logged[96]{};
       surface_t s{};
-      bool const have{read_surface(s) and s.known != 0u and last.destination_body != 0u and s.body_id == last.destination_body
+      bool const read{read_surface(s)};
+      bool const have{read and s.known != 0u and last.destination_body != 0u and s.body_id == last.destination_body
                       and std::strncmp(s.name, last.destination_name, sizeof s.name) == 0};
       last.has_place = have;
       last.place_latitude = have ? s.latitude : 0.0;
       last.place_longitude = have ? s.longitude : 0.0;
+      // the pad the tower gave, whatever the destination: it holds until the ship docks or leaves (PoC); edworld alone
+      // reads it from the HUD's notice (no station's type)
+      bool const granted{read and s.docking_granted_ms != 0 and s.docking_pad != 0u};
+      last.docking_granted_ms = granted ? s.docking_granted_ms : 0;
+      last.docking_pad = granted ? s.docking_pad : 0u;
+      std::memcpy(last.station_type, granted ? s.station_type : "", granted ? sizeof last.station_type : 1u);
+      last.station_type[sizeof last.station_type - 1u] = '\0';
+      if constexpr(not with_eht)
+        if(std::uint64_t const g{text_grant_now(last)}; g != 0u)
+          {
+          last.docking_granted_ms = static_cast<std::int64_t>(g >> 8u) * 1000;
+          last.docking_pad = static_cast<std::uint32_t>(g & 0xffu);
+          }
+      static std::int64_t logged_grant{-1};
+      if(last.docking_granted_ms != logged_grant)
+        {
+        logged_grant = last.docking_granted_ms;
+        if(last.docking_pad != 0u)
+          log_line("state: pad %u given at a %.31s (from %s)", last.docking_pad, granted ? last.station_type : "-",
+                   granted ? "the data source" : "the HUD's notice");
+        else
+          log_line("state: no pad given");
+        }
       char key[96];
       std::snprintf(key, sizeof key, "%d %.63s", have ? 1 : 0, last.destination_name);
       if(std::strcmp(key, logged) != 0)
@@ -415,8 +482,25 @@ namespace edworld
       bool target_known{};
       bool target_listed{};
       flight_t last_fix{};
+#if defined(EDWORLD_EHT)
+      std::string dump_seen;  // the data source's dump counter as last read; its change asks for a whole frame
+      bool dump_known{};
+#endif
       for(;;)
         {
+#if defined(EDWORLD_EHT)
+        if(not settings().shm_dir.empty())
+          {
+          std::string const count{read_file(settings().shm_dir + L"\\dump")};
+          if(dump_known and count != dump_seen and not count.empty())
+            {
+            full_dump_request.store(true);
+            log_line("dump: asked by the data source (%.20s)", count.c_str());
+            }
+          dump_seen = count;
+          dump_known = true;
+          }
+#endif
         std::string const text{read_file(path)};
         if(not text.empty())
           {
@@ -545,6 +629,12 @@ namespace edworld
     };
     }
 
+  auto pad_text_grant(std::uint32_t pad, std::int64_t granted_unix_ms) noexcept -> void
+    {
+    text_grant.store(pad == 0u or pad > 0xffu ? 0u : static_cast<std::uint64_t>(granted_unix_ms / 1000) << 8u | pad,
+                     std::memory_order_relaxed);
+    }
+
   auto flight() noexcept -> flight_t
     {
     AcquireSRWLockShared(&flight_lock);
@@ -572,5 +662,48 @@ namespace edworld
       case allegiance_e::other:       return "other";
       default:                        return "unknown";
       }
+    }
+
+  auto sample_context(char const * sample) -> std::string
+    {
+    std::wstring const status{status_path()};
+    std::wstring const dir{status.substr(0, status.rfind(L'\\') == std::wstring::npos ? 0 : status.rfind(L'\\'))};
+    // the newest journal: their names carry the time they were begun
+    std::wstring newest;
+    if(not dir.empty())
+      {
+      WIN32_FIND_DATAW fd{};
+      HANDLE const h{FindFirstFileW((dir + L"\\Journal.*.log").c_str(), &fd)};
+      if(h != INVALID_HANDLE_VALUE)
+        {
+        do
+          if(newest < fd.cFileName)
+            newest = fd.cFileName;
+        while(FindNextFileW(h, &fd));
+        FindClose(h);
+        }
+      }
+    std::string name, tail;
+    std::uint64_t size{};
+    if(not newest.empty())
+      {
+      for(wchar_t const c: newest)
+        name += c < 0x80 ? static_cast<char>(c) : '?';
+      if(std::FILE * const f{_wfopen((dir + L"\\" + newest).c_str(), L"rb")})
+        {
+        _fseeki64(f, 0, SEEK_END);
+        long long const end{_ftelli64(f)};
+        long long const from{end > 65536 ? end - 65536 : 0};
+        if(end > 0)
+          {
+          size = static_cast<std::uint64_t>(end);
+          _fseeki64(f, from, SEEK_SET);
+          tail.resize(static_cast<std::size_t>(end - from));
+          tail.resize(std::fread(tail.data(), 1, tail.size(), f));
+          }
+        std::fclose(f);
+        }
+      }
+    return sample_context_text(sample, status.empty() ? std::string{} : read_file(status), name, size, tail);
     }
   }  // namespace edworld

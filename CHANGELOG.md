@@ -1,5 +1,45 @@
 # Changelog
 
+## 1.1.0
+
+The navballs of the betas below, released, with the pad's plane in the right sphere, from the target's hologram the
+game draws.
+
+- **The pad's plane (test, `station_axes`, `pad_tilt_green_deg`, `pad_tilt_red_deg`).** After the tower gives a pad,
+  a translucent disc of the pads' plane in the right sphere, green while the ship is level with the pads, through
+  yellow to red as it tilts; a red wire grid and `UPSIDE DOWN` with the ship's top towards the pads. In the approach
+  view the disc stands in the dome over a light blue base (`compass_colour_pad_base`).
+  - At the six kinds of orbital outpost the pads' up comes from a table, with the pad's mark `< |||` pointing to
+    where the ship's nose goes on the pad.
+  - On a planet (surface ports, settlements, planetary construction sites) the plane is always flat: the hologram
+    model's thinnest axis, turned towards the ship.
+  - At a squadron carrier and a players' fleet carrier each pad by its number (the fleet carrier's deck leans 10.1°
+    along its length, its side pads 22.5°).
+  - A Coriolis, Orbis, Ocellus or asteroid base gets no plane: its hologram has no pads.
+- **The hologram's models.** The target's hologram is told by its model (the draw's indices, and a fingerprint of the
+  model that finds it again after an update of the game changes the indices); the kind of place, and so the rule of
+  the plane, comes from the model, not from a journal. The models known are in `src/holo_models.h` and
+  `src/holo_models_generated.h`.
+- **The target's hologram by what it shows.** A known place (a port, a settlement, a carrier) is the target whichever
+  of the HUD's two hologram surfaces it comes on: after a ship is swapped at a port the game lays them over the other
+  way round, and the own ship was taken for the target. A known place on the own surface is never taken for a ship.
+- **The pad's number from the HUD (`pad_text_read`).** The tower's notice (`PROCEED TO LANDING PAD n` over its
+  countdown) gives the pad and the time of the grant, so edworld alone knows the pad given. Each digit is read by
+  its shape seen from afar (4 x 6 zones of its glyph), whatever the pixel the number stands on: pad 8 and pad 30 are
+  read too. A number not read sure gives no pad; its notice's picture is kept (`pad_text_unsure_sample`), and
+  `pad_text_samples` (off) keeps all the notice's pictures, for learning the digits.
+- **`station_vs`**: the game's shader of the hologram's model; `0` finds it after an update that changes it.
+- **edworld_eht only:** a catalog of the game's shaders once per build (`shader_catalog`), a whole frame's dump on
+  request, a picture of each new hologram model for naming it, and log lines that compare the place and the pad with
+  EHT's.
+- **`tools/holo_db.py`**: the hologram models' samples gathered offline, named on a page on 127.0.0.1, written into
+  the two generated headers.
+- In the approach view the left sphere's ring is light blue (`compass_colour_top`).
+
+Known: the plane is checked in the game at orbital outposts, planetary construction sites, a surface port and a
+squadron carrier; at a players' fleet carrier, and after a ship swap, it is not yet seen in the game. The pad's number
+is read in English only.
+
 ## 1.1.0-beta.3
 
 A beta for the game's update of 2026-10-20 (the Anaconda Mk2 update): the navballs read the new compass again.

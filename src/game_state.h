@@ -4,6 +4,7 @@
 #include "faction_list.h"
 
 #include <cstdint>
+#include <string>
 
 namespace edworld
   {
@@ -47,7 +48,16 @@ namespace edworld
     /// body and place; false without one
     bool has_place;
     double place_latitude, place_longitude;
+    ///\brief the pad the tower gave (PoC), from the data source (edworld_eht): when (unix ms, 0 = no pad given now), its
+    /// number and the station's type as the journal names it (Coriolis, Outpost, CraterOutpost...)
+    std::int64_t docking_granted_ms;
+    std::uint32_t docking_pad;
+    char station_type[32];
     };
+
+  ///\brief the pad the HUD's notice gave (render thread, pad_text_read.h) and when (unix ms); 0 = none. edworld alone takes
+  /// it into flight() for the data source's; edworld_eht only compares the two
+  auto pad_text_grant(std::uint32_t pad, std::int64_t granted_unix_ms) noexcept -> void;
 
   [[nodiscard]]
   auto flight() noexcept -> flight_t;
@@ -65,4 +75,9 @@ namespace edworld
 
   [[nodiscard]]
   auto allegiance_name(allegiance_e a) noexcept -> char const *;
+
+  ///\brief edworld_eht: a hologram model's sample in its context (sample_context.h), the game's files read now; for the
+  /// dumps' writer thread, not the render thread. Throws only on no memory.
+  [[nodiscard]]
+  auto sample_context(char const * sample) -> std::string;
   }  // namespace edworld

@@ -27,7 +27,9 @@
 #include "list_ps.h"
 #include "list_vs.h"
 #include "compass_math.h"
+#include "hologram.h"
 #include "panel_math.h"
+#include "pad_text_read.h"
 
 #include <imgui.h>
 #include <backends/imgui_impl_dx11.h>
@@ -1499,6 +1501,418 @@ namespace edworld
         }
       }
 
+    ///\brief the pad's plane as the right sphere shows it this frame (PoC): on, the model's axes and the tilt's colour
+    struct pad_plane_t
+      {
+      bool on;
+      std::array<compass_direction_t, 3> axes;  ///< the pads' normal first, then the two axes of their plane
+      std::uint32_t rgb;
+      bool upside_down;  ///< the ship's top towards the pads (tilt over 90 degrees, the pads' up known)
+      bool has_nose;     ///< the ship's nose on the pad is known (T1 table): the pad's mark is drawn
+      compass_direction_t nose;
+      };
+
+    ///\brief whether the pad's plane shows: from the tower's grant at a port whose hologram shows its pads, held on the pad
+    /// while the hologram keeps the same model; one log line each time the tilt crosses a limit. Once a frame, from the
+    /// right sphere that is drawn; to_target and have are that sphere's direction to the target, for the pads' up
+    pad_plane_t last_pad_plane{};  ///< the right sphere's plane of the last frame, for the left sphere's mark
+
+    // edworld_eht's notes under the right sphere (Artur 2026-10-22: seen at once, reported while still there): the T1
+    // table's watch at Docked for a minute, a new model's sample for ten seconds; text only, no fill
+    struct sphere_note_t
+      {
+      char text[48];
+      int colour;  ///< 0 the ok colour, 1 the wrong colour, 2 grey
+      ULONGLONG until;
+      };
+
+    constexpr ULONGLONG t1_note_ms{60000};
+    constexpr ULONGLONG model_note_ms{10000};
+    sphere_note_t t1_note{};
+    sphere_note_t model_note{};
+    std::uint32_t model_note_pad{};  // the pad PAD <n> NEW was shown for (once a grant)
+
+    ///\brief edworld_eht: the last pick of a pad's plane, for the log at Docked (the pads to learn)
+    struct planes_look_t
+      {
+      std::uint32_t pad;  ///< 0 none
+      std::uint32_t model;
+      float angle_deg;
+      bool known;
+      };
+
+    planes_look_t planes_look{};
+
+    auto pad_plane_now(hologram_view_t const & h, compass_direction_t const & to_target, bool have) -> pad_plane_t
+      {
+      static std::uint32_t pad_model{};
+      static std::uint32_t candidate{};        // another model the hologram shows, taken only once it holds a second
+      static ULONGLONG candidate_since{};
+      static std::int64_t pad_grant{};
+      static pad_up_vote_t vote{};  // which end of X is the pads' up: voted afresh for each grant and model
+      static int logged_band{-1};
+      static bool logged_upside_down{};
+      static bool logged_table{};
+      settings_t const & s{settings()};
+      flight_t const f{flight()};
+      constexpr ULONGLONG model_hold_ms{1000};
+      bool const granted{pad_granted(f.docking_granted_ms, unix_now() * 1000)};
+      bool const down{(f.flags & 3u) != 0u};  // Status.json Flags bit 0 docked, bit 1 landed
+#if defined(EDWORLD_EHT)
+      // the T1 table's watch (Artur 2026-10-22: every docking checks the table, no flight only for it): at Docked, the
+      // last look on the table's pad within t1_check_ms before it - the pads' plane to the ship's and the ship's nose to
+      // the table's - agrees or deviates; a deviation is logged for Artur, the table is never changed by it
+      static t1_look_t t1_look{};
+      static bool was_docked{};
+      bool const docked{(f.flags & 1u) != 0u};
+      if(docked and not was_docked and planes_look.pad)
+        log_line("hologram: pads' planes at Docked: pad %u of model %u indices, the last plane %+.0f degrees (%s)", planes_look.pad,
+                 planes_look.model, static_cast<double>(planes_look.angle_deg), planes_look.known ? "its number's" : "nearest - to learn");
+      if(docked != was_docked)
+        planes_look = planes_look_t{};
+      if(docked and not was_docked)
+        {
+        ULONGLONG const now{GetTickCount64()};
+        switch(t1_verdict(t1_look, now))
+          {
+          case t1_verdict_e::match:
+          case t1_verdict_e::deviates:
+            {
+            bool const ok{t1_verdict(t1_look, now) == t1_verdict_e::match};
+            log_line("hologram: T1 check at Docked: pad %u of model %u indices: plane %.1f degrees to the ship's, nose %.1f "
+                     "degrees off the table's - %s", t1_look.pad, t1_look.model, static_cast<double>(t1_look.tilt),
+                     static_cast<double>(t1_look.nose_deg), ok ? "agrees" : "DEVIATES from the table");
+            t1_note = sphere_note_t{{}, ok ? 0 : 1, now + t1_note_ms};
+            std::snprintf(t1_note.text, sizeof t1_note.text, "T1 %s %.0f%s / %.0f%s", ok ? "MATCH" : "DEVIATES",
+                          static_cast<double>(t1_look.tilt), degree, static_cast<double>(t1_look.nose_deg), degree);
+            break;
+            }
+          case t1_verdict_e::no_look:
+            log_line("hologram: T1 check at Docked: pad %u of model %u indices: no look within %llu ms before Docked", t1_look.pad,
+                     t1_look.model, t1_check_ms);
+            t1_note = sphere_note_t{"T1 NO LOOK", 2, now + t1_note_ms};
+            break;
+          case t1_verdict_e::none:
+            break;
+          }
+        }
+      if(docked != was_docked)
+        t1_look = t1_look_t{};
+      was_docked = docked;
+#endif
+      if(not h.have)
+        return pad_plane_t{};
+      // the own ship's hologram on the target's surface (near a carrier's pad) is no pads' model (2026-10-22: its X
+      // gave a plane 90 degrees off at pad 5 and pad 15)
+      static std::uint32_t logged_ship{};
+      if(h.ship)
+        {
+        if(h.count != logged_ship)
+          log_line("hologram: the target's hologram shows a ship (%u indices): no pad's plane from it", h.count);
+        logged_ship = h.count;
+        return pad_plane_t{};
+        }
+      logged_ship = 0u;
+      auto const start = [&](std::uint32_t model)
+        {
+        pad_model = model;
+        candidate = 0u;
+        vote = pad_up_vote_t{};
+        logged_band = -1;
+        logged_upside_down = false;
+        logged_table = false;
+        };
+      if(granted)
+        {
+        if(f.docking_granted_ms != pad_grant)
+          {
+          pad_grant = f.docking_granted_ms;
+          start(h.count);
+          }
+        else if(h.count == pad_model)
+          candidate = 0u;
+        else if(pad_model == 0u)
+          start(h.count);
+        else
+          {
+          // a model of a moment (another hologram drawn smaller for a frame or two) leaves the vote as it is
+          ULONGLONG const now{GetTickCount64()};
+          if(candidate != h.count)
+            {
+            candidate = h.count;
+            candidate_since = now;
+            }
+          else if(now - candidate_since >= model_hold_ms)
+            start(h.count);
+          }
+        }
+      else if(not down and pad_model != 0u)
+        start(0u);
+      if(pad_model == 0u or h.count != pad_model)
+        return pad_plane_t{};
+      // the kind of place the model shows (D, 2026-10-24), not the journal's StationType: edworld alone has none.
+      // edworld_eht says once a grant and model whether the data source's StationType names the same kind
+      t1_pad_t const * const t1{t1_pad(h.table, f.docking_pad)};
+      static std::int64_t logged_place_grant{};
+      static std::uint32_t logged_place_model{};
+      if(f.docking_granted_ms != logged_place_grant or h.count != logged_place_model)
+        {
+        logged_place_grant = f.docking_granted_ms;
+        logged_place_model = h.count;
+        char const * const no_table{h.place == holo_place_e::outpost_t1 and not t1 ? ", no T1 table row for the pad" : ""};
+#if defined(EDWORLD_EHT)
+        holo_place_e const theirs{holo_place_of_station_type(f.station_type)};
+        log_line("place: pad %u, model %u indices is %s%s; the data source's %.31s - %s", f.docking_pad, h.count,
+                 holo_place_name(h.place), no_table, f.station_type[0] != '\0' ? f.station_type : "none",
+                 h.place == theirs ? "agrees" : "DEVIATES");
+#else
+        log_line("place: pad %u, model %u indices is %s%s", f.docking_pad, h.count, holo_place_name(h.place), no_table);
+#endif
+        }
+      // a place without pads on its hologram, a model not known, a T1 part without the pad's table row: no plane (a vote
+      // on X goes wrong at an outpost in space)
+      if(not holo_place_has_plane(h.place) or (h.place == holo_place_e::outpost_t1 and not t1))
+        return pad_plane_t{};
+      // a place on a planet (E, 2026-10-24): always flat - the pads' up is the model's thinnest axis, its end the vote's
+      // (the ship always over the pads); a pad confirmed in the form gives its plane's angle and the ship's nose, since
+      // the ship stands on the pad (no table in the code: a new model has its plane once confirmed). A model without a
+      // fingerprint, or not a slab, has none
+      bool const planet{h.place == holo_place_e::planet};
+      static std::int64_t logged_flat_grant{};
+      static std::uint32_t logged_flat_model{};
+      bool const log_flat{planet and (f.docking_granted_ms != logged_flat_grant or h.count != logged_flat_model)};
+      if(log_flat)
+        {
+        logged_flat_grant = f.docking_granted_ms;
+        logged_flat_model = h.count;
+        }
+      if(planet and (h.flat.axis < 0 or h.flat.ratio > holo_flat_ratio_max))
+        {
+        if(log_flat)
+          log_line("hologram: pad %u of model %u indices on a planet: %s - no plane", f.docking_pad, h.count,
+                   h.flat.axis < 0 ? "its thinnest axis not known (no fingerprint, or its turn not sure)" : "not flat enough");
+        return pad_plane_t{};
+        }
+      // a carrier without its row of planes (a fleet carrier, 73389 indices, 2026-10-24: its deck is on Y, so X and the vote
+      // drew a plane 90 degrees off): none until its planes are in the table
+      if(h.place == holo_place_e::carrier and not pad_planes_of(h.table))
+        {
+        static std::int64_t logged_carrier_grant{};
+        static std::uint32_t logged_carrier_model{};
+        if(f.docking_granted_ms != logged_carrier_grant or h.count != logged_carrier_model)
+          {
+          logged_carrier_grant = f.docking_granted_ms;
+          logged_carrier_model = h.count;
+          log_line("hologram: pad %u of carrier model %u indices: no row of its planes - no plane", f.docking_pad, h.count);
+          }
+        return pad_plane_t{};
+        }
+      // an outpost in space: its pad from the T1 table, no vote; a carrier its planes; on a planet the thinnest axis and
+      // the vote
+      pad_planes_t const * const carrier{t1 or planet ? nullptr : pad_planes_of(h.table)};
+      int const n{t1 ? t1->up_axis : planet ? h.flat.axis : 0};
+      std::array<compass_direction_t, 3> axes{h.axes[n], h.axes[(n + 1) % 3], h.axes[(n + 2) % 3]};
+      char const axis_name{"XYZ"[n]};
+      static float logged_carrier_angle{1000.f};
+      pad_learned_t const * learned{};
+      if(planet)
+        {
+        learned = pad_learned_of(h.table, f.destination_name, f.docking_pad);
+        if(learned)
+          {
+          // the confirmed plane's angle from the thinnest axis, turning about the next and leaning to the third (13083's
+          // pads were learned so: up Y, about Z, towards X)
+          pad_planes_t const slab{h.table, static_cast<std::int8_t>(n), static_cast<std::int8_t>((n + 1) % 3),
+                                  static_cast<std::int8_t>((n + 2) % 3), 1u, {0.f}, false};
+          axes = pick_pad_plane(slab, h.axes, 1000.f, &learned->angle_deg).axes;
+          }
+        if(log_flat)
+          log_line("hologram: pad %u of model %u indices on a planet: up the model's thinnest axis %c (ratio %.2f)%s",
+                   f.docking_pad, h.count, axis_name, static_cast<double>(h.flat.ratio),
+                   learned ? ", the pad's plane and the ship's nose confirmed in the form" : ", no direction");
+        }
+      else if(carrier)
+        {
+        // the pad's plane as confirmed in holo_db's form, else by its number, else of the model's planes the one nearest
+        // the ship's up; up towards the ship, no vote
+        learned = pad_learned_of(h.table, f.destination_name, f.docking_pad);
+        static site_kind_e logged_kind{site_kind_e::unknown};
+        if(site_kind_e const kind{site_kind_of(f.destination_name)}; kind != logged_kind)
+          {
+          logged_kind = kind;
+          log_line("hologram: the destination is %s, by its name", site_kind_name(kind));
+          }
+        float const * const known{learned ? &learned->angle_deg : pad_plane_of_pad(h.table, f.docking_pad)};
+        picked_plane_t const cp{pick_pad_plane(*carrier, h.axes, logged_carrier_angle, known)};
+        axes = cp.axes;
+        if(cp.angle_deg != logged_carrier_angle)
+          {
+          logged_carrier_angle = cp.angle_deg;
+          log_line("hologram: pad %u of model %u indices: the plane at %+.0f degrees (%s)", f.docking_pad, h.count,
+                   static_cast<double>(cp.angle_deg),
+                   learned ? (learned->station[0] != '\0' ? "the station's pad, confirmed in the form"
+                              : learned->kind != site_kind_e::unknown ? "the pad of its kind of place, confirmed in the form"
+                                                                       : "the model's pad, confirmed in the form")
+                   : known ? "the pad's, by its number"
+                           : "nearest the ship's up");
+          }
+#if defined(EDWORLD_EHT)
+        planes_look = planes_look_t{f.docking_pad, h.table, cp.angle_deg, known != nullptr};
+        if(not known and carrier->planes > 1u and model_note_pad != f.docking_pad)
+          {
+          model_note_pad = f.docking_pad;  // a pad to learn: its plane at Docked goes to the log
+          model_note = sphere_note_t{{}, 2, GetTickCount64() + model_note_ms};
+          std::snprintf(model_note.text, sizeof model_note.text, "PAD %u NEW", f.docking_pad);
+          }
+#endif
+        }
+      else
+        logged_carrier_angle = 1000.f;
+      if(t1 and not logged_table)
+        {
+        logged_table = true;
+        log_line("hologram: pad %u of model %u indices from the T1 table: up %c%c", f.docking_pad, h.count, t1->up_sign > 0 ? '+' : '-',
+                 axis_name);
+        }
+      if(have and not t1 and not carrier)
+        switch(pad_up_vote(vote, axes[0], to_target))
+          {
+          case pad_up_event_e::decided:
+            log_line("hologram: pad %u up = %c%c of model %u indices, %d of %d votes (weights +%.2f -%.2f)", f.docking_pad,
+                     vote.decided > 0 ? '+' : '-', axis_name, h.count, vote.decided > 0 ? vote.plus : vote.minus,
+                     vote.plus + vote.minus, vote.plus_weight, vote.minus_weight);
+            break;
+          case pad_up_event_e::turned:
+            log_line("hologram: pad %u up TURNED to %c%c of model %u indices: three strong votes against the decision",
+                     f.docking_pad, vote.decided > 0 ? '+' : '-', axis_name, h.count);
+            break;
+          case pad_up_event_e::none:
+            break;
+          }
+      int const up_sign{t1 ? static_cast<int>(t1->up_sign) : carrier ? 1 : vote.decided};
+      float const tilt{pad_tilt_deg(axes[0], up_sign)};
+      int const band{tilt <= s.pad_tilt_green_deg ? 0 : tilt < s.pad_tilt_red_deg ? 1 : 2};
+      if(band != logged_band)
+        {
+        logged_band = band;
+        log_line("hologram: pad %u plane %.1f degrees to the ship's (%s), model %u indices", f.docking_pad, tilt,
+                 band == 0 ? "green" : band == 1 ? "towards red" : "red", h.count);
+        }
+      bool const upside_down{pad_upside_down(tilt, up_sign)};
+      if(upside_down != logged_upside_down)
+        {
+        logged_upside_down = upside_down;
+        log_line("hologram: pad %u %s (%.1f degrees)", f.docking_pad, upside_down ? "upside down" : "right way up again", tilt);
+        }
+      compass_direction_t nose{};
+      if(t1)
+        {
+        compass_direction_t const & v{h.axes[static_cast<std::size_t>(t1->nose_axis)]};
+        float const k{static_cast<float>(t1->nose_sign)};
+        nose = compass_direction_t{k * v.x, k * v.y, k * v.z};
+#if defined(EDWORLD_EHT)
+        t1_look = t1_look_t{GetTickCount64(), f.docking_pad, h.table, tilt, nose_off_deg(nose)};
+#endif
+        }
+      else if(learned and learned->nose != std::array<float, 3>{})
+        for(std::size_t i{}; i != 3u; ++i)  // the confirmed nose in the model's axes, into the hologram camera's frame
+          {
+          nose.x += learned->nose[i] * h.axes[i].x;
+          nose.y += learned->nose[i] * h.axes[i].y;
+          nose.z += learned->nose[i] * h.axes[i].z;
+          }
+      else if(carrier and carrier->nose_along)
+        nose = axes[1];  // along the carrier's length, towards its plus end, on any of its planes
+      bool const has_nose{t1 != nullptr or (learned != nullptr and learned->nose != std::array<float, 3>{})
+                          or (carrier != nullptr and carrier->nose_along)};
+      return pad_plane_t{true, axes, pad_tilt_colour(tilt, s.pad_tilt_green_deg, s.pad_tilt_red_deg), upside_down, has_nose,
+                         nose};
+      }
+
+    ///\brief the pad's plane as a translucent disc on the two axes of the pads' plane (the model's Y and Z, or the two the T1
+    /// table leaves) through the sphere's centre, its edge fuller; upside down (Artur, 2026-10-21) a red wire grid instead of the
+    /// fill, and UPSIDE DOWN over the sphere (centre c, radius rad)
+    template<typename at_type>
+    auto draw_pad_plane(ImDrawList * dl, at_type const & at, pad_plane_t const & plane, ImVec2 c, float rad) -> void
+      {
+      compass_direction_t const & py{plane.axes[1]};
+      compass_direction_t const & pz{plane.axes[2]};
+      constexpr int points{48};
+      ImVec2 rim_points[points];
+      for(int k{}; k != points; ++k)
+        {
+        float const t{static_cast<float>(k) * 6.2831853f / static_cast<float>(points)};
+        float const co{std::cos(t)}, si{std::sin(t)};
+        rim_points[k] = at(compass_direction_t{co * py.x + si * pz.x, co * py.y + si * pz.y, co * py.z + si * pz.z});
+        }
+      // the pad's mark `< |||` in its plane, the head to the ship's nose on the pad: the angle it is seen at tells when to
+      // turn onto the pad's axis (Artur 2026-10-21)
+      auto const draw_mark = [&](ImU32 colour)
+        {
+        if(not plane.has_nose)
+          return;
+        compass_direction_t const & n{plane.nose};
+        compass_direction_t const & u{plane.axes[0]};
+        compass_direction_t const side{n.y * u.z - n.z * u.y, n.z * u.x - n.x * u.z, n.x * u.y - n.y * u.x};
+        auto const in_plane = [&](float a, float b) -> ImVec2
+          {
+          constexpr float scale{0.8f};  // in proportion to the dome (Artur 2026-10-21)
+          a *= scale;
+          b *= scale;
+          return at(compass_direction_t{a * n.x + b * side.x, a * n.y + b * side.y, a * n.z + b * side.z});
+          };
+        for(pad_mark_segment_t const & m: pad_mark)
+          dl->AddLine(in_plane(m.a, m.b), in_plane(m.c, m.d), colour, 9.f);
+        };
+      // half the disc's brightness, its hue kept: the mark stands out of the fill (Artur 2026-10-21)
+      ImU32 const mark_colour{col(mix_rgb(plane.rgb, 0x000000u, 0.5f), 255)};
+      if(not plane.upside_down)
+        {
+        dl->AddConvexPolyFilled(rim_points, points, col(plane.rgb, 72));
+        dl->AddPolyline(rim_points, points, col(plane.rgb, 200), ImDrawFlags_Closed, 3.f);
+        draw_mark(mark_colour);
+        return;
+        }
+      // the grid: chords along Y and across it every quarter radius, as the dome's base
+      auto const on = [&](float a, float b) -> ImVec2
+        { return at(compass_direction_t{a * py.x + b * pz.x, a * py.y + b * pz.y, a * py.z + b * pz.z}); };
+      ImU32 const wire{col(plane.rgb, 210)};
+      for(float const u: {-0.75f, -0.5f, -0.25f, 0.f, 0.25f, 0.5f, 0.75f})
+        {
+        float const h{std::sqrt(1.f - u * u)};
+        dl->AddLine(on(u, -h), on(u, h), wire, 2.f);
+        dl->AddLine(on(-h, u), on(h, u), wire, 2.f);
+        }
+      dl->AddPolyline(rim_points, points, col(plane.rgb, 255), ImDrawFlags_Closed, 4.f);
+      draw_mark(mark_colour);
+      char const * const warning{"UPSIDE DOWN"};
+      ImVec2 const size{sphere_font()->CalcTextSizeA(30.f, FLT_MAX, 0.f, warning)};
+      dl->AddText(sphere_font(), 30.f, ImVec2{c.x - size.x / 2.f, c.y - rad - size.y - 4.f}, col(plane.rgb, 255), warning);
+      }
+
+    ///\brief the pad's mark on the left sphere (Artur 2026-10-21): the right sphere's mark of the last frame, half the disc's
+    /// size around the centre, in this sphere's own projection (at), half opaque so that the dots show through it
+    template<typename at_type>
+    auto draw_left_mark(ImDrawList * dl, at_type const & at) -> void
+      {
+      pad_plane_t const & plane{last_pad_plane};
+      if(not plane.on or not plane.has_nose)
+        return;
+      compass_direction_t const & n{plane.nose};
+      compass_direction_t const & u{plane.axes[0]};
+      compass_direction_t const side{n.y * u.z - n.z * u.y, n.z * u.x - n.x * u.z, n.x * u.y - n.y * u.x};
+      auto const in_plane = [&](float a, float b) -> ImVec2
+        {
+        constexpr float scale{0.5f};
+        a *= scale;
+        b *= scale;
+        return at(compass_direction_t{a * n.x + b * side.x, a * n.y + b * side.y, a * n.z + b * side.z});
+        };
+      ImU32 const colour{col(mix_rgb(plane.rgb, 0x000000u, 0.5f), 128)};
+      for(pad_mark_segment_t const & m: pad_mark)
+        dl->AddLine(in_plane(m.a, m.b), in_plane(m.c, m.d), colour, 9.f);
+      }
+
     ///\brief the sphere seen from the front: the compass itself, larger; rings at 30 and 60 degrees off the nose
     auto draw_sphere_front(ImDrawList * dl, ImVec2 c, compass_direction_t const & d, bool have) -> void
       {
@@ -1511,6 +1925,7 @@ namespace edworld
       dl->AddLine(ImVec2{c.x - radius, c.y}, ImVec2{c.x + radius, c.y}, dim, 2.f);
       dl->AddLine(ImVec2{c.x, c.y - radius}, ImVec2{c.x, c.y + radius}, dim, 2.f);
       dl->AddCircle(c, radius, col(s.compass_colour_rim), 96, 5.f);
+      draw_left_mark(dl, [&](compass_direction_t const & v) { return ImVec2{c.x + v.x * radius, c.y - v.y * radius}; });
       if(have)
         {
         ImVec2 const p{c.x + d.x * radius, c.y - d.y * radius};
@@ -1568,6 +1983,26 @@ namespace edworld
       dl->AddTriangleFilled(ImVec2{n.x + ux * 22.f, n.y + uy * 22.f}, ImVec2{n.x - uy * 13.f, n.y + ux * 13.f}, ImVec2{n.x + uy * 13.f, n.y - ux * 13.f},
                             green);
       dl->AddText(sphere_font(), 30.f, ImVec2{n.x + 14.f, n.y - 40.f}, green, "NOSE");
+      last_pad_plane = pad_plane_t{};
+      // the target's axes (PoC, station_axes): its hologram's model X, Y, Z, Y the strongest; fainter on the far side
+      if(s.station_axes)
+        if(hologram_view_t const h{hologram_view()}; h.have)
+          {
+          // the pad's plane (PoC): a disc on the model's Y and Z, its colour from the tilt to the ship's
+          if(pad_plane_t const plane{last_pad_plane = pad_plane_now(h, d, have)}; plane.on)
+            draw_pad_plane(dl, at, plane, c, radius);
+          char const * const names[3]{"X", "Y", "Z"};
+          for(int i{}; i != 3; ++i)
+            {
+            compass_direction_t const & v{h.axes[static_cast<std::size_t>(i)]};
+            std::uint32_t const rgb{i == 1 ? s.compass_colour_target : s.compass_colour_rim};
+            ImU32 const line{facing(v) ? col(rgb) : col(mix_rgb(disc, rgb, 0.45f))};
+            ImVec2 const tip{at(v)};
+            dl->AddLine(o, tip, line, i == 1 ? 6.f : 3.f);
+            dl->AddCircleFilled(tip, i == 1 ? 9.f : 6.f, line, 16);
+            dl->AddText(sphere_font(), 28.f, ImVec2{tip.x + 10.f, tip.y - 14.f}, line, names[i]);
+            }
+          }
       auto const mark = [&](compass_direction_t const & v, ImU32 colour, bool ring)
         {
         ImVec2 const p{at(v)}, foot{at({v.x, 0.f, v.z})};
@@ -1587,7 +2022,8 @@ namespace edworld
 
 
     ///\brief the left sphere in the approach view: the lower half seen from above, straight down in the middle, the nose up
-    /// the picture; rings at 15, 30 and 60 degrees off the vertical, the rim the wings' plane
+    /// the picture; rings at 15, 30 and 60 degrees off the vertical, the rim the wings' plane. The target twice: a light
+    /// blue ring seen from above, and the white dot where the view ahead (draw_sphere_front) has it
     auto draw_sphere_top(ImDrawList * dl, ImVec2 c, compass_direction_t const & d, bool have) -> void
       {
       settings_t const & s{settings()};
@@ -1603,13 +2039,18 @@ namespace edworld
       ImU32 const nose{col(s.compass_colour_nose)};
       dl->AddLine(ImVec2{c.x, c.y}, ImVec2{c.x, c.y - 56.f}, nose, 4.f);
       dl->AddTriangleFilled(ImVec2{c.x, c.y - 74.f}, ImVec2{c.x - 11.f, c.y - 54.f}, ImVec2{c.x + 11.f, c.y - 54.f}, nose);
+      draw_left_mark(dl, [&](compass_direction_t const & v) { return ImVec2{c.x + v.x * radius, c.y - v.z * radius}; });
       if(have)
         {
+        // the target seen from above: a light blue ring (orange under the wings' plane's other side, the target above)
         ImVec2 const p{c.x + d.x * radius, c.y - d.z * radius};
-        if(d.y <= 0.f)
-          dl->AddCircleFilled(p, 15.f, col(s.compass_colour_target), 32);
+        dl->AddCircle(p, 18.f, col(d.y <= 0.f ? s.compass_colour_top : s.compass_colour_behind), 32, 5.f);
+        // the white dot where the view ahead has it (Artur 2026-10-21: it stays the orientation on the target)
+        ImVec2 const q{c.x + d.x * radius, c.y - d.y * radius};
+        if(d.z >= 0.f)
+          dl->AddCircleFilled(q, 15.f, col(s.compass_colour_target), 32);
         else
-          dl->AddCircle(p, 13.f, col(s.compass_colour_behind), 32, 5.f);
+          dl->AddCircle(q, 13.f, col(s.compass_colour_behind), 32, 5.f);
         }
       }
 
@@ -1666,11 +2107,16 @@ namespace edworld
       // the base tinted by the side the ship is on (Artur, 2026-10-08): green over it, red under it. The side is the target
       // under or over the wings, so a nose put down far from the pad turns it red; near a planet the pad is on the ground
       // and the ship can not be under it, so it stays green there (Artur, 2026-10-08)
+      // while the pad's plane shows (PoC) the base is light blue instead (Artur, 2026-10-21): green and red then mean
+      // the tilt to the pads alone
+      pad_plane_t const plane{last_pad_plane = s.station_axes ? pad_plane_now(hologram_view(), d, have) : pad_plane_t{}};
       std::uint32_t const floor_colour{mix_rgb(disc, grid, 0.5f)};
-      std::uint32_t const side{not have                  ? floor_colour
+      std::uint32_t const side{plane.on                  ? s.compass_colour_pad_base
+                               : not have                ? floor_colour
                                : not full or d.y <= 0.f ? s.compass_colour_ok
                                                          : s.compass_colour_wrong};
-      dl->AddConvexPolyFilled(base, steps, col(have ? mix_rgb(floor_colour, side, 0.35f) : floor_colour, full ? 190 : 150));
+      dl->AddConvexPolyFilled(base, steps,
+                              col(have or plane.on ? mix_rgb(floor_colour, side, 0.35f) : floor_colour, full ? 190 : 150));
       if(full)
         {
         // the plane's grid: chords along and across the nose every quarter radius
@@ -1685,11 +2131,16 @@ namespace edworld
       // the target in the middle of the base, as a small pad
       ImU32 const target{col(s.compass_colour_target)};
       ImVec2 const o{at({0.f, 0.f, 0.f})};
-      {
-      constexpr float k{0.16f};
-      ImVec2 const pad[4]{at({-k, 0.f, -k}), at({k, 0.f, -k}), at({k, 0.f, k}), at({-k, 0.f, k})};
-      dl->AddPolyline(pad, 4, target, ImDrawFlags_Closed, 3.f);
-      }
+      // drawn again over the pad's plane and its mark: the pad to land on stays on top (Artur 2026-10-21)
+      auto const draw_target_pad = [&](bool outlined)
+        {
+        constexpr float k{0.16f};
+        ImVec2 const pad[4]{at({-k, 0.f, -k}), at({k, 0.f, -k}), at({k, 0.f, k}), at({-k, 0.f, k})};
+        if(outlined)
+          dl->AddPolyline(pad, 4, col(0x000000u, 200), ImDrawFlags_Closed, 7.f);
+        dl->AddPolyline(pad, 4, target, ImDrawFlags_Closed, 3.f);
+        };
+      draw_target_pad(false);
       // the dome: rings at 30 and 60 degrees over the base, two half meridians, the top marked
       for(float const a: {30.f, 60.f})
         {
@@ -1704,6 +2155,12 @@ namespace edworld
       dl->AddLine(ImVec2{top.x - 10.f, top.y}, ImVec2{top.x + 10.f, top.y}, meridian, 2.f);
       dl->AddLine(ImVec2{top.x, top.y - 10.f}, ImVec2{top.x, top.y + 10.f}, meridian, 2.f);
       dl->AddPolyline(base, steps, col(rim), ImDrawFlags_Closed, 5.f);
+      // the pad's plane over the base: level with the pads, the two coincide
+      if(plane.on)
+        {
+        draw_pad_plane(dl, at, plane, c, radius);
+        draw_target_pad(true);
+        }
       // the nose: an arrow forward on the base
       ImU32 const green{col(s.compass_colour_nose)};
       ImVec2 const n{at({0.f, 0.f, 1.f})};
@@ -1773,14 +2230,18 @@ namespace edworld
       // target low under the wings
       bool const normal_flight{(f.flags & 0x13u) == 0 and (f.flags2 & (1ull << 12)) == 0};
       bool const was_approach{cs.approach};
+      // a pad given by the tower is near too, with no destination chosen (Artur, 2026-10-21)
       bool const close{s.compass_approach_km <= 0.f
                       or near_target(f.has_position, f.has_place, f.latitude, f.longitude, f.altitude, f.place_latitude,
-                                     f.place_longitude, f.planet_radius, f.destination_body, f.flags, s.compass_approach_km)};
-      cs.approach = s.compass_approach_below > 0.f and approach_view(cs.approach, normal_flight, have, close, a.up, s.compass_approach_below);
+                                     f.place_longitude, f.planet_radius, f.destination_body, f.flags, s.compass_approach_km)
+                      or pad_granted(f.docking_granted_ms, unix_now() * 1000)};
+      cs.approach = s.compass_approach_below > 0.f
+                    and approach_view(cs.approach, normal_flight, have, close, f.has_place, a.up, s.compass_approach_below);
       if(cs.approach != was_approach)
         log_line("compass: the approach view %s (the target %.1f degrees below the wings, %s, %s)", cs.approach ? "on" : "off",
                  static_cast<double>(-a.up), close ? "near" : "not near", have ? "read" : "no fresh reading");
-      bool const cut{cs.approach or (normal_flight and f.has_position)};
+      // the right sphere's dome with the left sphere's view from above, never alone (Artur 2026-10-20: both alike)
+      bool const cut{cs.approach};
       compass_reading_t const & sm{cs.approach and cs.have_smooth ? cs.smooth : c};
       compass_direction_t const dp{compass_direction(sm.x, sm.y, s.compass_approach_radius, sm.filled)};
       pad_offsets_t const po{pad_offsets(dp)};
@@ -1873,6 +2334,17 @@ namespace edworld
       bool const planet_lines{have and f.has_position and not grounded};
       if(alt[0])
         std::snprintf(c3, sizeof c3, "%s%s%s", alt, climb[0] ? "  " : "", climb);
+      // edworld_eht's notes under the right sphere's lines (t1_note, model_note), the T1 one first
+      auto const notes = [&](ImDrawList * dl, float width, float y) -> void
+        {
+        ULONGLONG const now{GetTickCount64()};
+        for(sphere_note_t const * n: {&t1_note, &model_note})
+          if(n->text[0] and now < n->until)
+            {
+            ImU32 const c{n->colour == 0 ? green_line : n->colour == 1 ? col(s.compass_colour_wrong) : col(0x9aa0a6u)};
+            y += sphere_line(dl, 0.f, width, y, 44.f, c, n->text);
+            }
+        };
       ImGui::SetCurrentContext(r.imgui);
       ImGuiIO & io{ImGui::GetIO()};
       io.DisplaySize = ImVec2{static_cast<float>(sphere_w), static_cast<float>(sphere_h)};
@@ -1920,12 +2392,15 @@ namespace edworld
               draw_sphere_dome(dl, centre, dp, have, not f.has_position);
             else
               draw_sphere_oblique(dl, centre, d, have, f.has_position and not f.has_place, should);
+            float y_band{8.f};
             if(not f.has_position and not grounded)
               {
-              float const used{sphere_line(dl, 0.f, above_w, 8.f, 66.f, yellow, c1, c2_colour, c2)};
+              y_band += sphere_line(dl, 0.f, above_w, y_band, 66.f, yellow, c1, c2_colour, c2) + 4.f;
               if(c3[0])
-                sphere_line(dl, 0.f, above_w, 8.f + used + 4.f, 38.f, yellow, c3);
+                y_band += sphere_line(dl, 0.f, above_w, y_band, 38.f, yellow, c3) + 4.f;
               }
+            if constexpr(with_eht)
+              notes(dl, above_w, y_band);
             }
           }
         else
@@ -1958,8 +2433,10 @@ namespace edworld
               if(c2[0])
                 y += sphere_line(dl, 0.f, below_w, y, 72.f, c2_colour, c2);
               if(c3[0])
-                sphere_line(dl, 0.f, below_w, y + 4.f, 40.f, yellow, c3);
+                y += sphere_line(dl, 0.f, below_w, y + 4.f, 40.f, yellow, c3) + 4.f;
               }
+            if constexpr(with_eht)
+              notes(dl, below_w, y);
             }
           }
         ImGui::Render();
@@ -2683,5 +3160,204 @@ namespace edworld
       cs.told_quads = true;
       log_line("compass: spheres first drawn as quads on the two 2048x1280 panels (instances from %u)", start_instance);
       }
+    }
+
+  // ---- the pad's text (PoC): samples of the tower's box for learning its digits ----
+  namespace
+    {
+    struct pad_text_state_t
+      {
+      ID3D11Device * device{};
+      ID3D11Texture2D * copy{};
+      DXGI_FORMAT copy_format{};
+      bool copied{};
+      std::uint64_t copied_frame{};
+      bool shows{};  ///< the box showed at the last reading
+      std::uint32_t samples{};
+      std::vector<std::uint8_t> kept;  ///< the alpha of the last sample written (pad_box_width x pad_box_height)
+      ULONGLONG written_ms{};          ///< when it was written: one sample a second at most (the text fades in)
+      ULONGLONG burst_until_ms{};      ///< a sample a second until then: a countdown's last digit runs through 0..9
+      pad_text_vote_t vote;            ///< the notice's pad read twice alike (pad_text_read.h)
+      ULONGLONG shown_ms{};            ///< when the box showed this time
+      bool taken_here{};               ///< a pad was taken from the notice since the box showed
+      bool unsure_told{};              ///< an unsure notice told (and kept) since the box showed
+      std::uint32_t given_pad{};       ///< the pad last taken from the notice and its grant (unix ms)
+      std::int64_t given_ms{};
+      ULONGLONG compare_from_ms{};     ///< edworld_eht: since then the taken pad waits for the data source's, 0 = none
+      };
+
+    pad_text_state_t pts;
+    pad_text_bitmap_t pad_text_bits;  ///< the box's text pixels (render thread only)
+    constexpr std::uint64_t pad_text_every{30};  ///< frames between copies: about two a second
+    constexpr ULONGLONG pad_text_compare_ms{15000};
+    constexpr ULONGLONG pad_unsure_after_ms{3000};  ///< a notice still unsure this long after the box showed is told  ///< edworld_eht: how long the taken pad waits for the data source's
+
+    ///\brief the notice read from the box's copy: a pad read twice alike is given (edworld alone: as the data source's;
+    /// edworld_eht: compared with the data source's, one log line a grant). A new grant: pad_text_new_grant
+    auto read_pad_text(std::uint8_t const * pixels, std::uint32_t pitch, bool shows) -> pad_text_read_t
+      {
+      ULONGLONG const now{GetTickCount64()};
+      if constexpr(with_eht)
+        if(pts.compare_from_ms != 0u)
+          {
+          std::uint32_t const source{flight().docking_pad};
+          if(source != 0u)
+            {
+            log_line("pad text: read pad %u, the data source's %u - %s", pts.given_pad, source,
+                     source == pts.given_pad ? "agrees" : "DEVIATES");
+            pts.compare_from_ms = 0u;
+            }
+          else if(now - pts.compare_from_ms >= pad_text_compare_ms)
+            {
+            log_line("pad text: read pad %u, the data source gave none in %llu s", pts.given_pad,
+                     static_cast<unsigned long long>(pad_text_compare_ms / 1000u));
+            pts.compare_from_ms = 0u;
+            }
+          }
+      if(not shows)
+        {
+        pts.vote = pad_text_vote_t{};
+        return {};
+        }
+      pad_text_bitmap(pixels, pitch, pad_text_bits);
+      pad_text_read_t const notice{pad_text_read(pad_text_bits)};
+      std::uint32_t const taken{pts.vote.add(notice)};
+      if(taken == 0u)
+        return notice;
+      pts.taken_here = true;
+      std::int64_t const granted_ms{(unix_now() - (600 - static_cast<std::int64_t>(notice.seconds_left))) * 1000};
+      if(not pad_text_new_grant(taken, granted_ms, pts.given_pad, pts.given_ms))
+        return notice;
+      pts.given_pad = taken;
+      pts.given_ms = granted_ms;
+      log_line("pad text: pad %u read from the notice, %u:%02u left", taken, notice.seconds_left / 60u, notice.seconds_left % 60u);
+      pad_text_grant(taken, granted_ms);
+      if constexpr(with_eht)
+        pts.compare_from_ms = now;
+      return notice;
+      }
+
+    ///\brief the box's area as read, into edworld_padtext (a sample of the digits), and its alpha kept for pad_box_changed
+    auto write_pad_sample(D3D11_MAPPED_SUBRESOURCE const & m, std::uint32_t source_pad, bool burst) -> void
+      {
+      pts.kept.resize(static_cast<std::size_t>(pad_box_width) * pad_box_height);
+      for(std::int32_t y{}; y != pad_box_height; ++y)
+        for(std::int32_t x{}; x != pad_box_width; ++x)
+          pts.kept[static_cast<std::size_t>(y) * pad_box_width + x]
+            = static_cast<std::uint8_t const *>(m.pData)[static_cast<std::size_t>(y) * m.RowPitch + static_cast<std::size_t>(x) * 4u + 3u];
+      pts.written_ms = GetTickCount64();
+      if(not burst)
+        pts.burst_until_ms = pts.written_ms + pad_burst_ms;
+      CreateDirectoryW((settings().dir + L"\\edworld_padtext").c_str(), nullptr);
+      wchar_t name[MAX_PATH];
+      std::swprintf(name, MAX_PATH, L"%ls\\edworld_padtext\\pad_%lld_src%u_%dx%d_pitch%u.raw", settings().dir.c_str(),
+                    static_cast<long long>(unix_now()), source_pad, pad_box_width, pad_box_height, m.RowPitch);
+      if(std::FILE * f{_wfopen(name, L"wb")})
+        {
+        std::fwrite(m.pData, 1, static_cast<std::size_t>(m.RowPitch) * pad_box_height, f);
+        std::fclose(f);
+        ++pts.samples;
+        log_line("pad text: %s; sample %u written to %S (the data source's pad %u)", burst ? "a second on" : "a text in the box",
+                 pts.samples, name, source_pad);
+        }
+      else
+        log_line("pad text: a text in the box; its sample could not be written to %S", name);
+      }
+    }  // namespace
+
+  auto panel_pad_text(ID3D11DeviceContext * ctx, ID3D11Device * device, std::uint64_t frame) noexcept -> void
+    {
+    if(settings().pad_text_samples == 0 and settings().pad_text_read == 0)
+      return;
+    if(frame == pts.copied_frame or (not pts.copied and frame % pad_text_every != 0))
+      return;
+    D3D11_TEXTURE2D_DESC d{};
+    ID3D11Texture2D * const tex{surface_sampled(ctx, 2200u, 1800u, d)};
+    if(not tex)
+      return;
+    if(pts.device != device or (pts.copy and pts.copy_format != d.Format))
+      {
+      release(pts.copy);
+      pts = pad_text_state_t{};
+      pts.device = device;
+      }
+    if(not pts.copy)
+      {
+      D3D11_TEXTURE2D_DESC c{};
+      c.Width = static_cast<UINT>(pad_box_width);
+      c.Height = static_cast<UINT>(pad_box_height);
+      c.MipLevels = c.ArraySize = 1;
+      c.Format = d.Format;
+      c.SampleDesc.Count = 1;
+      c.Usage = D3D11_USAGE_STAGING;
+      c.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+      if(FAILED(device->CreateTexture2D(&c, nullptr, &pts.copy)) or not pts.copy)
+        {
+        tex->Release();
+        return;
+        }
+      pts.copy_format = d.Format;
+      }
+    if(pts.copied)
+      {
+      D3D11_MAPPED_SUBRESOURCE m{};
+      HRESULT const hr{ctx->Map(pts.copy, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &m)};
+      if(hr == DXGI_ERROR_WAS_STILL_DRAWING)
+        {
+        tex->Release();
+        return;
+        }
+      pts.copied = false;
+      if(SUCCEEDED(hr) and m.pData)
+        {
+        auto const * const pixels{static_cast<std::uint8_t const *>(m.pData)};
+        bool const shows{pad_box_present(pixels, m.RowPitch, pad_box_width, pad_box_height)};
+        ULONGLONG const now{GetTickCount64()};
+        if(shows and not pts.shows)
+          {
+          pts.shown_ms = now;
+          pts.taken_here = pts.unsure_told = false;
+          }
+        pad_text_read_t const notice{settings().pad_text_read ? read_pad_text(pixels, m.RowPitch, shows) : pad_text_read_t{}};
+        // a tower's notice whose number stays unsure while it fades in and after (a case the templates have not met):
+        // no pad from it; told once a box, and its picture kept for tools/pad_text_digits.py
+        if(shows and notice.notice and not notice.sure and not pts.taken_here and not pts.unsure_told
+           and now - pts.shown_ms >= pad_unsure_after_ms)
+          {
+          pts.unsure_told = true;
+          log_line("pad text: a notice of the tower's, its number unsure (read %u, the least margin %u %%): no pad from it",
+                   notice.pad, notice.margin);
+          if(settings().pad_text_unsure_sample and not settings().pad_text_samples)
+            write_pad_sample(m, flight().docking_pad, false);
+          }
+        bool const changed{shows and pts.shows and now - pts.written_ms >= 1000u
+                           and pad_box_changed(pixels, m.RowPitch, pad_box_width, pad_box_height, pts.kept.empty() ? nullptr : pts.kept.data())};
+        if(settings().pad_text_samples)
+          {
+          if(shows and (not pts.shows or changed))
+            write_pad_sample(m, flight().docking_pad, false);
+          else if(shows and pad_burst_due(now, pts.written_ms, pts.burst_until_ms))
+            write_pad_sample(m, flight().docking_pad, true);
+          }
+        if(not shows and pts.shows)
+          log_line("pad text: the box is gone");
+        pts.shows = shows;
+        ctx->Unmap(pts.copy, 0);
+        }
+      tex->Release();
+      return;
+      }
+    D3D11_BOX const area{static_cast<UINT>(pad_box_x), static_cast<UINT>(pad_box_y), 0, static_cast<UINT>(pad_box_x + pad_box_width),
+                         static_cast<UINT>(pad_box_y + pad_box_height), 1};
+    ctx->CopySubresourceRegion(pts.copy, 0, 0, 0, 0, tex, 0, &area);
+    pts.copied = true;
+    pts.copied_frame = frame;
+    tex->Release();
+    }
+
+  auto sphere_note_new_model(std::uint32_t count) noexcept -> void
+    {
+    model_note = sphere_note_t{{}, 2, GetTickCount64() + model_note_ms};
+    std::snprintf(model_note.text, sizeof model_note.text, "NEW MODEL %u", count);
     }
   }  // namespace edworld

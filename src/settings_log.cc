@@ -85,6 +85,8 @@ namespace edworld
 #if defined(EDWORLD_EHT)
       else if(key == "shm_dir")
         current.shm_dir = widen(value);
+      else if(key == "shader_catalog")
+        current.shader_catalog = to_uint(value, current.shader_catalog);
 #endif
       else if(key == "log_interval_ms")
         current.log_interval_ms = to_uint(value, current.log_interval_ms);
@@ -221,6 +223,8 @@ namespace edworld
                                      : name == "text_right" ? &current.compass_colour_text_right
                                      : name == "ok"         ? &current.compass_colour_ok
                                      : name == "wrong"      ? &current.compass_colour_wrong
+                                     : name == "pad_base"   ? &current.compass_colour_pad_base
+                                     : name == "top"        ? &current.compass_colour_top
                                                             : nullptr};
         if(auto const v{parse_hash(value)}; target and v and *v <= 0xffffffu)
           *target = static_cast<std::uint32_t>(*v);
@@ -257,17 +261,32 @@ namespace edworld
         current.compass_log_ms = to_uint(value, current.compass_log_ms);
       else if(key == "edsm")
         current.edsm = value == "1" or value == "true";
+      else if(key == "station_axes")
+        current.station_axes = to_uint(value, current.station_axes);
+      else if(key == "pad_tilt_green_deg")
+        current.pad_tilt_green_deg = to_float(value, current.pad_tilt_green_deg);
+      else if(key == "pad_tilt_red_deg")
+        current.pad_tilt_red_deg = to_float(value, current.pad_tilt_red_deg);
+      else if(key == "pad_text_samples")
+        current.pad_text_samples = to_uint(value, current.pad_text_samples);
+      else if(key == "pad_text_read")
+        current.pad_text_read = to_uint(value, current.pad_text_read);
+      else if(key == "pad_text_unsure_sample")
+        current.pad_text_unsure_sample = to_uint(value, current.pad_text_unsure_sample);
+      else if(key == "station_vs")
+        current.station_vs = parse_hash(value).value_or(0);
       else if(key == "log_all_vs")
         current.log_all_vs = value == "1" or value == "true";
-      else if(key == "watch_vs")
+      else if(key == "watch_vs" or key == "dump_vs")
         {
-        current.watch_vs.clear();
+        std::vector<std::uint64_t> & list{key == "watch_vs" ? current.watch_vs : current.dump_vs};
+        list.clear();
         std::string_view rest{value};
         while(not rest.empty())
           {
           auto const comma{rest.find(',')};
           if(auto const h{parse_hash(rest.substr(0, comma))}; h)
-            current.watch_vs.push_back(*h);
+            list.push_back(*h);
           if(comma == std::string_view::npos)
             break;
           rest.remove_prefix(comma + 1);

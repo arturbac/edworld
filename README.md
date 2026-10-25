@@ -12,7 +12,7 @@ Left, a Federation destination: its emblem drawn by edworld in place of the wron
 independent one: the phoenix in gold. Under each panel the destination's factions by influence, the controlling one
 starred, with the trend at the last tick and their states.
 
-## Beta: navballs, testers wanted
+## Navballs, testers wanted
 
 ![Navballs beside the radar: the target's direction from the front (left) and from behind (right)](doc/images/navballs.jpg)
 
@@ -32,9 +32,13 @@ on the spheres alone.
 Version 1.1.0-beta.3 reads the compass the game's update of 2026-10-20 brought (a cyan dot on an orange compass),
 in the game's own colours and in any EDHM theme.
 
+Version 1.1.0 adds the pad's plane: after the tower gives a pad, the right sphere shows the pads' plane
+as a disc coloured by the ship's tilt to it, with the pad's mark at orbital outposts, flat on a planet, and each pad
+by its number at carriers.
+
 The spheres held their places in the Kestrel, the Anaconda, the Panther Clipper Mk II, the Mandalay and the Type-8.
-I need testers who fly other ships: install the
-beta (`doc/users.md`), then for each ship send me, in an [issue](https://github.com/arturbac/edworld/issues), the
+I need testers who fly other ships: install
+edworld (`doc/users.md`), then for each ship send me, in an [issue](https://github.com/arturbac/edworld/issues), the
 ship's type, a screenshot with both spheres and edworld's log (`edworld.log` or `edworld_eht.log`). The log records
 where each sphere was placed and how large (`compass: the left sphere's centre at ...`), which is what I need to
 place them right in every cockpit. `compass = 0` in the ini turns the navballs off.
@@ -46,7 +50,7 @@ Checked at 9000×2160 only; at 1920×1080 or lower expect little. See the warnin
 - Developers: [doc/developers.md](doc/developers.md): how it works in the game process, build and test, what was
   found in the game, and how to write a d3d11 plugin of your own on the same pattern.
 
-Version 1.0.0, beta 1.1.0-beta.3 ([CHANGELOG.md](CHANGELOG.md)). Observing is read-only: every hook calls the game's call through
+Version 1.1.0 ([CHANGELOG.md](CHANGELOG.md)). Observing is read-only: every hook calls the game's call through
 unchanged; the jump panel's emblem and list and the navballs are the only things edworld changes in what the game draws. edworld runs on its own as
 the game's `d3d11.dll`, passing the calls on to one other d3d11 mod (`next`), or through
 [edloader](https://github.com/arturbac/edloader) together with several; the release zip carries edloader in its

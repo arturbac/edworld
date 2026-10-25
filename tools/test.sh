@@ -15,7 +15,7 @@ need EDWORLD_WINEPREFIX "a wine prefix kept between runs"
 source "$MSVC_WINE_ENV"
 cd "$HERE"
 mkdir -p build/test
-for s in panel_vs:vs_5_0 other_vs:vs_5_0 found_vs:vs_5_0 panel_ps:ps_5_0; do
+for s in panel_vs:vs_5_0 other_vs:vs_5_0 found_vs:vs_5_0 panel_ps:ps_5_0 catalog_cs:cs_5_0; do
   n=${s%%:*}; t=${s##*:}
   WINEDEBUG=-all wine "$FXC" /nologo /T $t /E main /Vn g_$n /Fh build/test/$n.h test/$n.hlsl >/dev/null
 done
@@ -44,7 +44,7 @@ run_variant() {  # $1 = edworld | edworld_eht; sets rc on failure
   echo "=== $V ($RUN)"
   pushd "$RUN" >/dev/null
   set +e
-  WINEDEBUG=-all WINEDLLOVERRIDES="d3d11=n,b" wine test_app.exe
+  EDWORLD_TEST_CATALOG=1 WINEDEBUG=-all WINEDLLOVERRIDES="d3d11=n,b" wine test_app.exe
   r=$?; [[ $r -eq 0 ]] || rc=1
   local sessions=2
   if [[ $V == edworld_eht ]]; then

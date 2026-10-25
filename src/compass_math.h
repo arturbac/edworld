@@ -306,14 +306,18 @@ namespace edworld
                          std::acos(std::clamp(down, -1.f, 1.f)) * compass_degrees};
     }
 
-  ///\brief whether the approach view shows: on once the target is below degrees or more under the wings' plane in
-  /// normal flight and close (near_target; not "near", a macro of the Windows headers), off again once it rises above below - 10, the ship leaves normal flight,
-  /// the target is no longer near or the reading went stale (have: a fresh one, compass_fresh)
+  ///\brief whether the approach view shows (both spheres from above): in normal flight with a fresh reading (have,
+  /// compass_fresh) and the target close (near_target; not "near", a macro of the Windows headers). By a station or a
+  /// carrier (by_angle false) that is enough: its pad stands ahead until the last metres. To a place on a body (by_angle)
+  /// the target also has to stand below degrees or more under the wings' plane, and it stays on down to below - 10.
   [[nodiscard]]
-  constexpr auto approach_view(bool was_on, bool normal_flight, bool have, bool close, float up, float below) noexcept -> bool
+  constexpr auto approach_view(bool was_on, bool normal_flight, bool have, bool close, bool by_angle, float up, float below) noexcept
+    -> bool
     {
     if(not normal_flight or not have or not close)
       return false;
+    if(not by_angle)
+      return true;
     return was_on ? up <= -(below - 10.f) : up <= -below;
     }
 

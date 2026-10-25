@@ -341,4 +341,69 @@ namespace edworld
     {
     return static_cast<float>(l.factions + l.source) * line + footer + 2.f * pad;
     }
+
+  // ---- the pad's text (PoC, 2026-10-21) ----
+  // After the tower gives a pad, the 2200x1800 HUD surface carries a grey box with "PROCEED TO LANDING PAD n - m:ss" in
+  // two lines (in the game's language): x 1170..1579, y 819..899 in three frame dumps of two commanders (Vera Military
+  // Outpost, Brewer Site, a Coriolis), and none before the grant. Its fill is a dark grey of alpha 64..191 under white text.
+  inline constexpr std::int32_t pad_box_x{1170}, pad_box_y{819}, pad_box_width{410}, pad_box_height{81};
+
+  ///\brief whether the pad's box shows in an area of RGBA8 pixels (row pitch in bytes) copied from the box's place: at
+  /// least `min_share` of the pixels are the box's fill (alpha 64..191, red under 32); none show on an empty surface
+  [[nodiscard]]
+  inline auto pad_box_present(std::uint8_t const * pixels, std::uint32_t pitch, std::int32_t width, std::int32_t height,
+                              float min_share = 0.6f) noexcept -> bool
+    {
+    if(not pixels or width <= 0 or height <= 0)
+      return false;
+    std::int64_t fill{};
+    for(std::int32_t y{}; y != height; ++y)
+      {
+      std::uint8_t const * row{pixels + static_cast<std::size_t>(y) * pitch};
+      for(std::int32_t x{}; x != width; ++x)
+        {
+        std::uint8_t const * p{row + static_cast<std::size_t>(x) * 4u};
+        if(p[3] >= 64u and p[3] <= 191u and p[0] < 32u)
+          ++fill;
+        }
+      }
+    return static_cast<float>(fill) >= min_share * static_cast<float>(static_cast<std::int64_t>(width) * height);
+    }
+
+  ///\brief after each new text in the box a sample a second for this long: the countdown under the pad's number ("9:59")
+  /// runs its last digit through all ten, in the number's own font (2026-10-21)
+  inline constexpr std::uint64_t pad_burst_ms{10500};
+
+  ///\brief a second sample of a burst is due: a second or more since the last one, before the burst's end
+  [[nodiscard]]
+  constexpr auto pad_burst_due(std::uint64_t now_ms, std::uint64_t written_ms, std::uint64_t burst_until_ms) noexcept -> bool
+    {
+    return now_ms < burst_until_ms and now_ms - written_ms >= 1000u;
+    }
+
+  ///\brief whether the box's text differs from the one kept (its alpha, width x height bytes, row by row): at least
+  /// `min_share` of the pixels differ in alpha by more than 48. The box stays up while its text changes (Coppel City,
+  /// 2026-10-21: "DOCKING REQUEST SENT." became the pad's text in the same box), so each new text is a new sample
+  [[nodiscard]]
+  inline auto pad_box_changed(std::uint8_t const * pixels, std::uint32_t pitch, std::int32_t width, std::int32_t height,
+                              std::uint8_t const * kept_alpha, float min_share = 0.02f) noexcept -> bool
+    {
+    if(not pixels or width <= 0 or height <= 0)
+      return false;
+    if(not kept_alpha)
+      return true;
+    std::int64_t differ{};
+    for(std::int32_t y{}; y != height; ++y)
+      {
+      std::uint8_t const * row{pixels + static_cast<std::size_t>(y) * pitch};
+      std::uint8_t const * kept{kept_alpha + static_cast<std::size_t>(y) * static_cast<std::size_t>(width)};
+      for(std::int32_t x{}; x != width; ++x)
+        {
+        int const a{row[static_cast<std::size_t>(x) * 4u + 3u]}, b{kept[x]};
+        if(a - b > 48 or b - a > 48)
+          ++differ;
+        }
+      }
+    return static_cast<float>(differ) >= min_share * static_cast<float>(static_cast<std::int64_t>(width) * height);
+    }
   }  // namespace edworld

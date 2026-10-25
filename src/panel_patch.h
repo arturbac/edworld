@@ -22,4 +22,10 @@ namespace edworld
   /// 2048x1280 surface (settings: compass_spheres)
   auto panel_compass_after(ID3D11DeviceContext * ctx, std::uint64_t frame, std::uint32_t index_count, std::uint32_t start_index,
                            std::int32_t base_vertex, std::uint32_t start_instance) noexcept -> void;
+  ///\brief called at a watched panel draw (PoC): when the draw samples the 2200x1800 HUD surface, the tower's pad box is
+  /// looked for about twice a second and each new text in it is written as a sample (settings: pad_text_samples)
+  auto panel_pad_text(ID3D11DeviceContext * ctx, ID3D11Device * device, std::uint64_t frame) noexcept -> void;
+  ///\brief edworld_eht: a model of `count` indices not in the registry was sampled - NEW MODEL under the right sphere for a
+  /// while (render thread)
+  auto sphere_note_new_model(std::uint32_t count) noexcept -> void;
   }  // namespace edworld
