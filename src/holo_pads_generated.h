@@ -10,9 +10,9 @@ namespace edworld
     {13083u, "Hahm Forge", 1u, 0.0f, {0.390f, -0.065f, 0.918f}},  // 2 of 2 docking(s), last 2026-10-24T11:43:43Z
     {13083u, "Painter Hydroponics", 3u, 0.0f, {0.087f, -0.033f, 0.996f}},  // 1 of 1 docking(s), last 2026-10-24T06:43:08Z
     {13083u, "Planetary Construction Site: Bauer Command", 1u, 0.0f, {-0.087f, -0.090f, -0.992f}},  // 1 of 1 docking(s), last 2026-10-22T20:08:29Z
-    {13083u, "Planetary Construction Site: Biggs Base", 1u, 0.0f, {-0.087f, -0.090f, -0.992f}},  // 4 of 4 docking(s), last 2026-10-25T19:25:02Z
-    {13083u, "Planetary Construction Site: Biggs Base", 2u, 0.0f, {-0.087f, -0.090f, -0.992f}},  // 5 of 5 docking(s), last 2026-10-25T17:11:34Z
-    {13083u, "Planetary Construction Site: Biggs Base", 3u, 0.0f, {-0.087f, -0.090f, -0.992f}},  // 6 of 6 docking(s), last 2026-10-25T19:39:08Z
+    {13083u, "Planetary Construction Site: Biggs Base", 1u, 0.0f, {-0.087f, -0.090f, -0.992f}},  // 6 of 6 docking(s), last 2026-10-25T21:29:05Z
+    {13083u, "Planetary Construction Site: Biggs Base", 2u, 0.0f, {-0.087f, -0.090f, -0.992f}},  // 8 of 9 docking(s), last 2026-10-26T05:24:04Z
+    {13083u, "Planetary Construction Site: Biggs Base", 3u, 0.0f, {-0.087f, -0.090f, -0.992f}},  // 13 of 14 docking(s), last 2026-10-26T05:29:44Z
     {13083u, "Planetary Construction Site: Bischoff Legacy", 1u, 0.0f, {-0.087f, -0.090f, -0.992f}},  // 7 of 8 docking(s), last 2026-10-23T20:41:37Z
     {13083u, "Planetary Construction Site: Bischoff Legacy", 3u, 0.0f, {-0.996f, -0.003f, 0.087f}},  // 1 of 1 docking(s), last 2026-10-23T03:30:37Z
     {13083u, "Planetary Construction Site: Christensson Biological Forum", 7u, 0.0f, {0.643f, -0.003f, -0.766f}},  // 1 of 1 docking(s), last 2026-10-23T03:36:19Z
@@ -24,18 +24,19 @@ namespace edworld
     {73389u, "W1V-NXM", 7u, 0.0f, {-0.004f, -0.176f, 0.984f}},  // 1 of 1 docking(s), last 2026-10-24T21:05:15Z
     {73389u, "W1V-NXM", 11u, 22.5f, {0.079f, -0.036f, 0.996f}},  // 1 of 1 docking(s), last 2026-10-24T20:57:50Z
     {73389u, "W1V-NXM", 13u, -22.5f, {0.082f, 0.031f, 0.996f}},  // 1 of 1 docking(s), last 2026-10-24T20:46:51Z
-    {84969u, "PRNH", 1u, 24.0f, {0.046f, -0.116f, 0.992f}},  // 1 of 1 docking(s), last 2026-10-22T19:57:35Z
-    {84969u, "PRNH", 2u, 24.0f, {0.046f, -0.116f, 0.992f}},  // 1 of 2 docking(s), last 2026-10-24T19:26:23Z
+    {84969u, "Orbital Construction Site: Altuna City", 1u, 0.0f, {0.087f, -0.090f, 0.992f}},  // 1 of 1 docking(s), last 2026-10-26T10:50:10Z
+    {84969u, "PRNH", 1u, 24.0f, {0.046f, -0.116f, 0.992f}},  // 2 of 2 docking(s), last 2026-10-25T21:19:34Z
+    {84969u, "PRNH", 2u, 24.0f, {0.046f, -0.116f, 0.992f}},  // 2 of 3 docking(s), last 2026-10-26T04:50:48Z
     {84969u, "PRNH", 4u, 24.0f, {0.046f, -0.116f, 0.992f}},  // 1 of 1 docking(s), last 2026-10-23T04:00:35Z
-    {84969u, "PRNH", 5u, 24.0f, {0.046f, -0.116f, 0.992f}},  // 3 of 3 docking(s), last 2026-10-23T21:57:57Z
-    {84969u, "PRNH", 7u, 24.0f, {0.046f, -0.116f, 0.992f}},  // 1 of 1 docking(s), last 2026-10-23T22:07:44Z
-    {84969u, "PRNH", 18u, -24.0f, {0.115f, -0.050f, 0.992f}},  // 3 of 3 docking(s), last 2026-10-23T17:46:45Z
+    {84969u, "PRNH", 5u, 24.0f, {0.046f, -0.116f, 0.992f}},  // 5 of 5 docking(s), last 2026-10-26T10:52:29Z
+    {84969u, "PRNH", 7u, 24.0f, {0.046f, -0.116f, 0.992f}},  // 2 of 2 docking(s), last 2026-10-26T05:09:42Z
+    {84969u, "PRNH", 18u, -24.0f, {0.115f, -0.050f, 0.992f}},  // 4 of 4 docking(s), last 2026-10-25T21:31:58Z
     {84969u, "PRNH", 20u, -24.0f, {0.107f, -0.030f, 0.994f}},  // 2 of 2 docking(s), last 2026-10-24T20:05:41Z
     {84969u, "PRNH", 21u, -24.0f, {0.115f, -0.050f, 0.992f}},  // 2 of 2 docking(s), last 2026-10-23T20:25:42Z
-    {84969u, "PRNH", 24u, -24.0f, {0.096f, -0.003f, 0.995f}},  // 1 of 1 docking(s), last 2026-10-23T20:33:45Z
+    {84969u, "PRNH", 24u, -24.0f, {0.109f, -0.034f, 0.993f}},  // 3 of 3 docking(s), last 2026-10-26T10:43:58Z
     {84969u, "PRNH", 30u, -46.0f, {0.064f, 0.060f, 0.996f}},  // 1 of 1 docking(s), last 2026-10-24T19:48:39Z
-    {13083u, "", 1u, 0.0f, {-0.087f, -0.090f, -0.992f}, site_kind_e::construction_site},  // any of the construction sites: 4 stations, 15 docking(s)
-    {13083u, "", 2u, 0.0f, {-0.087f, -0.090f, -0.992f}, site_kind_e::construction_site},  // any of the construction sites: 2 stations, 6 docking(s)
+    {13083u, "", 1u, 0.0f, {-0.087f, -0.090f, -0.992f}, site_kind_e::construction_site},  // any of the construction sites: 4 stations, 17 docking(s)
+    {13083u, "", 2u, 0.0f, {-0.087f, -0.090f, -0.992f}, site_kind_e::construction_site},  // any of the construction sites: 2 stations, 10 docking(s)
     {0u, "", 0u, 0.f, {0.f, 0.f, 0.f}},
   };
   }  // namespace edworld
