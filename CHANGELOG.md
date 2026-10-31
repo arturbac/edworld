@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Build with CMake and clang-cl.** `tools/build.sh` (MSVC through msvc-wine) is replaced by a CMake build with
+  clang-cl against MSVC's and the Windows SDK's headers and libraries (`MSVC_ROOT`), with presets for Debug and
+  Release; no MSVC compiler is run. `tools/test.sh` takes the build directory. See doc/developers.md "Build".
+
 ## 1.1.0
 
 The navballs of the betas below, released, with the pad's plane in the right sphere, from the target's hologram the

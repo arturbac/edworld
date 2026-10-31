@@ -1,0 +1,43 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 29, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "cfg-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "toolchainFile": "${sourceDir}/cmake/clang-cl-msvc-sdk.cmake",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "kdev-edworld-debug",
+      "displayName": "Debug (clang-cl), build directory chosen by the IDE",
+      "inherits": [ "cfg-base" ],
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "kdev-edworld-release",
+      "displayName": "Release (clang-cl), build directory chosen by the IDE",
+      "inherits": [ "cfg-base" ],
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "edworld-debug",
+      "displayName": "Debug (clang-cl) in build/edworld-debug",
+      "inherits": [ "kdev-edworld-debug" ],
+      "binaryDir": "${sourceDir}/build/${presetName}"
+    },
+    {
+      "name": "edworld-release",
+      "displayName": "Release (clang-cl) in build/edworld-release",
+      "inherits": [ "kdev-edworld-release" ],
+      "binaryDir": "${sourceDir}/build/${presetName}"
+    }
+  ],
+  "buildPresets": [
+    { "name": "edworld-debug", "configurePreset": "edworld-debug" },
+    { "name": "edworld-release", "configurePreset": "edworld-release" }
+  ]
+}

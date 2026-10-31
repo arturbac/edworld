@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Embeds the list's font (third_party/fonts/NotoSansMono-Regular.ttf, SIL OFL 1.1, third_party/fonts/OFL.txt) as
-a byte array for ImGui's AddFontFromMemoryTTF.  Usage: tools/gen_font.py <out.h>   (build.sh: build/gen/list_font.h)"""
+a byte array for ImGui's AddFontFromMemoryTTF.  Usage: tools/gen_font.py <out.h>   (the build: <build dir>/gen/list_font.h)"""
 import os, sys
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

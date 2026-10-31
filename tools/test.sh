@@ -1,33 +1,21 @@
 #!/usr/bin/env bash
-# Smoke test without the game: builds test/test_app.exe, runs it under wine (warm prefix, below) with edworld's
-# d3d11.dll as a native override (next = system d3d11, i.e. wine's own). Needs tools/build.sh first.
+# Smoke test without the game: runs the build's test_app.exe under wine (warm prefix, below) with edworld's
+# d3d11.dll as a native override (next = system d3d11, i.e. wine's own). Needs a CMake build first (the dlls and
+# the test's programs, EDWORLD_TESTS on).
 # Both builds, each copied in as d3d11.dll (its ini and log keep the build's name): edworld, then edworld_eht.
-# Usage: tools/test.sh <scratch dir>   (a new run directory is made under it; nothing deleted)
-# Environment: MSVC_WINE_ENV, FXC (as tools/build.sh), EDWORLD_WINEPREFIX: a wine prefix kept warm between runs
+# Usage: tools/test.sh <build dir> <scratch dir>   (a new run directory is made under the scratch dir; nothing deleted)
+# Environment: EDWORLD_WINEPREFIX: a wine prefix kept warm between runs
 # (made on first use, reused; a fresh one each run cost minutes in wineboot).
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")/.." && pwd)
-SCR=${1:?scratch dir}
+BUILD=$(cd "${1:?build dir}" && pwd)
+SCR=${2:?scratch dir}
 need() { [[ -n ${!1:-} ]] || { echo "$0: set $1 ($2)" >&2; exit 1; }; }
-need MSVC_WINE_ENV "msvc-wine's env.sh"
-need FXC "fxc.exe of a Windows SDK"
 need EDWORLD_WINEPREFIX "a wine prefix kept between runs"
-source "$MSVC_WINE_ENV"
+for f in edworld/edworld.dll edworld_eht/edworld_eht.dll test/fake_next.dll test/edworld/test_app.exe test/edworld_eht/test_app.exe; do
+  [[ -f $BUILD/$f ]] || { echo "$0: no $BUILD/$f (build first)" >&2; exit 1; }
+done
 cd "$HERE"
-mkdir -p build/test
-for s in panel_vs:vs_5_0 other_vs:vs_5_0 found_vs:vs_5_0 panel_ps:ps_5_0 catalog_cs:cs_5_0; do
-  n=${s%%:*}; t=${s##*:}
-  WINEDEBUG=-all wine "$FXC" /nologo /T $t /E main /Vn g_$n /Fh build/test/$n.h test/$n.hlsl >/dev/null
-done
-for V in edworld edworld_eht; do
-  DEFS=()
-  [[ $V == edworld_eht ]] && DEFS=(/DEDWORLD_EHT)
-  mkdir -p build/test/$V
-  cl /nologo /O2 /MT /std:c++latest /EHsc /W4 /DWIN32_LEAN_AND_MEAN /DNOMINMAX /D_CRT_SECURE_NO_WARNINGS "${DEFS[@]}" \
-     /I"build/test" /Fobuild/test/$V/ /Febuild/test/$V/test_app.exe test/test_app.cc /link d3d11.lib dxguid.lib >/dev/null
-done
-cl /nologo /O2 /MT /LD /std:c++latest /W4 /DWIN32_LEAN_AND_MEAN /Fobuild/test/ /Febuild/test/fake_next.dll \
-   test/fake_next.cc /link /EXPORT:D3D11CreateDevice=fake_D3D11CreateDevice >/dev/null
 export WINEPREFIX=$EDWORLD_WINEPREFIX
 if [[ ! -f $WINEPREFIX/system.reg ]]; then
   mkdir -p "$WINEPREFIX"
@@ -39,8 +27,8 @@ rc=0
 run_variant() {  # $1 = edworld | edworld_eht; sets rc on failure
   local V=$1 RUN r
   RUN=$(mktemp -d "$SCR/$V-test.XXXXXX")
-  cp build/test/$V/test_app.exe build/test/fake_next.dll test/data/edsm_factions_shinrarta.json "$RUN/"
-  cp build/$V/$V.dll "$RUN/d3d11.dll"
+  cp "$BUILD/test/$V/test_app.exe" "$BUILD/test/fake_next.dll" test/data/edsm_factions_shinrarta.json "$RUN/"
+  cp "$BUILD/$V/$V.dll" "$RUN/d3d11.dll"
   echo "=== $V ($RUN)"
   pushd "$RUN" >/dev/null
   set +e

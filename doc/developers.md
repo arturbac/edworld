@@ -5,12 +5,12 @@ write a d3d11 plugin of your own on the same pattern. Players: [users.md](users.
 
 ## The two builds
 
-One source, two dlls (`tools/build.sh` makes both; the difference is `EDWORLD_EHT` at compile time):
+One source, two dlls (the CMake build makes both, see [Build](#build); the difference is `EDWORLD_EHT` at compile time):
 
 | Build | For | Files beside it |
 |---|---|---|
-| `build/edworld/edworld.dll` | anyone: works on its own; the superpower is read from the panel, the factions come from EDSM; publishes nothing, so it copies nothing of the panel draws | `edworld.ini`, `edworld.log` |
-| `build/edworld_eht/edworld_eht.dll` | EHT users: also publishes the panels' anchors to `panels` (EHT's overlay follows them) and takes the factions from EHT's `target` before EDSM | `edworld_eht.ini`, `edworld_eht.log` |
+| `<build dir>/edworld/edworld.dll` | anyone: works on its own; the superpower is read from the panel, the factions come from EDSM; publishes nothing, so it copies nothing of the panel draws | `edworld.ini`, `edworld.log` |
+| `<build dir>/edworld_eht/edworld_eht.dll` | EHT users: also publishes the panels' anchors to `panels` (EHT's overlay follows them) and takes the factions from EHT's `target` before EDSM | `edworld_eht.ini`, `edworld_eht.log` |
 
 The ini and log names are fixed by the build, not taken from the dll's file name: installed alone as the game's
 `d3d11.dll`, either build still reads its own ini. Below, "edworld_eht only" marks what the plain build lacks;
@@ -378,6 +378,24 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   One file per game session: at start, the last session's `<plugin>.log` is renamed `<plugin>.<UTC>.log` (the time it
   was last written); EHT's backup compresses those into its own directory and removes them from the game's folder.
 
+## Build
+
+On Linux with CMake, Ninja, LLVM (clang-cl, lld-link, llvm-lib, llvm-ml64, llvm-rc, llvm-mt), Python 3 and wine;
+no MSVC compiler is run. The headers and libraries come from MSVC and the Windows SDK in one directory in clang's
+`/winsysroot` layout (`VC/Tools/MSVC/<version>`, `Windows Kits/10`), e.g. the one msvc-wine installs; its path
+is `MSVC_ROOT` (a cache variable, or the environment variable of the same name). The shaders are compiled by that
+SDK's `fxc.exe` under wine (`EDWORLD_FXC`, found in the SDK by default).
+
+```
+MSVC_ROOT=<dir> cmake --preset edworld-release
+cmake --build build/edworld-release
+tools/test.sh build/edworld-release <scratch dir>
+```
+
+Presets: `edworld-debug` and `edworld-release` build in `build/<preset>`; `kdev-edworld-debug` and
+`kdev-edworld-release` are the same without a build directory, for an IDE that chooses its own. The version in
+the log is `git describe` of the tree, taken at each build. `EDWORLD_TESTS` (on) builds the smoke test's programs.
+
 ## Files
 
 | Path | What |
@@ -396,10 +414,11 @@ The ini and log names are fixed by the build, not taken from the dll's file name
 | `src/gate_math.h` | gates down to a place (PoC): angles from the planet's visible edge, the path down (setup onto a flat line, the dive point, the dive), the gates along it, the ship's attitude from the compass and the heading, the projection |
 | `src/emblems.h`, `tools/gen_emblems.py`, `assets/*.svg` | the emblems as coverage masks, generated from EDAssets |
 | `src/imgui_config.h`, `shaders/imgui.hlsl`, `third_party/imgui/` | Dear ImGui build options, backend shaders, the vendored sources |
-| `third_party/fonts/`, `tools/gen_font.py` | the list's font (Noto Sans Mono, SIL OFL 1.1), embedded at build time as `build/gen/list_font.h` |
-| `tools/build.sh` | build through msvc-wine; exports from `tools/d3d11_exports.txt` (environment: `MSVC_WINE_ENV`, `FXC`) |
+| `third_party/fonts/`, `tools/gen_font.py` | the list's font (Noto Sans Mono, SIL OFL 1.1), embedded at build time as `<build dir>/gen/list_font.h` |
+| `CMakeLists.txt`, `test/CMakeLists.txt`, `CMakePresets.json` | the build (see [Build](#build)); exports from `tools/d3d11_exports.txt` |
+| `cmake/clang-cl-msvc-sdk.cmake`, `cmake/version.cmake` | the toolchain (clang-cl with MSVC's and the Windows SDK's headers and libraries), the version from `git describe` |
 | `tools/d3d11_exports.txt`, `tools/gen_exports_from_list.py` | the Windows d3d11 export names, and the run of EDVR's generator on them |
-| `tools/test.sh <scratch>` | smoke test under wine without the game, both builds (each as `d3d11.dll`), plain and chained, patch and list pixels checked, EDSM's answer read from a saved one (`test/data/`), the shaders' catalog written (edworld_eht), game shaders' shapes read when `EDWORLD_SHADER_SAMPLE` names `.dxbc` files (environment: `MSVC_WINE_ENV`, `FXC`, `EDWORLD_WINEPREFIX`) |
+| `tools/test.sh <build dir> <scratch>` | smoke test under wine without the game, both builds (each as `d3d11.dll`), plain and chained, patch and list pixels checked, EDSM's answer read from a saved one (`test/data/`), the shaders' catalog written (edworld_eht), game shaders' shapes read when `EDWORLD_SHADER_SAMPLE` names `.dxbc` files (environment: `EDWORLD_WINEPREFIX`) |
 | `tools/edworld_watch.py [path]` | live view of the shared file |
 | `tools/dump_to_png.py <dir>` | surface dumps to PNG |
 | `tools/shader_catalog.py` | the shaders' catalog offline: `names` (the planets' generator's archives), `diff` (two builds) |
