@@ -17,22 +17,23 @@ namespace edworld
   {
   ///\brief the dot as found in an RGBA copy of the compass: its centre relative to the disc's centre, in surface
   /// pixels (x right, y down as on the surface)
+  ///\detail fields from the widest alignment down (copied a few times a frame); initialize by designators
   struct compass_reading_t
     {
-    bool found;
-    ///\brief the dot's middle is lit (target ahead); a hollow ring (target behind) leaves it dark
-    bool filled;
     float x;
     float y;
-    ///\brief the dot's pixels (since the game's update of 2026-10-20 a filled dot ~176-206, a hollow ring ~111 on the
-    /// 2200x1800 surface; before it, in an EDHM theme, ~137 and ~25)
-    std::uint32_t pixels;
-    ///\brief the disc's colour this frame took the dot's: a flash of the compass, nothing to read
-    bool flash;
     ///\brief the disc's hue (degrees, the most common one of its coloured pixels), -1 without one
     float disc_hue;
     ///\brief the dot's hue (degrees), -1 when it is white or grey (an EDHM theme's dot)
     float dot_hue;
+    ///\brief the dot's pixels (since the game's update of 2026-10-20 a filled dot ~176-206, a hollow ring ~111 on the
+    /// 2200x1800 surface; before it, in an EDHM theme, ~137 and ~25)
+    std::uint32_t pixels;
+    bool found;
+    ///\brief the dot's middle is lit (target ahead); a hollow ring (target behind) leaves it dark
+    bool filled;
+    ///\brief the disc's colour this frame took the dot's: a flash of the compass, nothing to read
+    bool flash;
     };
 
   ///\brief a pixel's hue (degrees, 0..360), saturation and value (0..1)

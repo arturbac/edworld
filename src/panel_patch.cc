@@ -2850,6 +2850,7 @@ namespace edworld
       }
 
     // ---- anchored: the draws of the HUD surface, each read once for the triangles holding the anchors ----
+    // fields from the widest alignment down (the table is searched on every draw); initialize by designators
     struct anchor_draw_t
       {
       enum struct state_e : std::uint8_t
@@ -2859,19 +2860,19 @@ namespace edworld
         judged
         };
       void * ib;
+      void * vb;
+      ID3D11Buffer * staged_ib;
+      ID3D11Buffer * staged_vb;
+      panel_map_t map[2];
       UINT ib_offset;
       std::uint32_t start_index;
       std::uint32_t index_count;
-      void * vb;
       UINT vb_offset;
       std::int32_t base_vertex;
-      state_e state;
       std::uint32_t index_bytes;
       std::uint32_t vertices;  ///< copied after the base vertex
-      ID3D11Buffer * staged_ib;
-      ID3D11Buffer * staged_vb;
+      state_e state;
       bool holds[2];
-      panel_map_t map[2];
       };
 
     constexpr std::uint32_t max_anchor_draws{24};
@@ -3012,7 +3013,15 @@ namespace edworld
           anchor_draw_t & e{anchor_draws[anchor_draw_next++ % max_anchor_draws]};
           drop_anchor_staged(e);
           std::uint32_t const size{ib_format == DXGI_FORMAT_R16_UINT ? 2u : 4u};
-          e = anchor_draw_t{ib, ib_offset, start_index, index_count, vb, vb_offset, base_vertex, anchor_draw_t::state_e::pending, size};
+          e = anchor_draw_t{.ib = ib,
+                            .vb = vb,
+                            .ib_offset = ib_offset,
+                            .start_index = start_index,
+                            .index_count = index_count,
+                            .vb_offset = vb_offset,
+                            .base_vertex = base_vertex,
+                            .index_bytes = size,
+                            .state = anchor_draw_t::state_e::pending};
           D3D11_BUFFER_DESC vd{};
           vb->GetDesc(&vd);
           std::uint64_t const from{vb_offset + static_cast<std::uint64_t>(base_vertex) * vertex_stride};

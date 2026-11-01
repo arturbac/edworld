@@ -2428,8 +2428,13 @@ namespace edworld
             if(r.how == holo_resolve_e::remapped)
               axes = holo_model_axes(axes, holo_turn_list[static_cast<std::size_t>(r.turn)]);
             bool const ship{holo_shows_ship(s.count[p], s.count, s.own, s.parts, r.model >= 0 ? &holo_models[r.model] : nullptr)};
-            hs.view = hologram_view_t{true, axes, s.count[p], holo_table_count(r, holo_models.data()), ship,
-                                      holo_place_of(r, holo_models.data()), holo_flat_of(r, holo_models.data())};
+            hs.view = hologram_view_t{.axes = axes,
+                                      .count = s.count[p],
+                                      .table = holo_table_count(r, holo_models.data()),
+                                      .flat = holo_flat_of(r, holo_models.data()),
+                                      .have = true,
+                                      .ship = ship,
+                                      .place = holo_place_of(r, holo_models.data())};
             hs.view_at = s.qpc;
             }
           }

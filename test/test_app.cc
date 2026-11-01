@@ -724,8 +724,10 @@ int main()
   check(hollow.found and not hollow.filled and std::fabs(hollow.x + 40.f) < 0.3f and std::fabs(hollow.y - 10.f) < 0.3f,
         "compass: a hollow dot found and told from a filled one");
   check(edworld::compass_plausible(filled) and edworld::compass_plausible(hollow), "compass: both dots plausible");
-  check(not edworld::compass_plausible(edworld::compass_reading_t{true, true, 1.f, 1.f, 4u}) and
-          not edworld::compass_plausible(edworld::compass_reading_t{true, false, 1.f, 1.f, 1234u}),
+  check(not edworld::compass_plausible(
+          edworld::compass_reading_t{.x = 1.f, .y = 1.f, .pixels = 4u, .found = true, .filled = true}) and
+          not edworld::compass_plausible(
+            edworld::compass_reading_t{.x = 1.f, .y = 1.f, .pixels = 1234u, .found = true, .filled = false}),
         "compass: a few lit pixels or the whole disc lit is no dot");
   clear();
   check(not edworld::read_compass(area.data(), w * 4u, w, h, cx, cy, radius * 1.25f).found, "compass: no dot on a bare disc");

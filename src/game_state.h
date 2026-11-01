@@ -18,12 +18,13 @@ namespace edworld
     other
     };
 
+  ///\detail fields from the widest alignment down (copied every frame); initialize by designators
   struct game_state_t
     {
-    ///\brief the hyperspace jump is being charged (Status.json Flags2 bit 19)
-    bool charging;
     ///\brief the jump's destination (Status.json Destination.System), 0 when none
     std::uint64_t destination;
+    ///\brief the hyperspace jump is being charged (Status.json Flags2 bit 19)
+    bool charging;
     ///\brief the destination's allegiance, from EDSM's controlling faction; unknown until it answered
     allegiance_e allegiance;
     };

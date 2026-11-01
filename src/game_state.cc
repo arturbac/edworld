@@ -623,9 +623,9 @@ namespace edworld
   auto game_state() noexcept -> game_state_t
     {
     return game_state_t{
-      charging.load(std::memory_order_relaxed),
-      destination.load(std::memory_order_relaxed),
-      static_cast<allegiance_e>(allegiance.load(std::memory_order_relaxed))
+      .destination = destination.load(std::memory_order_relaxed),
+      .charging = charging.load(std::memory_order_relaxed),
+      .allegiance = static_cast<allegiance_e>(allegiance.load(std::memory_order_relaxed))
     };
     }
 
