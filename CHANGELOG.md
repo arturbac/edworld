@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **A whole frame's dump of a block-compressed texture no longer stops edworld.** Its copy read four times past the
+  end of the texture: a fault at every frame, and after eight of them edworld left the game alone until it restarted,
+  with nothing in the log. The copy now counts rows of blocks, and stopping says so in the log.
 - **The factions list's box is translucent (`list_alpha`, 0.65).** What is behind the box shows through it; `1` is the
   solid box it was.
 - **Build with CMake and clang-cl.** `tools/build.sh` (MSVC through msvc-wine) is replaced by a CMake build with

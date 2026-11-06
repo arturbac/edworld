@@ -154,6 +154,16 @@ namespace edworld
     std::atomic<bool> disabled{false};
     std::uint32_t faults{};
 
+    ///\brief a fault caught in a hook; the eighth stops everything but the game, and says so
+    auto note_fault() noexcept -> void
+      {
+      if(++faults == 8u)
+        {
+        disabled.store(true);
+        log_line("hooks: 8 faults caught, the panels are left alone until the game starts again");
+        }
+      }
+
     constexpr std::uint32_t record_bytes{cb0_rows * 16u};
     constexpr std::uint32_t ring_slots{6};
 
@@ -736,7 +746,7 @@ namespace edworld
             std::swprintf(name, MAX_PATH, L"%ls\\edworld_dumps\\%hs_%08llx_%ux%u_f%u_pitch%u.raw", settings().dir.c_str(),
                           dump_stamp, static_cast<unsigned long long>(p.id & 0xffffffffull), p.width, p.height, p.format,
                           m.RowPitch);
-          queue_write(name, m.pData, m.RowPitch * p.height, true);
+          queue_write(name, m.pData, m.RowPitch * mapped_rows(p.format, p.height), true);
           immediate.load()->Unmap(p.staging, 0);
           }
         else
@@ -1415,8 +1425,7 @@ namespace edworld
         }
       __except(EXCEPTION_EXECUTE_HANDLER)
         {
-        if(++faults >= 8)
-          disabled.store(true);
+        note_fault();
         }
       }
 
@@ -1438,8 +1447,7 @@ namespace edworld
         }
       __except(EXCEPTION_EXECUTE_HANDLER)
         {
-        if(++faults >= 8)
-          disabled.store(true);
+        note_fault();
         }
       }
 
@@ -1508,8 +1516,7 @@ namespace edworld
       __except(EXCEPTION_EXECUTE_HANDLER)
         {
         current_pending = max_vs_seen;
-        if(++faults >= 8)
-          disabled.store(true);
+        note_fault();
         }
       }
 
@@ -1643,8 +1650,7 @@ namespace edworld
       __except(EXCEPTION_EXECUTE_HANDLER)
         {
         probe_request.store(false);
-        if(++faults >= 8)
-          disabled.store(true);
+        note_fault();
         }
       }
 
@@ -2315,8 +2321,7 @@ namespace edworld
         }
       __except(EXCEPTION_EXECUTE_HANDLER)
         {
-        if(++faults >= 8)
-          disabled.store(true);
+        note_fault();
         }
       }
 
@@ -2656,8 +2661,7 @@ namespace edworld
         }
       __except(EXCEPTION_EXECUTE_HANDLER)
         {
-        if(++faults >= 8)
-          disabled.store(true);
+        note_fault();
         }
       }
 
@@ -3129,8 +3133,7 @@ namespace edworld
       __except(EXCEPTION_EXECUTE_HANDLER)
         {
         full_after_draw = 0;
-        if(++faults >= 8)
-          disabled.store(true);
+        note_fault();
         }
       // the copy of the game's main target after a dump_vs draw takes milliseconds: no gap of the game's either (it ended
       // each whole frame of 2026-10-22 right after the hologram's draws, at 18 draws)
@@ -3149,8 +3152,7 @@ namespace edworld
       __except(EXCEPTION_EXECUTE_HANDLER)
         {
         full_armed = false;
-        if(++faults >= 8)
-          disabled.store(true);
+        note_fault();
         }
       // the dump's own work (copies of whole targets, milliseconds) is no gap of the game's: it must not end the frame
       if(last_draw_qpc)

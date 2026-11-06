@@ -12,6 +12,19 @@
 
 namespace edworld
   {
+  ///\brief how many rows of RowPitch a mapped texture holds: a block-compressed format's row is a row of 4x4 blocks,
+  /// so a whole height of them would read four times past the end
+  [[nodiscard]]
+  constexpr auto mapped_rows(std::uint32_t dxgi_format, std::uint32_t height) noexcept -> std::uint32_t
+    {
+    bool const blocks{(dxgi_format >= 70u and dxgi_format <= 84u) or (dxgi_format >= 94u and dxgi_format <= 99u)};
+    return blocks ? (height + 3u) / 4u : height;
+    }
+
+  static_assert(mapped_rows(28u, 512u) == 512u, "RGBA8 is a row of pixels");
+  static_assert(mapped_rows(80u, 512u) == 128u, "BC4 is a row of blocks");
+  static_assert(mapped_rows(70u, 6u) == 2u, "a part of a block is a block");
+
   ///\brief the hash EDVR names shaders by: FNV-1a 64 over the whole bytecode
   [[nodiscard]]
   constexpr auto fnv1a64(std::uint8_t const * data, std::size_t bytes) noexcept -> std::uint64_t
