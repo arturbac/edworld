@@ -3289,7 +3289,7 @@ namespace edworld
 
       float const values[8]{
         settings().clouds_bottom, settings().clouds_top, settings().clouds_cover, settings().clouds_light,
-        settings().clouds_steps, settings().clouds_density, 0.f, 0.f
+        settings().clouds_steps, settings().clouds_density, settings().clouds_opacity, 0.f
       };
       D3D11_BUFFER_DESC desc{};
       desc.ByteWidth = sizeof values;
@@ -3484,7 +3484,13 @@ namespace edworld
           dsv->Release();
         }
 
-      bool const volume{object and frame and settings().clouds_volume and make_volume(ctx) and copy_depth(ctx)};
+      // the game draws the shell into a small target too, for its reflections: the volume is for the picture itself
+      D3D11_VIEWPORT port{};
+      UINT ports{1u};
+      ctx->RSGetViewports(&ports, &port);
+      bool const volume{
+        object and frame and settings().clouds_volume and port.Width >= 1024.f and make_volume(ctx) and copy_depth(ctx)
+      };
       if(volume)
         draw_volume(ctx, object, frame, index_count, instance_count, start_index, base_vertex, start_instance);
       else if(object and frame)

@@ -108,7 +108,8 @@ namespace edworld
     float clouds_bottom{0.003f};
     float clouds_top{0.012f};
     float clouds_steps{32.f};
-    float clouds_density{6.f};
+    float clouds_density{1.2f};
+    float clouds_opacity{0.75f};
 
     // ---- the compass (PoC): the HUD compass's dot read off its interface surface, the angles written beside it ----
     ///\brief 0 off, 1 the angles, 2 also everything known for checking them, 3 also a grid of the surface's pixels

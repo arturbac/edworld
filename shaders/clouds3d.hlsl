@@ -21,7 +21,8 @@ cbuffer clouds : register(b4)
   float cloud_light;   // how much of the sun they give back
   float cloud_steps;
   float cloud_density;
-  float2 cloud_pad;
+  float cloud_opacity; // the most they cover what is behind them
+  float cloud_pad;
   };
 
 Texture2D<float> scene_depth : register(t0);
@@ -158,7 +159,8 @@ float4 ps_main(ps_in input) : SV_TARGET
     float3 place = dir * 7.f + seed + warp * 3.5f + float3(0.f, height * 0.4f, 0.f);
     float shape = fbm(place, 5) - edge;
     float profile = saturate(height * 5.f) * saturate((1.f - height) * 2.5f);
-    float density = saturate(shape * 5.f) * profile;
+    float density = saturate(shape * 2.5f);
+    density *= density * profile;
     if(density > 0.001f)
       {
       float optical = density * cloud_density * through;
@@ -176,5 +178,6 @@ float4 ps_main(ps_in input) : SV_TARGET
 
   float3 colour = light * frame_rows[293].xyz * cloud_light * frame_rows[90].y;
   float fade = frame_rows[126].z;
-  return float4(colour * fade, (1.f - clear) * fade);
+  float weight = fade * cloud_opacity;
+  return float4(colour * weight, (1.f - clear) * weight);
   }
