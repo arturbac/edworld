@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Clouds over a planet with an atmosphere (`clouds`, off by default; `clouds_radius`, `clouds_alpha`, `clouds_cover`, `clouds_light`).**
+- **Clouds over a planet with an atmosphere (`clouds`, off by default; `clouds_height`, `clouds_alpha`, `clouds_cover`, `clouds_light`).**
   After the game's own shell of the atmosphere, the same sphere is drawn once more with shaders of edworld, a little
   above the surface, with clouds worked out from noise, each planet its own, seen from orbit and from under them alike.
   See doc/users.md "Clouds".

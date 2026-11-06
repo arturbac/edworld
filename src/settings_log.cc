@@ -141,8 +141,8 @@ namespace edworld
         current.list_gain = to_float(value, current.list_gain);
       else if(key == "clouds")
         current.clouds = value == "1";
-      else if(key == "clouds_radius")
-        current.clouds_radius = to_float(value, current.clouds_radius);
+      else if(key == "clouds_height")
+        current.clouds_height = to_float(value, current.clouds_height);
       else if(key == "clouds_alpha")
         current.clouds_alpha = to_float(value, current.clouds_alpha);
       else if(key == "clouds_light")

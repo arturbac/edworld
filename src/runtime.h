@@ -97,8 +97,8 @@ namespace edworld
     float list_alpha{0.65f};
     ///\brief (PoC) a layer of clouds drawn after the game's shell of the atmosphere; off by default
     bool clouds{false};
-    ///\brief of the shell's radius - the shell stands some 3% above the surface
-    float clouds_radius{0.975f};
+    ///\brief over the surface, as a part of the planet's radius
+    float clouds_height{0.005f};
     float clouds_alpha{0.45f};
     float clouds_cover{0.4f};
     float clouds_light{0.4f};

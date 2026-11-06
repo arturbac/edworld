@@ -15,7 +15,7 @@ cbuffer frame : register(b1)
 
 cbuffer clouds : register(b4)
   {
-  float cloud_radius;  // of the shell's radius
+  float cloud_height;  // over the surface, as a part of the planet's radius
   float cloud_alpha;
   float cloud_cover;   // 0 clear to 1 overcast
   float cloud_light;   // how much of the sun they give back
@@ -31,16 +31,20 @@ struct ps_in
   float4 pos : SV_POSITION;
   float3 dir : TEXCOORD0;     // on the sphere, turning with the planet
   float3 normal : TEXCOORD1;  // in the frame the light is given in
+  float3 view : TEXCOORD2;    // from the camera, in the same frame
   };
 
 ps_in vs_main(vs_in input)
   {
   ps_in output;
-  float4 p = float4(input.pos * cloud_radius, 1.f);
+  // row 126 holds the planet's radius in metres, and the shell's reach over it differs from planet to planet
+  float scale = frame_rows[126].x * (1.f + cloud_height) / length(object_rows[9].xyz);
+  float4 p = float4(input.pos * scale, 1.f);
   precise float x = dot(object_rows[9], p);
   precise float y = dot(object_rows[10], p);
   precise float z = dot(object_rows[11], p);
   output.pos = frame_rows[270] * x + frame_rows[271] * y + frame_rows[272] * z + frame_rows[273];
+  output.view = float3(x, y, z);
   output.dir = normalize(input.pos);
   output.normal = float3(
     dot(object_rows[9].xyz, output.dir), dot(object_rows[10].xyz, output.dir), dot(object_rows[11].xyz, output.dir)
@@ -104,6 +108,8 @@ float4 ps_main(ps_in input) : SV_TARGET
   density *= density;
 
   float3 normal = normalize(input.normal);
+  // a layer without depth seen edge on is a hard rim: it thins out towards the limb instead
+  density *= smoothstep(0.f, 0.25f, abs(dot(normal, normalize(input.view))));
   // the wrap of the light past the terminator the game's own layer reads at row 128, which the game leaves empty
   // over a planet with no layer - its values at one that has
   float light = saturate(dot(normal, -frame_rows[291].xyz) * 0.85f + 0.15f);

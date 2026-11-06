@@ -86,7 +86,7 @@ comment line. Every setting has a default; the file is needed only to change one
 | `list_gain` | `0.8` | the list's brightness |
 | `list_alpha` | `0.65` | how much the list's box covers what is behind it, `0` nothing to `1` all |
 | `clouds` | `0` | `1` = clouds over a planet with an atmosphere that the game draws without any: see [Clouds](#clouds) |
-| `clouds_radius` | `0.975` | the height of the layer, as a part of the radius of the game's shell of the atmosphere |
+| `clouds_height` | `0.005` | the height of the layer over the surface, as a part of the planet's radius |
 | `clouds_alpha` | `0.45` | how much the clouds cover what is under them, `0` nothing to `1` all |
 | `clouds_cover` | `0.4` | how much of the sky they take, `0` clear to `1` overcast |
 | `clouds_light` | `0.4` | how much of the sun they give back |

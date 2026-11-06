@@ -3216,7 +3216,7 @@ namespace edworld
       raster.DepthClipEnable = TRUE;
       ok = ok and SUCCEEDED(device->CreateRasterizerState(&raster, &clouds.raster));
 
-      float const values[4]{settings().clouds_radius, settings().clouds_alpha, settings().clouds_cover, settings().clouds_light};
+      float const values[4]{settings().clouds_height, settings().clouds_alpha, settings().clouds_cover, settings().clouds_light};
       D3D11_BUFFER_DESC desc{};
       desc.ByteWidth = sizeof values;
       desc.Usage = D3D11_USAGE_IMMUTABLE;
