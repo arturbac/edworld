@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **PoC: clouds over a planet with an atmosphere (`clouds`, off by default; `clouds_radius`, `clouds_alpha`, `clouds_cover`).**
+- **PoC: clouds over a planet with an atmosphere (`clouds`, off by default; `clouds_radius`, `clouds_alpha`, `clouds_cover`, `clouds_light`).**
   After the game's own shell of the atmosphere, the same sphere is drawn once more with shaders of edworld, a little
   above the surface, with clouds worked out from noise, seen from orbit and from under them alike.
 - **A whole frame's dump of a block-compressed texture no longer stops edworld.** Its copy read four times past the

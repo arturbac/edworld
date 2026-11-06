@@ -18,7 +18,7 @@ cbuffer clouds : register(b4)
   float cloud_radius;  // of the shell's radius
   float cloud_alpha;
   float cloud_cover;   // 0 clear to 1 overcast
-  float cloud_pad;
+  float cloud_light;   // how much of the sun they give back
   };
 
 struct vs_in
@@ -80,7 +80,7 @@ float fbm(float3 p)
   float sum = 0.f;
   float amplitude = 0.5f;
   [unroll]
-  for(int i = 0; i != 5; ++i)
+  for(int i = 0; i != 7; ++i)
     {
     sum += amplitude * noise(p);
     p = p * 2.03f + 7.1f;
@@ -95,13 +95,15 @@ float4 ps_main(ps_in input) : SV_TARGET
   // the warp drags the noise into streaks and swirls, as weather does
   float3 warp = float3(fbm(dir * 3.f), fbm(dir * 3.f + 11.f), fbm(dir * 3.f + 23.f));
   float density = fbm(dir * 7.f + warp * 3.5f);
+  // a wide edge, so a cloud thins out into nothing instead of ending in a line
   float edge = 0.62f - 0.3f * cloud_cover;
-  density = smoothstep(edge, edge + 0.16f, density);
+  density = smoothstep(edge, edge + 0.32f, density);
+  density *= density;
 
   float3 normal = normalize(input.normal);
   // the wrap of the light past the terminator the game's own layer reads at row 128, which the game leaves empty
   // over a planet with no layer - its values at one that has
   float light = saturate(dot(normal, -frame_rows[291].xyz) * 0.85f + 0.15f);
-  float3 colour = frame_rows[293].xyz * light * 0.9f * frame_rows[90].y;
+  float3 colour = frame_rows[293].xyz * light * cloud_light * frame_rows[90].y;
   return float4(colour, density * cloud_alpha * frame_rows[126].z);
   }

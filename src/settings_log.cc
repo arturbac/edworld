@@ -145,6 +145,8 @@ namespace edworld
         current.clouds_radius = to_float(value, current.clouds_radius);
       else if(key == "clouds_alpha")
         current.clouds_alpha = to_float(value, current.clouds_alpha);
+      else if(key == "clouds_light")
+        current.clouds_light = to_float(value, current.clouds_light);
       else if(key == "clouds_cover")
         current.clouds_cover = to_float(value, current.clouds_cover);
       else if(key == "list_alpha")
