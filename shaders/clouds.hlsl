@@ -98,16 +98,10 @@ float4 ps_main(ps_in input) : SV_TARGET
   float edge = 0.62f - 0.3f * cloud_cover;
   density = smoothstep(edge, edge + 0.16f, density);
 
-  // nearer than the layer the sphere is seen from inside, and a thin shell shows nothing true - it fades on the way down
-  float3 centre = float3(object_rows[9].w, object_rows[10].w, object_rows[11].w);
-  float radius = length(object_rows[9].xyz) * cloud_radius;
-  float above = length(centre) / radius;
-  float fade = smoothstep(1.005f, 1.05f, above);
-
   float3 normal = normalize(input.normal);
   // the wrap of the light past the terminator the game's own layer reads at row 128, which the game leaves empty
   // over a planet with no layer - its values at one that has
   float light = saturate(dot(normal, -frame_rows[291].xyz) * 0.85f + 0.15f);
   float3 colour = frame_rows[293].xyz * light * 0.9f * frame_rows[90].y;
-  return float4(colour, density * cloud_alpha * fade * frame_rows[126].z);
+  return float4(colour, density * cloud_alpha * frame_rows[126].z);
   }
