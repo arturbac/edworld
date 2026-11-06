@@ -85,7 +85,7 @@ comment line. Every setting has a default; the file is needed only to change one
 | `list_text` | `50` | the list's text height (pixels of the panel's surface) |
 | `list_gain` | `0.8` | the list's brightness |
 | `list_alpha` | `0.65` | how much the list's box covers what is behind it, `0` nothing to `1` all |
-| `clouds` | `0` | `1` = clouds over a planet with an atmosphere that the game draws without any: see [Clouds](#clouds) |
+| `clouds` | `1` | clouds over a planet with an atmosphere that the game draws without any, `0` = none: see [Clouds](#clouds) |
 | `clouds_height` | `0.005` | the height of the layer over the surface, as a part of the planet's radius |
 | `clouds_alpha` | `0.45` | how much the clouds cover what is under them, `0` nothing to `1` all |
 | `clouds_cover` | `0.4` | how much of the sky they take, `0` clear to `1` overcast |
@@ -166,7 +166,7 @@ EDSM is asked once per new destination, with the system's id only.
 
 ![The sky of a planet with a thin atmosphere, under the clouds of edworld](images/clouds.jpg)
 
-With `clouds = 1` a planet the game gives an atmosphere and no clouds gets a layer of them: from orbit, on the way
+A planet the game gives an atmosphere and no clouds gets a layer of them (`clouds = 0` turns them off): from orbit, on the way
 through it and from under it on the ground. The clouds are worked out from noise on the graphics card, each planet
 its own; the game's data is not used for them and nothing of them reaches anyone else, they are only in your picture.
 The layer is thin, so it does not have the depth of a real cloud: it shows as you pass through it. They are there only
