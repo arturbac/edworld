@@ -480,6 +480,12 @@ list_text = 50
 ; the list's colours times this in the cockpit
 list_gain = 0.8
 list_alpha = 0.65
+; 1 = clouds after the game's shell of the atmosphere (VS FFB551B5E7E79CEA)
+clouds = 0
+clouds_radius = 0.975
+clouds_alpha = 0.45
+clouds_cover = 0.4
+clouds_light = 0.4
 ```
 
 The values above are the defaults. `shm_dir` is where EHT writes `target` (`edworld.dir` in its settings,

@@ -93,8 +93,11 @@ float4 ps_main(ps_in input) : SV_TARGET
   {
   float3 dir = normalize(input.dir);
   // the warp drags the noise into streaks and swirls, as weather does
-  float3 warp = float3(fbm(dir * 3.f), fbm(dir * 3.f + 11.f), fbm(dir * 3.f + 23.f));
-  float density = fbm(dir * 7.f + warp * 3.5f);
+  // row 126 holds the planet's radius in metres: no two planets share it, so none shares its clouds
+  float planet = frame_rows[126].x;
+  float3 seed = frac(planet / float3(977.f, 1543.f, 2111.f)) * 50.f;
+  float3 warp = float3(fbm(dir * 3.f + seed), fbm(dir * 3.f + seed + 11.f), fbm(dir * 3.f + seed + 23.f));
+  float density = fbm(dir * 7.f + seed + warp * 3.5f);
   // a wide edge, so a cloud thins out into nothing instead of ending in a line
   float edge = 0.62f - 0.3f * cloud_cover;
   density = smoothstep(edge, edge + 0.32f, density);

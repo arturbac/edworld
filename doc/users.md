@@ -85,6 +85,11 @@ comment line. Every setting has a default; the file is needed only to change one
 | `list_text` | `50` | the list's text height (pixels of the panel's surface) |
 | `list_gain` | `0.8` | the list's brightness |
 | `list_alpha` | `0.65` | how much the list's box covers what is behind it, `0` nothing to `1` all |
+| `clouds` | `0` | `1` = clouds over a planet with an atmosphere that the game draws without any: see [Clouds](#clouds) |
+| `clouds_radius` | `0.975` | the height of the layer, as a part of the radius of the game's shell of the atmosphere |
+| `clouds_alpha` | `0.45` | how much the clouds cover what is under them, `0` nothing to `1` all |
+| `clouds_cover` | `0.4` | how much of the sky they take, `0` clear to `1` overcast |
+| `clouds_light` | `0.4` | how much of the sun they give back |
 | `list_top`, `list_x` | `500`, `1540` | where the list starts under the panel (pixels of the panel's surface) |
 | `list_rows` | `7` | factions listed at most |
 | `edsm` | `1` | `0` = never ask EDSM (no list then without EHT) |
@@ -156,6 +161,15 @@ To make your own, change the lines you want; a setting left out keeps its grey. 
 starts. `compass_sphere_gain` makes all of them lighter or darker.
 
 EDSM is asked once per new destination, with the system's id only.
+
+## Clouds
+
+With `clouds = 1` a planet the game gives an atmosphere and no clouds gets a layer of them: from orbit, on the way
+through it and from under it on the ground. The clouds are worked out from noise on the graphics card, each planet
+its own; the game's data is not used for them and nothing of them reaches anyone else, they are only in your picture.
+The layer is thin, so it does not have the depth of a real cloud: it shows as you pass through it. They are there only
+where the game draws its shell of the atmosphere, found by that shader, so an update of the game can take them away
+until edworld follows it. Changing a value takes a new start of the game.
 
 ## Check that it works
 
