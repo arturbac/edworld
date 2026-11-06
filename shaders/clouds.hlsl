@@ -1,8 +1,8 @@
 // edworld (PoC, clouds): a layer of clouds over a planet the game gives none. Drawn right after the game's own shell
 // of the atmosphere, with what that draw has bound: its unit sphere, its object constants at b0 (rows 9..11 turn and
 // scale the sphere and place it, in metres from the camera) and its frame constants at b1 - rows 270..273 the
-// projection, 291 the light's direction, 293 its colour, 90 and 126 and 128 the game's exposure, fade and wrap, as
-// its own cloud layer reads them. The clouds themselves are worked out here, from noise on the sphere.
+// projection, 291 the light's direction, 293 its colour, 90 and 126 the game's exposure and fade, as its own cloud
+// layer reads them. The clouds themselves are worked out here, from noise on the sphere.
 cbuffer object : register(b0)
   {
   float4 object_rows[13];
@@ -105,7 +105,9 @@ float4 ps_main(ps_in input) : SV_TARGET
   float fade = smoothstep(1.005f, 1.05f, above);
 
   float3 normal = normalize(input.normal);
-  float light = saturate(dot(normal, -frame_rows[291].xyz) * frame_rows[128].x + frame_rows[128].y);
+  // the wrap of the light past the terminator the game's own layer reads at row 128, which the game leaves empty
+  // over a planet with no layer - its values at one that has
+  float light = saturate(dot(normal, -frame_rows[291].xyz) * 0.85f + 0.15f);
   float3 colour = frame_rows[293].xyz * light * 0.9f * frame_rows[90].y;
   return float4(colour, density * cloud_alpha * fade * frame_rows[126].z);
   }
