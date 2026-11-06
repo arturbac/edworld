@@ -102,6 +102,13 @@ namespace edworld
     float clouds_alpha{0.45f};
     float clouds_cover{0.4f};
     float clouds_light{0.4f};
+    ///\brief (PoC) the clouds as a volume instead of a layer; its floor and top over the surface, as parts of the
+    /// planet's radius, how many steps a ray takes through it and how thick it is
+    bool clouds_volume{false};
+    float clouds_bottom{0.003f};
+    float clouds_top{0.012f};
+    float clouds_steps{32.f};
+    float clouds_density{6.f};
 
     // ---- the compass (PoC): the HUD compass's dot read off its interface surface, the angles written beside it ----
     ///\brief 0 off, 1 the angles, 2 also everything known for checking them, 3 also a grid of the surface's pixels

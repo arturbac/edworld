@@ -30,6 +30,8 @@
 #include <iterator>
 #include <string>
 #include <vector>
+#include "clouds3d_ps.h"
+#include "clouds3d_vs.h"
 #include "clouds_ps.h"
 #include "clouds_vs.h"
 
@@ -3182,6 +3184,19 @@ namespace edworld
       ID3D11Buffer * params{};
       bool tried{};
       bool told{};
+      // the volume (PoC)
+      ID3D11VertexShader * volume_vs{};
+      ID3D11PixelShader * volume_ps{};
+      ID3D11BlendState * volume_blend{};
+      ID3D11RasterizerState * volume_raster{};
+      ID3D11DepthStencilState * volume_depth_state{};
+      ID3D11Buffer * volume_params{};
+      ID3D11Texture2D * depth_copy{};
+      ID3D11ShaderResourceView * depth_view{};
+      UINT depth_width{};
+      UINT depth_height{};
+      DXGI_FORMAT depth_format{};
+      bool volume_failed{};
       };
     clouds_t clouds;
 
@@ -3229,6 +3244,184 @@ namespace edworld
       clouds.params = ok ? params : nullptr;
       log_line("clouds: %s", ok ? "ready" : "could not be made, none will be drawn");
       return ok;
+      }
+
+    auto make_volume(ID3D11DeviceContext * ctx) noexcept -> bool
+      {
+      if(clouds.volume_params)
+        return true;
+      if(clouds.volume_failed)
+        return false;
+      clouds.volume_failed = true;
+      ID3D11Device * device{};
+      ctx->GetDevice(&device);
+      if(not device)
+        return false;
+      creating_own.store(true);
+      bool ok{SUCCEEDED(device->CreateVertexShader(g_clouds3d_vs, sizeof g_clouds3d_vs, nullptr, &clouds.volume_vs))};
+      ok = ok and SUCCEEDED(device->CreatePixelShader(g_clouds3d_ps, sizeof g_clouds3d_ps, nullptr, &clouds.volume_ps));
+      creating_own.store(false);
+
+      // what the shader gives is already weighed by how much of it there is
+      D3D11_BLEND_DESC blend{};
+      blend.RenderTarget[0].BlendEnable = TRUE;
+      blend.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
+      blend.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+      blend.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+      blend.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ZERO;
+      blend.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
+      blend.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+      blend.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+      ok = ok and SUCCEEDED(device->CreateBlendState(&blend, &clouds.volume_blend));
+
+      D3D11_RASTERIZER_DESC raster{};
+      raster.FillMode = D3D11_FILL_SOLID;
+      raster.CullMode = D3D11_CULL_NONE;
+      raster.DepthClipEnable = FALSE;
+      ok = ok and SUCCEEDED(device->CreateRasterizerState(&raster, &clouds.volume_raster));
+
+      // the far half of the sphere lies behind the planet: the shader tests the depth along the ray instead
+      D3D11_DEPTH_STENCIL_DESC depth{};
+      depth.DepthEnable = FALSE;
+      depth.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+      depth.DepthFunc = D3D11_COMPARISON_ALWAYS;
+      ok = ok and SUCCEEDED(device->CreateDepthStencilState(&depth, &clouds.volume_depth_state));
+
+      float const values[8]{
+        settings().clouds_bottom, settings().clouds_top, settings().clouds_cover, settings().clouds_light,
+        settings().clouds_steps, settings().clouds_density, 0.f, 0.f
+      };
+      D3D11_BUFFER_DESC desc{};
+      desc.ByteWidth = sizeof values;
+      desc.Usage = D3D11_USAGE_IMMUTABLE;
+      desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+      D3D11_SUBRESOURCE_DATA data{};
+      data.pSysMem = values;
+      ID3D11Buffer * params{};
+      ok = ok and SUCCEEDED(device->CreateBuffer(&desc, &data, &params));
+      device->Release();
+      if(ok)
+        {
+        clouds.volume_params = params;
+        clouds.volume_failed = false;
+        }
+      log_line("clouds: the volume %s", ok ? "is ready" : "could not be made, the layer stays");
+      return ok;
+      }
+
+    ///\brief this moment's depth of the scene as something a shader can read; false without one
+    auto copy_depth(ID3D11DeviceContext * ctx) noexcept -> bool
+      {
+      ID3D11DepthStencilView * dsv{};
+      ctx->OMGetRenderTargets(0, nullptr, &dsv);
+      if(not dsv)
+        return false;
+      D3D11_DEPTH_STENCIL_VIEW_DESC view{};
+      dsv->GetDesc(&view);
+      ID3D11Resource * resource{};
+      dsv->GetResource(&resource);
+      dsv->Release();
+      ID3D11Texture2D * texture{};
+      resource->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void **>(&texture));
+      bool ok{};
+      if(texture)
+        {
+        D3D11_TEXTURE2D_DESC d{};
+        texture->GetDesc(&d);
+        DXGI_FORMAT family{};
+        DXGI_FORMAT read{};
+        switch(view.Format)
+          {
+          case DXGI_FORMAT_D32_FLOAT: family = DXGI_FORMAT_R32_TYPELESS; read = DXGI_FORMAT_R32_FLOAT; break;
+          case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
+            family = DXGI_FORMAT_R32G8X24_TYPELESS;
+            read = DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
+            break;
+          case DXGI_FORMAT_D24_UNORM_S8_UINT: family = DXGI_FORMAT_R24G8_TYPELESS; read = DXGI_FORMAT_R24_UNORM_X8_TYPELESS; break;
+          default: break;
+          }
+        if(family != DXGI_FORMAT_UNKNOWN and d.SampleDesc.Count == 1u)
+          {
+          if(not clouds.depth_copy or clouds.depth_width != d.Width or clouds.depth_height != d.Height or clouds.depth_format != family)
+            {
+            if(clouds.depth_view)
+              clouds.depth_view->Release();
+            if(clouds.depth_copy)
+              clouds.depth_copy->Release();
+            clouds.depth_view = nullptr;
+            clouds.depth_copy = nullptr;
+            ID3D11Device * device{};
+            ctx->GetDevice(&device);
+            D3D11_TEXTURE2D_DESC c{d};
+            c.Format = family;
+            c.Usage = D3D11_USAGE_DEFAULT;
+            c.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+            c.CPUAccessFlags = 0;
+            c.MiscFlags = 0;
+            if(device and SUCCEEDED(device->CreateTexture2D(&c, nullptr, &clouds.depth_copy)))
+              {
+              D3D11_SHADER_RESOURCE_VIEW_DESC s{};
+              s.Format = read;
+              s.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+              s.Texture2D.MipLevels = 1;
+              device->CreateShaderResourceView(clouds.depth_copy, &s, &clouds.depth_view);
+              }
+            if(device)
+              device->Release();
+            clouds.depth_width = d.Width;
+            clouds.depth_height = d.Height;
+            clouds.depth_format = family;
+            log_line("clouds: depth %ux%u format %d, mips %u, %s", d.Width, d.Height, static_cast<int>(view.Format), d.MipLevels,
+                     clouds.depth_view ? "copied" : "cannot be read");
+            }
+          if(clouds.depth_view)
+            {
+            ctx->CopyResource(clouds.depth_copy, texture);
+            ok = true;
+            }
+          }
+        texture->Release();
+        }
+      resource->Release();
+      return ok;
+      }
+
+    ///\brief the volume in place of the layer, with the shaders and states of the shell put back after it
+    auto draw_volume(
+      ID3D11DeviceContext * ctx,
+      ID3D11Buffer * object,
+      ID3D11Buffer * frame,
+      UINT index_count,
+      UINT instance_count,
+      UINT start_index,
+      INT base_vertex,
+      UINT start_instance
+    ) noexcept -> void
+      {
+      ID3D11DepthStencilState * game_depth{};
+      UINT game_stencil{};
+      ID3D11ShaderResourceView * game_t0{};
+      ctx->OMGetDepthStencilState(&game_depth, &game_stencil);
+      ctx->PSGetShaderResources(0, 1, &game_t0);
+
+      orig_vs_set_shader(ctx, clouds.volume_vs, nullptr, 0);
+      ctx->PSSetShader(clouds.volume_ps, nullptr, 0);
+      ctx->VSSetConstantBuffers(4, 1, &clouds.volume_params);
+      ctx->PSSetConstantBuffers(0, 1, &object);
+      ctx->PSSetConstantBuffers(1, 1, &frame);
+      ctx->PSSetConstantBuffers(4, 1, &clouds.volume_params);
+      ctx->PSSetShaderResources(0, 1, &clouds.depth_view);
+      ctx->OMSetBlendState(clouds.volume_blend, nullptr, 0xffffffffu);
+      ctx->RSSetState(clouds.volume_raster);
+      ctx->OMSetDepthStencilState(clouds.volume_depth_state, 0);
+      orig_draw_indexed_instanced(ctx, index_count, instance_count, start_index, base_vertex, start_instance);
+
+      ctx->OMSetDepthStencilState(game_depth, game_stencil);
+      ctx->PSSetShaderResources(0, 1, &game_t0);
+      if(game_depth)
+        game_depth->Release();
+      if(game_t0)
+        game_t0->Release();
       }
 
     auto draw_clouds(
@@ -3291,7 +3484,10 @@ namespace edworld
           dsv->Release();
         }
 
-      if(object and frame)
+      bool const volume{object and frame and settings().clouds_volume and make_volume(ctx) and copy_depth(ctx)};
+      if(volume)
+        draw_volume(ctx, object, frame, index_count, instance_count, start_index, base_vertex, start_instance);
+      else if(object and frame)
         {
         orig_vs_set_shader(ctx, clouds.vs, nullptr, 0);
         ctx->PSSetShader(clouds.ps, nullptr, 0);
@@ -3302,6 +3498,9 @@ namespace edworld
         ctx->OMSetBlendState(clouds.blend, nullptr, 0xffffffffu);
         ctx->RSSetState(clouds.raster);
         orig_draw_indexed_instanced(ctx, index_count, instance_count, start_index, base_vertex, start_instance);
+        }
+      if(object and frame)
+        {
         orig_vs_set_shader(ctx, game_vs, nullptr, 0);
         ctx->PSSetShader(game_ps, nullptr, 0);
         ctx->VSSetConstantBuffers(4, 1, &game_vs_b4);

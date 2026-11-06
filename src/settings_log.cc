@@ -145,6 +145,16 @@ namespace edworld
         current.clouds_height = to_float(value, current.clouds_height);
       else if(key == "clouds_alpha")
         current.clouds_alpha = to_float(value, current.clouds_alpha);
+      else if(key == "clouds_volume")
+        current.clouds_volume = value == "1";
+      else if(key == "clouds_bottom")
+        current.clouds_bottom = to_float(value, current.clouds_bottom);
+      else if(key == "clouds_top")
+        current.clouds_top = to_float(value, current.clouds_top);
+      else if(key == "clouds_steps")
+        current.clouds_steps = to_float(value, current.clouds_steps);
+      else if(key == "clouds_density")
+        current.clouds_density = to_float(value, current.clouds_density);
       else if(key == "clouds_light")
         current.clouds_light = to_float(value, current.clouds_light);
       else if(key == "clouds_cover")
