@@ -93,6 +93,8 @@ namespace edworld
     ///\brief the list's colours times this in the cockpit: its target is HDR (R11G11B10_FLOAT), and white text there
     /// blooms more than the panel's own
     float list_gain{0.8f};
+    ///\brief how much the list's box covers what is behind it, 0 nothing to 1 all
+    float list_alpha{0.65f};
 
     // ---- the compass (PoC): the HUD compass's dot read off its interface surface, the angles written beside it ----
     ///\brief 0 off, 1 the angles, 2 also everything known for checking them, 3 also a grid of the surface's pixels

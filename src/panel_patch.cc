@@ -473,7 +473,9 @@ namespace edworld
       float const box_w{std::min(inner + 2.f * pad, s.list_width)};
       float const left{std::round(centre_x - box_w / 2.f)}, right{left + box_w};
       float const bottom{top + list_height(lines, line, pad, footer_size)};
-      dl->AddRectFilled(ImVec2{left, top}, ImVec2{right, bottom}, IM_COL32(0, 0, 0, 255));
+      dl->AddRectFilled(
+        ImVec2{left, top}, ImVec2{right, bottom}, IM_COL32(0, 0, 0, static_cast<int>(std::clamp(s.list_alpha, 0.f, 1.f) * 255.f + 0.5f))
+      );
       if(test)
         dl->AddRect(ImVec2{left, top}, ImVec2{right, bottom}, im_colour(0xff00ffu), 0.f, 0, 2.f);
 

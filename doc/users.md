@@ -84,6 +84,7 @@ comment line. Every setting has a default; the file is needed only to change one
 | `list` | `1` | `0` = no factions list |
 | `list_text` | `50` | the list's text height (pixels of the panel's surface) |
 | `list_gain` | `0.8` | the list's brightness |
+| `list_alpha` | `0.65` | how much the list's box covers what is behind it, `0` nothing to `1` all |
 | `list_top`, `list_x` | `500`, `1540` | where the list starts under the panel (pixels of the panel's surface) |
 | `list_rows` | `7` | factions listed at most |
 | `edsm` | `1` | `0` = never ask EDSM (no list then without EHT) |

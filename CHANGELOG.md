@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **The factions list's box is translucent (`list_alpha`, 0.65).** What is behind the box shows through it; `1` is the
+  solid box it was.
 - **Build with CMake and clang-cl.** `tools/build.sh` (MSVC through msvc-wine) is replaced by a CMake build with
   clang-cl against MSVC's and the Windows SDK's headers and libraries (`MSVC_ROOT`), with presets for Debug and
   Release; no MSVC compiler is run. `tools/test.sh` takes the build directory. See doc/developers.md "Build".

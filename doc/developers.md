@@ -479,6 +479,7 @@ list_rows = 7
 list_text = 50
 ; the list's colours times this in the cockpit
 list_gain = 0.8
+list_alpha = 0.65
 ```
 
 The values above are the defaults. `shm_dir` is where EHT writes `target` (`edworld.dir` in its settings,
