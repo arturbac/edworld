@@ -164,6 +164,8 @@ EDSM is asked once per new destination, with the system's id only.
 
 ## Clouds
 
+![The sky of a planet with a thin atmosphere, under the clouds of edworld](images/clouds.jpg)
+
 With `clouds = 1` a planet the game gives an atmosphere and no clouds gets a layer of them: from orbit, on the way
 through it and from under it on the ground. The clouds are worked out from noise on the graphics card, each planet
 its own; the game's data is not used for them and nothing of them reaches anyone else, they are only in your picture.

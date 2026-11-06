@@ -12,6 +12,14 @@ Left, a Federation destination: its emblem drawn by edworld in place of the wron
 independent one: the phoenix in gold. Under each panel the destination's factions by influence, the controlling one
 starred, with the trend at the last tick and their states.
 
+## Clouds, testers wanted
+
+![The sky of a planet with a thin atmosphere, under the clouds of edworld](doc/images/clouds.jpg)
+
+Version 1.2.0-beta.1 can put clouds over the planets with an atmosphere you land on, which the game leaves without any:
+seen from orbit, on the way down through them and from the ground. They are off by default, `clouds = 1` in the ini
+turns them on, and they are only in your picture. See [Clouds](doc/users.md#clouds).
+
 ## Navballs, testers wanted
 
 ![Navballs beside the radar: the target's direction from the front (left) and from behind (right)](doc/images/navballs.jpg)
