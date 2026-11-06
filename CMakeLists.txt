@@ -58,6 +58,9 @@ edworld_fxc("${gen}/imgui_ps.h" ps_4_0 ps_main g_imgui_ps "${CMAKE_SOURCE_DIR}/s
 # the list's quad under the jump panel (SM5: it reads the game's structured record buffer)
 edworld_fxc("${gen}/list_vs.h" vs_5_0 vs_main g_list_vs "${CMAKE_SOURCE_DIR}/shaders/list.hlsl" /O3)
 edworld_fxc("${gen}/list_ps.h" ps_5_0 ps_main g_list_ps "${CMAKE_SOURCE_DIR}/shaders/list.hlsl" /O3)
+# the layer of clouds over a planet with an atmosphere (PoC)
+edworld_fxc("${gen}/clouds_vs.h" vs_5_0 vs_main g_clouds_vs "${CMAKE_SOURCE_DIR}/shaders/clouds.hlsl" /O3)
+edworld_fxc("${gen}/clouds_ps.h" ps_5_0 ps_main g_clouds_ps "${CMAKE_SOURCE_DIR}/shaders/clouds.hlsl" /O3)
 
 add_custom_command(
   OUTPUT "${gen}/list_font.h"
@@ -76,7 +79,8 @@ add_custom_target(edworld_version
 
 add_custom_target(edworld_generated DEPENDS
   "${gen}/edvr_d3d11.def" "${gen}/edvr_thunks_d3d11.asm" "${gen}/edvr_exports_d3d11.inc"
-  "${gen}/imgui_vs.h" "${gen}/imgui_ps.h" "${gen}/list_vs.h" "${gen}/list_ps.h" "${gen}/list_font.h")
+  "${gen}/imgui_vs.h" "${gen}/imgui_ps.h" "${gen}/list_vs.h" "${gen}/list_ps.h" "${gen}/list_font.h"
+  "${gen}/clouds_vs.h" "${gen}/clouds_ps.h")
 
 set(imgui "${CMAKE_SOURCE_DIR}/third_party/imgui")
 add_library(edworld_imgui OBJECT

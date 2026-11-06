@@ -30,6 +30,8 @@
 #include <iterator>
 #include <string>
 #include <vector>
+#include "clouds_ps.h"
+#include "clouds_vs.h"
 
 namespace edworld
   {
@@ -150,6 +152,11 @@ namespace edworld
     ID3D11Device * device{};
     ID3D11DeviceContext1 * immediate1{};
     int current_watched{-1};
+    ///\brief (PoC) the game's shell of the atmosphere over a planet that has none of its own clouds; its draw is what
+    /// the clouds are drawn after. It says where the planet is and how large, in its own constants
+    constexpr std::uint64_t atmosphere_shell_vs{0xFFB551B5E7E79CEAull};
+    std::atomic<void *> shell_vs{};
+    bool current_shell{};
     std::uint32_t current_pending{max_vs_seen};  // the bound shader's seen slot while its verdict is pending
     std::atomic<bool> disabled{false};
     std::uint32_t faults{};
@@ -2724,6 +2731,11 @@ namespace edworld
               log_line("vs %016llX kept for dumps (%zu bytes)", static_cast<unsigned long long>(hash), static_cast<std::size_t>(length));
               }
         }
+      if(hash == atmosphere_shell_vs and not creating_own.load())
+        {
+        static_cast<IUnknown *>(*shader)->AddRef();  // pinned, as the watched ones
+        shell_vs.store(*shader, std::memory_order_relaxed);
+        }
       auto const & listed{settings().watch_vs};
       for(std::size_t i{}; i != listed.size(); ++i)
         if(listed[i] == hash)
@@ -2868,6 +2880,7 @@ namespace edworld
               }
           }
         current_watched = found;
+        current_shell = shader != nullptr and shader == shell_vs.load(std::memory_order_relaxed);
         current_pending = pending;
         current_holo = holo;
         }
@@ -3159,6 +3172,172 @@ namespace edworld
         last_draw_qpc += qpc_now() - began;
       }
 
+    // ---- the clouds (PoC): the game's draw of its shell of the atmosphere, once more, with shaders of ours ----
+    struct clouds_t
+      {
+      ID3D11VertexShader * vs{};
+      ID3D11PixelShader * ps{};
+      ID3D11BlendState * blend{};
+      ID3D11RasterizerState * raster{};
+      ID3D11Buffer * params{};
+      bool tried{};
+      bool told{};
+      };
+    clouds_t clouds;
+
+    auto make_clouds(ID3D11DeviceContext * ctx) noexcept -> bool
+      {
+      if(clouds.tried)
+        return clouds.params != nullptr;
+      clouds.tried = true;
+      ID3D11Device * device{};
+      ctx->GetDevice(&device);
+      if(not device)
+        return false;
+      creating_own.store(true);
+      bool ok{SUCCEEDED(device->CreateVertexShader(g_clouds_vs, sizeof g_clouds_vs, nullptr, &clouds.vs))};
+      ok = ok and SUCCEEDED(device->CreatePixelShader(g_clouds_ps, sizeof g_clouds_ps, nullptr, &clouds.ps));
+      creating_own.store(false);
+
+      D3D11_BLEND_DESC blend{};
+      blend.RenderTarget[0].BlendEnable = TRUE;
+      blend.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+      blend.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+      blend.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+      blend.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ZERO;
+      blend.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
+      blend.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+      blend.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+      ok = ok and SUCCEEDED(device->CreateBlendState(&blend, &clouds.blend));
+
+      D3D11_RASTERIZER_DESC raster{};
+      raster.FillMode = D3D11_FILL_SOLID;
+      raster.CullMode = D3D11_CULL_NONE;
+      raster.DepthClipEnable = TRUE;
+      ok = ok and SUCCEEDED(device->CreateRasterizerState(&raster, &clouds.raster));
+
+      float const values[4]{settings().clouds_radius, settings().clouds_alpha, settings().clouds_cover, 0.f};
+      D3D11_BUFFER_DESC desc{};
+      desc.ByteWidth = sizeof values;
+      desc.Usage = D3D11_USAGE_IMMUTABLE;
+      desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+      D3D11_SUBRESOURCE_DATA data{};
+      data.pSysMem = values;
+      ID3D11Buffer * params{};
+      ok = ok and SUCCEEDED(device->CreateBuffer(&desc, &data, &params));
+      device->Release();
+      clouds.params = ok ? params : nullptr;
+      log_line("clouds: %s", ok ? "ready" : "could not be made, none will be drawn");
+      return ok;
+      }
+
+    auto draw_clouds(
+      ID3D11DeviceContext * ctx,
+      UINT index_count,
+      UINT instance_count,
+      UINT start_index,
+      INT base_vertex,
+      UINT start_instance
+    ) noexcept -> void
+      {
+      if(not make_clouds(ctx))
+        return;
+      ID3D11VertexShader * game_vs{};
+      ID3D11PixelShader * game_ps{};
+      ID3D11BlendState * game_blend{};
+      float game_factor[4]{};
+      UINT game_mask{};
+      ID3D11RasterizerState * game_raster{};
+      ID3D11Buffer * frame{};
+      ID3D11Buffer * game_ps_b1{};
+      ID3D11Buffer * game_ps_b0{};
+      ID3D11Buffer * object{};
+      ID3D11Buffer * game_vs_b4{};
+      ID3D11Buffer * game_ps_b4{};
+      ctx->VSGetShader(&game_vs, nullptr, nullptr);
+      ctx->PSGetShader(&game_ps, nullptr, nullptr);
+      ctx->OMGetBlendState(&game_blend, game_factor, &game_mask);
+      ctx->RSGetState(&game_raster);
+      ctx->VSGetConstantBuffers(0, 1, &object);
+      ctx->VSGetConstantBuffers(1, 1, &frame);
+      ctx->VSGetConstantBuffers(4, 1, &game_vs_b4);
+      ctx->PSGetConstantBuffers(0, 1, &game_ps_b0);
+      ctx->PSGetConstantBuffers(1, 1, &game_ps_b1);
+      ctx->PSGetConstantBuffers(4, 1, &game_ps_b4);
+
+      if(not clouds.told)
+        {
+        clouds.told = true;
+        ID3D11DepthStencilState * depth{};
+        UINT stencil{};
+        ctx->OMGetDepthStencilState(&depth, &stencil);
+        D3D11_DEPTH_STENCIL_DESC d{};
+        if(depth)
+          depth->GetDesc(&d);
+        D3D11_BLEND_DESC b{};
+        if(game_blend)
+          game_blend->GetDesc(&b);
+        ID3D11RenderTargetView * rtv{};
+        ID3D11DepthStencilView * dsv{};
+        ctx->OMGetRenderTargets(1, &rtv, &dsv);
+        log_line("clouds: the shell's depth %d write %d func %d, view %s, blend %d src %d dest %d, frame constants %s",
+                 d.DepthEnable, d.DepthWriteMask, d.DepthFunc, dsv ? "bound" : "none", b.RenderTarget[0].BlendEnable,
+                 b.RenderTarget[0].SrcBlend, b.RenderTarget[0].DestBlend, frame ? "bound" : "none");
+        if(depth)
+          depth->Release();
+        if(rtv)
+          rtv->Release();
+        if(dsv)
+          dsv->Release();
+        }
+
+      if(object and frame)
+        {
+        orig_vs_set_shader(ctx, clouds.vs, nullptr, 0);
+        ctx->PSSetShader(clouds.ps, nullptr, 0);
+        ctx->VSSetConstantBuffers(4, 1, &clouds.params);
+        ctx->PSSetConstantBuffers(0, 1, &object);
+        ctx->PSSetConstantBuffers(1, 1, &frame);
+        ctx->PSSetConstantBuffers(4, 1, &clouds.params);
+        ctx->OMSetBlendState(clouds.blend, nullptr, 0xffffffffu);
+        ctx->RSSetState(clouds.raster);
+        orig_draw_indexed_instanced(ctx, index_count, instance_count, start_index, base_vertex, start_instance);
+        orig_vs_set_shader(ctx, game_vs, nullptr, 0);
+        ctx->PSSetShader(game_ps, nullptr, 0);
+        ctx->VSSetConstantBuffers(4, 1, &game_vs_b4);
+        ctx->PSSetConstantBuffers(0, 1, &game_ps_b0);
+        ctx->PSSetConstantBuffers(1, 1, &game_ps_b1);
+        ctx->PSSetConstantBuffers(4, 1, &game_ps_b4);
+        ctx->OMSetBlendState(game_blend, game_factor, game_mask);
+        ctx->RSSetState(game_raster);
+        }
+
+      for(IUnknown * held: std::initializer_list<IUnknown *>{
+            game_vs, game_ps, game_blend, game_raster, frame, object, game_ps_b0, game_ps_b1, game_vs_b4, game_ps_b4
+          })
+        if(held)
+          held->Release();
+      }
+
+    auto guarded_clouds(
+      ID3D11DeviceContext * ctx,
+      UINT index_count,
+      UINT instance_count,
+      UINT start_index,
+      INT base_vertex,
+      UINT start_instance
+    ) noexcept -> void
+      {
+      __try
+        {
+        draw_clouds(ctx, index_count, instance_count, start_index, base_vertex, start_instance);
+        }
+      __except(EXCEPTION_EXECUTE_HANDLER)
+        {
+        note_fault();
+        }
+      }
+
     void STDMETHODCALLTYPE hook_draw_indexed(ID3D11DeviceContext * self, UINT index_count, UINT start_index, INT base_vertex)
       {
       if(full_armed)
@@ -3245,6 +3424,9 @@ namespace edworld
           guarded_probe(self, index_count, instance_count);
         }
       orig_draw_indexed_instanced(self, index_count, instance_count, start_index, base_vertex, start_instance);
+      if(current_shell and settings().clouds and not disabled.load(std::memory_order_relaxed)
+         and self == immediate.load(std::memory_order_relaxed))
+        guarded_clouds(self, index_count, instance_count, start_index, base_vertex, start_instance);
       if(full_after_draw and self == immediate.load(std::memory_order_relaxed))
         guarded_full_after(self);
       if(watched)

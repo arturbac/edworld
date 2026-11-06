@@ -95,6 +95,12 @@ namespace edworld
     float list_gain{0.8f};
     ///\brief how much the list's box covers what is behind it, 0 nothing to 1 all
     float list_alpha{0.65f};
+    ///\brief (PoC) a layer of clouds drawn after the game's shell of the atmosphere; off by default
+    bool clouds{false};
+    ///\brief of the shell's radius - the shell stands some 3% above the surface
+    float clouds_radius{0.975f};
+    float clouds_alpha{0.8f};
+    float clouds_cover{0.5f};
 
     // ---- the compass (PoC): the HUD compass's dot read off its interface surface, the angles written beside it ----
     ///\brief 0 off, 1 the angles, 2 also everything known for checking them, 3 also a grid of the surface's pixels
