@@ -114,6 +114,8 @@ namespace edworld
     float clouds_opacity{0.75f};
     ///\brief how much lighter the clouds with depth are seen from above the layer: a light ground hid them
     float clouds_top_gain{2.f};
+    ///\brief how much lighter they are seen from under the layer: a day's sky hid them (2026-11-07, LQ-F b31-7 A 4)
+    float clouds_under_gain{2.f};
     ///\brief the star's light the clouds with depth get at least, in the game's units (2026-11-07: 970 and 547 by an M star,
     /// 442 and 40 by L stars); the light's hue stays; 0 = as the game gives it
     float clouds_min_light{400.f};

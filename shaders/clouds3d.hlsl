@@ -24,7 +24,8 @@ cbuffer clouds : register(b4)
   float cloud_opacity; // the most they cover what is behind them
   float cloud_top_gain; // how much lighter they are seen from above, against a light ground
   float cloud_min_light; // the star's light they get at least, in the game's units; its hue stays
-  float3 cloud_pad;
+  float cloud_under_gain; // how much lighter they are seen from under the layer, against a day's sky
+  float2 cloud_pad;
   };
 
 Texture2D<float> scene_depth : register(t0);
@@ -178,12 +179,13 @@ float4 ps_main(ps_in input) : SV_TARGET
       }
     }
 
-  // from under them they stay as they are, the sky behind them is dark; the gain comes in over a layer's height above it
-  float above = saturate((length(centre) - top) / (top - bottom));
+  // each gain comes in over a layer's height: from the floor up to the top none, above and under it the two
+  float height_of_eye = (length(centre) - bottom) / (top - bottom);
+  float gain = lerp(lerp(cloud_under_gain, 1.f, saturate(height_of_eye)), cloud_top_gain, saturate(height_of_eye - 1.f));
   float3 star = frame_rows[293].xyz;
   float strongest = max(max(star.r, star.g), max(star.b, 0.001f));
   star *= max(1.f, cloud_min_light / strongest);
-  float3 colour = light * star * cloud_light * frame_rows[90].y * lerp(1.f, cloud_top_gain, above);
+  float3 colour = light * star * cloud_light * frame_rows[90].y * gain;
   float fade = frame_rows[126].z;
   float weight = fade * cloud_opacity;
   return float4(colour * weight, (1.f - clear) * weight);
