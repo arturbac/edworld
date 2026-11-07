@@ -1,0 +1,29 @@
+; edworld's settings: you need this file only to change something. Everything here is edworld's own default.
+;
+; Copy it as edworld.ini (without .example):
+;   - on its own: into the game's folder, Products\elite-dangerous-odyssey-64, beside edworld's d3d11.dll
+;   - through edloader: into edloader\config
+; Take the ';' off the start of a line to change it; a change takes a new start of the game.
+; Comments stand on lines of their own. All the settings: doc/users.md.
+
+; If you renamed another mod's d3d11.dll for edworld to go on to it, name it here (not needed with edloader)
+;next = d3d11_edhm.dll
+
+; Clouds over planets with an atmosphere: 0 = none
+;clouds = 1
+; the layer's height over the surface, as a part of the planet's radius
+;clouds_height = 0.005
+; how much they cover what is under them, 0 to 1
+;clouds_alpha = 0.45
+; how much of the sky they take, 0 clear to 1 overcast
+;clouds_cover = 0.4
+; how much of the sun they give back
+;clouds_light = 0.4
+
+; The navballs beside the radar: 0 = none, the game's compass is not read at all
+;compass = 1
+
+; The destination's factions under the jump panel: 0 = never ask EDSM
+;edsm = 1
+; how much the list's box covers what is behind it, 0 to 1
+;list_alpha = 0.65
