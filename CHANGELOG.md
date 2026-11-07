@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.2.0-beta.4
+
+- **The guides: EDVR's `ui_quality = off`.** With EDVR's anti-aliasing on, its bigger cockpit panels took the navballs
+  away. The setting keeps both. The clouds were never affected.
+- **edloader's guide:** EDVR's `real_dll` stands in the `[advanced]` section; why EDHM goes before EDVR.
+
 ## 1.2.0-beta.3
 
 - **Through edloader the mods after edworld are reached by themselves.** An empty `next` used to end the list at

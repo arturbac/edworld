@@ -57,6 +57,10 @@ it). Put edworld's dll into `edloader\plugins` and list it in `edloader.txt`; th
 go on after it. Its `edworld.ini` is made in `edloader\config` and its log in `edloader\logs`. EDHM stays in the game's
 folder, under the name `d3d11_edhm.dll`, listed by its full path, before EDVR (edloader's doc/users.md).
 
+With EDVR's anti-aliasing on, set `ui_quality = off` in the `[fix]` section of `edvr-flat.ini` (F8: UI quality). EDVR
+otherwise makes the cockpit panels bigger, edworld no longer finds them and the navballs are gone. The clouds are not
+affected.
+
 ### On its own
 
 For edworld as the only d3d11 mod, or for a player who does not want edloader.
