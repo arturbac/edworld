@@ -109,7 +109,7 @@ namespace edworld
     bool clouds_volume{true};
     float clouds_bottom{0.003f};
     float clouds_top{0.012f};
-    float clouds_steps{48.f};
+    float clouds_steps{32.f};
     float clouds_density{1.2f};
     float clouds_opacity{0.75f};
     ///\brief how much lighter the clouds with depth are seen from above the layer: a light ground hid them
@@ -121,7 +121,7 @@ namespace edworld
     /// much it cuts the clouds, 0 = none; its largest lumps and how far it reaches, in metres; a cloud's edge near the eye
     float clouds_detail{1.f};
     float clouds_detail_size{3000.f};
-    float clouds_detail_range{150000.f};
+    float clouds_detail_range{500000.f};
     float clouds_detail_edge{8.f};
     ///\brief how much clear sky the fine shape opens near the eye; the view from orbit keeps its clouds
     float clouds_detail_gap{0.14f};
