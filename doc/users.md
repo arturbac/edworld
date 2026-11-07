@@ -98,6 +98,7 @@ zip is the same start, by hand.
 | `clouds_light` | `0.4` | how much of the sun they give back |
 | `clouds_volume` | `1` | clouds with depth you fly through; `0` = the flat layer, lighter for a weaker graphics card |
 | `clouds_bottom`, `clouds_top` | `0.003`, `0.012` | where the clouds with depth begin and end over the surface, as parts of the planet's radius |
+| `clouds_top_gain` | `2` | how much lighter the clouds with depth are seen from above, over a light ground; `1` = as from under them |
 | `clouds_density`, `clouds_opacity`, `clouds_steps` | `1.2`, `0.75`, `32` | how thick they are, how much they cover at most, and the steps through them: fewer are lighter and coarser |
 | `list_top`, `list_x` | `500`, `1540` | where the list starts under the panel (pixels of the panel's surface) |
 | `list_rows` | `7` | factions listed at most |

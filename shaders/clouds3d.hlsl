@@ -22,7 +22,7 @@ cbuffer clouds : register(b4)
   float cloud_steps;
   float cloud_density;
   float cloud_opacity; // the most they cover what is behind them
-  float cloud_pad;
+  float cloud_top_gain; // how much lighter they are seen from above, against a light ground
   };
 
 Texture2D<float> scene_depth : register(t0);
@@ -176,7 +176,9 @@ float4 ps_main(ps_in input) : SV_TARGET
       }
     }
 
-  float3 colour = light * frame_rows[293].xyz * cloud_light * frame_rows[90].y;
+  // from under them they stay as they are, the sky behind them is dark; the gain comes in over a layer's height above it
+  float above = saturate((length(centre) - top) / (top - bottom));
+  float3 colour = light * frame_rows[293].xyz * cloud_light * frame_rows[90].y * lerp(1.f, cloud_top_gain, above);
   float fade = frame_rows[126].z;
   float weight = fade * cloud_opacity;
   return float4(colour * weight, (1.f - clear) * weight);
