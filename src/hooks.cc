@@ -3214,6 +3214,7 @@ namespace edworld
       UINT half_width{};
       UINT half_height{};
       bool half_failed{};
+      std::uint32_t frame{};  // the volume's draws so far, for the grain of the steps
       };
     clouds_t clouds;
 
@@ -3607,6 +3608,7 @@ namespace edworld
 
       clouds.volume_values[15] = static_cast<float>(GetTickCount64() - clouds.wind_start) / 1000.f;
       clouds.volume_values[18] = half ? 2.f : 1.f;
+      clouds.volume_values[19] = static_cast<float>(clouds.frame++ % 64u);
       ctx->UpdateSubresource(clouds.volume_params, 0, nullptr, clouds.volume_values, 0, 0);
       if(half)
         {
