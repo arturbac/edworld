@@ -169,7 +169,7 @@ float4 ps_main(ps_in input) : SV_TARGET
     // few km cut it, where the steps are short enough to show them
     float near = saturate(1.f - t / cloud_detail_range) * saturate(cloud_detail_size * 2.f / step_length);
     float sharpness = 2.5f;
-    if(cloud_detail > 0.f and near > 0.f and shape > -0.2f)
+    if(cloud_detail > 0.f && near > 0.f && shape > -0.2f)
       {
       float3 fine = dir * (distance_to_centre / cloud_detail_size) + seed;
       shape += (fbm(fine, 3) - 0.44f) * cloud_detail * near;
