@@ -41,7 +41,7 @@ Apart from the jump panel and the navballs nothing in the game changes.
 | dll | for |
 |---|---|
 | `edworld.dll` | anyone: the factions come from EDSM |
-| `edworld_eht.dll` | players who run Elite Help Tool: the factions come from EHT's records first, EDSM otherwise |
+| `edworld_eht.dll` | players who run Elite Help Tool: the factions come from EHT's records first, EDSM otherwise. It comes with Elite Help Tool, not with edworld |
 
 ## Install
 
@@ -66,7 +66,7 @@ EDVR (edloader's doc/users.md, "EDHM and EDVR").
 
 ### With Elite Help Tool
 
-`edworld_eht.dll` reads what EHT knows of your destination from a shared folder, `shm_dir` in its ini. It must be
+`edworld_eht.dll` comes with Elite Help Tool. It reads what EHT knows of your destination from a shared folder, `shm_dir` in its ini. It must be
 the folder EHT writes to (`edworld.dir` in EHT's `eht_settings.json`), as seen from the game: EHT's
 `/dev/shm/eht-sjona` is `Z:\dev\shm\eht-sjona` for the game under Proton. Give each commander's EHT a folder of its
 own: two tools writing one folder replace each other's destination.
