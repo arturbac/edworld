@@ -16,6 +16,11 @@
 
 namespace edworld
   {
+  ///\brief a degree in radians, a radian in degrees
+  inline constexpr double deg_to_rad{std::numbers::pi / 180.0};
+  inline constexpr double rad_to_deg{180.0 / std::numbers::pi};
+  inline constexpr float rad_to_deg_f{static_cast<float>(rad_to_deg)};
+
   ///\brief the dot as found in an RGBA copy of the compass: its centre relative to the disc's centre, in surface
   /// pixels (x right, y down as on the surface)
   ///\detail fields from the widest alignment down (copied a few times a frame); initialize by designators
@@ -140,8 +145,8 @@ namespace edworld
         if(not white)
           {
           ++coloured;
-          hx += std::cos(c.h / 57.29577951308232f);
-          hy += std::sin(c.h / 57.29577951308232f);
+          hx += std::cos(c.h / rad_to_deg_f);
+          hy += std::sin(c.h / rad_to_deg_f);
           }
         }
     if(n == 0)
@@ -152,7 +157,7 @@ namespace edworld
     out.y = static_cast<float>(sy / n);
     if(coloured * 2u > n)
       {
-      float h{static_cast<float>(std::atan2(hy, hx) * 57.29577951308232)};
+      float h{static_cast<float>(std::atan2(hy, hx) * rad_to_deg)};
       out.dot_hue = h < 0.f ? h + 360.f : h;
       }
     // the middle of the dot: the dot's own colour when filled, the disc's in the ring's hole when hollow
@@ -187,9 +192,6 @@ namespace edworld
     return have and (stale_s <= 0.f or age_s <= static_cast<double>(stale_s));
     }
 
-  inline constexpr float compass_degrees{57.29577951308232f};
-  ///\brief a degree in radians
-  inline constexpr double deg_to_rad{std::numbers::pi / 180.0};
 
   ///\brief the target's direction from the dot, in degrees
   struct compass_angles_t
@@ -217,9 +219,9 @@ namespace edworld
       }
     float const forward{std::sqrt(std::max(0.f, 1.f - rx * rx - ry * ry)) * (filled ? 1.f : -1.f)};
     return compass_angles_t{
-      std::acos(std::clamp(forward, -1.f, 1.f)) * compass_degrees,
-      std::asin(std::clamp(ry, -1.f, 1.f)) * compass_degrees,
-      std::atan2(rx, forward) * compass_degrees
+      std::acos(std::clamp(forward, -1.f, 1.f)) * rad_to_deg_f,
+      std::asin(std::clamp(ry, -1.f, 1.f)) * rad_to_deg_f,
+      std::atan2(rx, forward) * rad_to_deg_f
     };
     }
 
@@ -286,7 +288,7 @@ namespace edworld
   [[nodiscard]]
   inline auto direction_of(float up, float right) noexcept -> compass_direction_t
     {
-    float const u{up / compass_degrees}, r{right / compass_degrees};
+    float const u{up / rad_to_deg_f}, r{right / rad_to_deg_f};
     return compass_direction_t{std::cos(u) * std::sin(r), std::sin(u), std::cos(u) * std::cos(r)};
     }
 
@@ -304,8 +306,8 @@ namespace edworld
   inline auto pad_offsets(compass_direction_t const & d) noexcept -> pad_offsets_t
     {
     float const down{-d.y};
-    return pad_offsets_t{std::atan2(d.z, down) * compass_degrees, std::atan2(d.x, down) * compass_degrees,
-                         std::acos(std::clamp(down, -1.f, 1.f)) * compass_degrees};
+    return pad_offsets_t{std::atan2(d.z, down) * rad_to_deg_f, std::atan2(d.x, down) * rad_to_deg_f,
+                         std::acos(std::clamp(down, -1.f, 1.f)) * rad_to_deg_f};
     }
 
   ///\brief whether the approach view shows (both spheres from above): in normal flight with a fresh reading (have,
@@ -345,7 +347,7 @@ namespace edworld
   [[nodiscard]]
   inline auto angle_between(compass_direction_t const & a, compass_direction_t const & b) noexcept -> float
     {
-    return std::acos(std::clamp(a.x * b.x + a.y * b.y + a.z * b.z, -1.f, 1.f)) * compass_degrees;
+    return std::acos(std::clamp(a.x * b.x + a.y * b.y + a.z * b.z, -1.f, 1.f)) * rad_to_deg_f;
     }
 
   ///\brief how far an exponential average with the time constant tau (seconds) moves towards a reading seconds after the
@@ -385,8 +387,8 @@ namespace edworld
   [[nodiscard]]
   inline auto sphere_view(compass_direction_t const & d, float yaw, float pitch) noexcept -> sphere_point_t
     {
-    float const cy{std::cos(yaw / compass_degrees)}, sy{std::sin(yaw / compass_degrees)};
-    float const cp{std::cos(pitch / compass_degrees)}, sp{std::sin(pitch / compass_degrees)};
+    float const cy{std::cos(yaw / rad_to_deg_f)}, sy{std::sin(yaw / rad_to_deg_f)};
+    float const cp{std::cos(pitch / rad_to_deg_f)}, sp{std::sin(pitch / rad_to_deg_f)};
     float const x1{d.x * cy - d.z * sy}, z1{d.x * sy + d.z * cy};
     float const y2{d.y * cp + z1 * sp}, z2{-d.y * sp + z1 * cp};
     return sphere_point_t{x1, y2, z2 > 0.f};

@@ -77,6 +77,9 @@ namespace edworld
     float position[3];
     };
 
+  ///\brief a record's 16-bit fields as the game unpacks them: value * this - 1
+  inline constexpr float record_unit{0.000031f};
+
   [[nodiscard]]
   inline auto decode_record(std::uint8_t const * r) noexcept -> record_t
     {
@@ -86,10 +89,10 @@ namespace edworld
     std::memcpy(&xy, r + 8, 4);
     std::memcpy(&zw, r + 12, 4);
     std::memcpy(out.position, r + 16, 12);
-    out.orientation[0] = static_cast<float>(xy & 0xFFFFu) * 0.000031f - 1.0f;
-    out.orientation[1] = static_cast<float>(xy >> 16u) * 0.000031f - 1.0f;
-    out.orientation[2] = static_cast<float>(zw & 0xFFFFu) * 0.000031f - 1.0f;
-    out.orientation[3] = static_cast<float>(zw >> 16u) * 0.000031f - 1.0f;
+    out.orientation[0] = static_cast<float>(xy & 0xFFFFu) * record_unit - 1.0f;
+    out.orientation[1] = static_cast<float>(xy >> 16u) * record_unit - 1.0f;
+    out.orientation[2] = static_cast<float>(zw & 0xFFFFu) * record_unit - 1.0f;
+    out.orientation[3] = static_cast<float>(zw >> 16u) * record_unit - 1.0f;
     return out;
     }
 
@@ -140,7 +143,7 @@ namespace edworld
       float const lx{static_cast<float>(x & 0xFFFFu)}, hx{static_cast<float>(x >> 16u)};
       float const ly{static_cast<float>(y & 0xFFFFu)}, hy{static_cast<float>(y >> 16u)};
       float const s{std::exp2(hy * 0.000244f) - 1.f};
-      return {(lx * 0.000031f - 1.f) * s, (hx * 0.000031f - 1.f) * s, (ly * 0.000031f - 1.f) * s};
+      return {(lx * record_unit - 1.f) * s, (hx * record_unit - 1.f) * s, (ly * record_unit - 1.f) * s};
       }
     std::uint32_t const sh{(z >> 24u) & 31u};
     float const scl{1.f / static_cast<float>((1u << ((20u - fmt) & 31u)) - 1u)};
