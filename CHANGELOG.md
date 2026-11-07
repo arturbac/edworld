@@ -10,7 +10,8 @@
 - **No slanting stripes in them near the horizon.** The steps of the march start by blue noise; what stays there is a
   fine, even grain, softened as the clouds are laid over the picture.
 - **The log tells what they cost:** a line `clouds gpu 5s` every 5 s.
-- **Their swirls hold still at the planet's edge** and as you enter the layer.
+- **Their swirls are worked out from where the view meets the layer's floor,** to hold them still at the planet's edge
+  and as you enter the layer; not yet looked at there in the game.
 - **edloader's guide:** EDHM goes into `edloader\plugins` with its files and is listed by name; the list needs
   `+d3dcompiler_47.dll` before it. EDHM in the game's folder, listed by its full path, works as before.
 
