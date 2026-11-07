@@ -29,7 +29,8 @@ cbuffer clouds : register(b4)
   float cloud_detail_size;  // its largest lumps, in metres
   float cloud_detail_range; // how far from the eye it reaches, in metres
   float cloud_detail_edge;  // how sharp a cloud's edge is near the eye
-  float3 cloud_pad;
+  float cloud_detail_gap;   // how much clear sky it opens near the eye
+  float cloud_pad;
   };
 
 Texture2D<float> scene_depth : register(t0);
@@ -172,7 +173,7 @@ float4 ps_main(ps_in input) : SV_TARGET
     if(cloud_detail > 0.f && near > 0.f && shape > -0.2f)
       {
       float3 fine = dir * (distance_to_centre / cloud_detail_size) + seed;
-      shape += (fbm(fine, 3) - 0.44f) * cloud_detail * near;
+      shape += ((fbm(fine, 3) - 0.44f) * cloud_detail - cloud_detail_gap) * near;
       sharpness = lerp(2.5f, cloud_detail_edge, near);
       }
     float profile = saturate(height * 5.f) * saturate((1.f - height) * 2.5f);

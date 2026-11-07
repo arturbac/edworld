@@ -120,6 +120,8 @@ namespace edworld
     float clouds_detail_size{3000.f};
     float clouds_detail_range{150000.f};
     float clouds_detail_edge{8.f};
+    ///\brief how much clear sky the fine shape opens near the eye; the view from orbit keeps its clouds
+    float clouds_detail_gap{0.06f};
     ///\brief how much lighter they are seen from under the layer: a day's sky hid them (2026-11-07, LQ-F b31-7 A 4)
     float clouds_under_gain{2.f};
     ///\brief the star's light the clouds with depth get at least, in the game's units (2026-11-07: 970 and 547 by an M star,
