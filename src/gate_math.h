@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <numbers>
 
 #include "compass_math.h"
 
@@ -72,13 +73,11 @@ namespace edworld
     return l == 0.0 ? a : a * (1.0 / l);
     }
 
-  inline constexpr double gate_rad{3.14159265358979323846 / 180.0};
-
   ///\brief the point at latitude and longitude (degrees) and distance radius from the planet's centre
   [[nodiscard]]
   inline auto planet_point(double lat, double lon, double radius) noexcept -> dvec3_t
     {
-    double const a{lat * gate_rad}, o{lon * gate_rad};
+    double const a{lat * deg_to_rad}, o{lon * deg_to_rad};
     return dvec3_t{radius * std::cos(a) * std::cos(o), radius * std::cos(a) * std::sin(o), radius * std::sin(a)};
     }
 
@@ -91,7 +90,7 @@ namespace edworld
   [[nodiscard]]
   inline auto local_frame(double lat, double lon) noexcept -> local_frame_t
     {
-    double const a{lat * gate_rad}, o{lon * gate_rad};
+    double const a{lat * deg_to_rad}, o{lon * deg_to_rad};
     return local_frame_t{
       dvec3_t{-std::sin(o), std::cos(o), 0.0},
       dvec3_t{-std::sin(a) * std::cos(o), -std::sin(a) * std::sin(o), std::cos(a)},
@@ -110,7 +109,7 @@ namespace edworld
   [[nodiscard]]
   inline auto below_horizontal(dvec3_t const & ship, dvec3_t const & place) noexcept -> double
     {
-    return std::asin(std::clamp(-dot(unit(place - ship), unit(ship)), -1.0, 1.0)) / gate_rad;
+    return std::asin(std::clamp(-dot(unit(place - ship), unit(ship)), -1.0, 1.0)) / deg_to_rad;
     }
 
   ///\brief how far below the planet's visible edge the place stands from the ship, degrees (negative above it, behind
@@ -118,7 +117,7 @@ namespace edworld
   [[nodiscard]]
   inline auto below_limb(dvec3_t const & ship, dvec3_t const & place, double planet_radius) noexcept -> double
     {
-    return below_horizontal(ship, place) - limb_dip(length(ship), planet_radius) / gate_rad;
+    return below_horizontal(ship, place) - limb_dip(length(ship), planet_radius) / deg_to_rad;
     }
 
   ///\brief where the way down starts: the point at the ship's height (alt metres), on the great circle from the place
@@ -143,9 +142,9 @@ namespace edworld
     double const r{planet_radius + alt};
     if(dive <= 0.0 or dive >= 90.0 or planet_radius <= 0.0 or r <= planet_radius)
       return descent_start_t{};
-    double const d{dive * gate_rad + limb_dip(r, planet_radius)};
+    double const d{dive * deg_to_rad + limb_dip(r, planet_radius)};
     double const q{r * std::cos(d) / planet_radius};
-    if(not (q <= 1.0) or d >= 3.14159265358979323846 / 2.0)
+    if(not (q <= 1.0) or d >= std::numbers::pi / 2.0)
       return descent_start_t{};
     double const c{d - std::acos(q)};
     dvec3_t const p{unit(planet_point(place_lat, place_lon, 1.0))};
@@ -204,9 +203,9 @@ namespace edworld
     auto const at = [&](double x, double y) { return w * x + p * y; };
     double const sx{dot(ship, w)}, sy{dot(ship, p)};
     // E and the flat line's way forward f (towards the place, the nose on the edge seen from E)
-    double const re{R * (1.0 + dive_height)}, dip{limb_dip(re, R)}, d{dive * gate_rad + dip};
+    double const re{R * (1.0 + dive_height)}, dip{limb_dip(re, R)}, d{dive * deg_to_rad + dip};
     double const q{re * std::cos(d) / R};
-    if(not (q <= 1.0) or d >= 3.14159265358979323846 / 2.0)
+    if(not (q <= 1.0) or d >= std::numbers::pi / 2.0)
       return out;
     double const ce{d - std::acos(q)};
     double const ex{re * std::sin(ce)}, ey{re * std::cos(ce)};
@@ -222,7 +221,7 @@ namespace edworld
     // E from the ship along the line (df) and off it (dn); Q at s back from E sees the ship arc off the line
     double const dx{ex - sx}, dy{ey - sy};
     double const df{dx * fx + dy * fy}, dn{std::fabs(dy * fx - dx * fy)};
-    double const s{df - dn / std::tan(arc * gate_rad)};
+    double const s{df - dn / std::tan(arc * deg_to_rad)};
     out.phase = approach_phase_e::setup;
     if(s >= 0.0)
       {
@@ -243,7 +242,7 @@ namespace edworld
       out.point[1] = at(ex, ey);
       out.point[2] = place;
       out.dive_from = 1u;
-      out.turn = std::atan2(dn, df) / gate_rad;
+      out.turn = std::atan2(dn, df) / deg_to_rad;
       }
     else
       {
@@ -369,7 +368,7 @@ namespace edworld
                             double pitch_hint) noexcept -> attitude_t
     {
     dvec3_t const t{unit(toward)};
-    double const h{heading * gate_rad};
+    double const h{heading * deg_to_rad};
     dvec3_t const level{at.east * std::sin(h) + at.north * std::cos(h)};
     double const a{dot(t, level)}, b{dot(t, at.up)}, f{static_cast<double>(seen.z)};
     double const m{std::hypot(a, b)};
@@ -377,11 +376,11 @@ namespace edworld
       return attitude_t{};
     double const base{std::atan2(b, a)}, spread_{std::acos(std::clamp(f / m, -1.0, 1.0))};
     double p1{base + spread_}, p2{base - spread_};
-    auto const fits = [](double p) { return std::fabs(p) <= 3.14159265358979323846 / 2.0 + 1e-9; };
+    auto const fits = [](double p) { return std::fabs(p) <= std::numbers::pi / 2.0 + 1e-9; };
     double pitch{};
     if(fits(p1) and fits(p2))
       {
-      double const hint{std::isnan(pitch_hint) ? 0.0 : pitch_hint * gate_rad};
+      double const hint{std::isnan(pitch_hint) ? 0.0 : pitch_hint * deg_to_rad};
       pitch = std::fabs(p1 - hint) <= std::fabs(p2 - hint) ? p1 : p2;
       }
     else if(fits(p1))
@@ -398,10 +397,10 @@ namespace edworld
     double roll{0.0};
     if(std::hypot(static_cast<double>(seen.x), static_cast<double>(seen.y)) > 1e-6 and std::hypot(a0, b0) > 1e-9)
       roll = std::atan2(static_cast<double>(seen.y), static_cast<double>(seen.x)) - std::atan2(b0, a0);
-    roll = std::remainder(roll, 2.0 * 3.14159265358979323846);
+    roll = std::remainder(roll, 2.0 * std::numbers::pi);
     dvec3_t const right{right0 * std::cos(roll) - up0 * std::sin(roll)};
     dvec3_t const up{right0 * std::sin(roll) + up0 * std::cos(roll)};
-    return attitude_t{true, right, up, forward, pitch / gate_rad, roll / gate_rad};
+    return attitude_t{true, right, up, forward, pitch / deg_to_rad, roll / deg_to_rad};
     }
 
   ///\brief a point on the screen in pixels (x right, y down); in_front false when it is behind the camera
@@ -421,7 +420,7 @@ namespace edworld
     double const z{dot(d, axes.forward)};
     if(z <= 0.0)
       return screen_point_t{};
-    double const ty{std::tan(fov * gate_rad / 2.0)}, tx{ty * width / height};
+    double const ty{std::tan(fov * deg_to_rad / 2.0)}, tx{ty * width / height};
     double const nx{dot(d, axes.right) / (z * tx)}, ny{dot(d, axes.up) / (z * ty)};
     return screen_point_t{true, (nx + 1.0) / 2.0 * width, (1.0 - ny) / 2.0 * height};
     }
