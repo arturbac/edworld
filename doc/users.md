@@ -54,8 +54,8 @@ The usual way.
 [edloader](https://github.com/arturbac/edloader) runs several d3d11 mods at once. The release zip carries it in its
 `edloader` folder (its `d3d11.dll`, `edloader.txt.example` and its own `doc/users.md`, which tells how to install
 it). Put edworld's dll into `edloader\plugins` and list it in `edloader.txt`; there is nothing to set for the list to
-go on after it. Its `edworld.ini` is made in `edloader\config` and its log in `edloader\logs`. EDHM stays in the game's
-folder, under the name `d3d11_edhm.dll`, listed by its full path, before EDVR (edloader's doc/users.md).
+go on after it. Its `edworld.ini` is made in `edloader\config` and its log in `edloader\logs`. EDHM goes into
+`edloader\plugins` too, as `d3d11_edhm.dll` with its files, before EDVR (edloader's doc/users.md).
 
 With EDVR's anti-aliasing on, set `ui_quality = off` in the `[fix]` section of `edvr-flat.ini` (F8: UI quality). EDVR
 otherwise makes the cockpit panels bigger, edworld no longer finds them and the navballs are gone. The clouds are not
