@@ -30,6 +30,9 @@
 ;clouds_volume = 1
 ; how much clear sky there is among them near you; more = thinner, the view from orbit stays
 ;clouds_detail_gap = 0.14
+; the wind in km/h at their floor and at their top; both 0 = still clouds
+;clouds_wind_low = 100
+;clouds_wind_high = 400
 
 ; The navballs beside the radar: 0 = none, the game's compass is not read at all
 ;compass = 1

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.2.0-beta.2
+
 - **Clouds with depth (`clouds_volume`, on by default; `clouds_bottom`, `clouds_top`, `clouds_density`, `clouds_opacity`,
   `clouds_steps`).** You fly into them and they thin out around you. `clouds_volume = 0` gives the flat layer of
   1.2.0-beta.1, lighter for a weaker graphics card.
@@ -10,6 +12,8 @@
   with clear sky among them. The view from orbit stays.
 - **They stay seen.** `clouds_top_gain` and `clouds_under_gain` make them lighter from above and from under them,
   `clouds_min_light` keeps them from going out by a faint star. `clouds_cover` is 0.55 now.
+- **They drift (`clouds_wind_low`, `clouds_wind_high`).** Slowly and calmly, the large shapes faster high up, each planet
+  its own way; both 0 = still clouds.
 - **The ini writes itself.** At the first start edworld makes `edworld.ini` if there is none, with every setting as a
   comment holding the value it runs on, and at each start adds at the end what the file does not name yet. Lines that
   are there stay as they are. See doc/users.md "Settings".

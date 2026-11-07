@@ -16,8 +16,8 @@ starred, with the trend at the last tick and their states.
 
 ![The sky of a planet with a thin atmosphere, under the clouds of edworld](doc/images/clouds.jpg)
 
-Version 1.2.0-beta.1 puts clouds over the planets with an atmosphere you land on, which the game leaves without any:
-seen from orbit, on the way down through them and from the ground. They have depth, you fly through them. They are on by default: `clouds_volume = 0` in the ini gives a flat layer
+Version 1.2.0-beta.2 puts clouds over the planets with an atmosphere you land on, which the game leaves without any:
+seen from orbit, on the way down through them and from the ground. They have depth, you fly through them, and they drift with the wind. They are on by default: `clouds_volume = 0` in the ini gives a flat layer
 for a weaker graphics card, `clouds = 0` turns them off, and they are only in your picture. See [Clouds](doc/users.md#clouds).
 
 ## Navballs, testers wanted
