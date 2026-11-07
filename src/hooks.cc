@@ -8,6 +8,7 @@
 //  - never read a mapped dynamic buffer on the CPU (write-combined under DXVK); copy on the GPU into staging
 //    and map it frames later with DO_NOT_WAIT;
 //  - GetType before GetDesc; a fault in edworld's code disables edworld, never the game call.
+#include "blue_noise.h"
 #include "edworld_share.h"
 #include "gpu_timing.h"
 #include "game_state.h"
@@ -3214,7 +3215,7 @@ namespace edworld
       UINT half_width{};
       UINT half_height{};
       bool half_failed{};
-      std::uint32_t frame{};  // the volume's draws so far, for the grain of the steps
+      ID3D11ShaderResourceView * blue_noise{};  // where each pixel's steps start
       };
     clouds_t clouds;
 
@@ -3419,6 +3420,36 @@ namespace edworld
       depth.DepthFunc = D3D11_COMPARISON_ALWAYS;
       ok = ok and SUCCEEDED(device->CreateDepthStencilState(&depth, &clouds.volume_depth_state));
 
+      try
+        {
+        auto const ranks{edworld::blue_noise_ranks(64)};
+        std::vector<std::uint16_t> texels(ranks.size());
+        for(std::size_t i{}; i != ranks.size(); ++i)
+          texels[i] = static_cast<std::uint16_t>(ranks[i] * 65535u / (ranks.size() - 1u));
+        D3D11_TEXTURE2D_DESC t{};
+        t.Width = 64;
+        t.Height = 64;
+        t.MipLevels = 1;
+        t.ArraySize = 1;
+        t.Format = DXGI_FORMAT_R16_UNORM;
+        t.SampleDesc.Count = 1;
+        t.Usage = D3D11_USAGE_IMMUTABLE;
+        t.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        D3D11_SUBRESOURCE_DATA init{};
+        init.pSysMem = texels.data();
+        init.SysMemPitch = 64u * sizeof(std::uint16_t);
+        ID3D11Texture2D * noise{};
+        ok = ok and SUCCEEDED(device->CreateTexture2D(&t, &init, &noise))
+             and SUCCEEDED(device->CreateShaderResourceView(noise, nullptr, &clouds.blue_noise));
+        if(noise)
+          noise->Release();
+        }
+      catch(std::exception const & e)
+        {
+        log_line("clouds: the blue noise could not be made (%s)", e.what());
+        ok = false;
+        }
+
       float const values[20]{
         settings().clouds_bottom, settings().clouds_top, settings().clouds_cover, settings().clouds_light,
         settings().clouds_steps, settings().clouds_density, settings().clouds_opacity, settings().clouds_top_gain,
@@ -3591,8 +3622,10 @@ namespace edworld
       ID3D11DepthStencilState * game_depth{};
       UINT game_stencil{};
       ID3D11ShaderResourceView * game_t0{};
+      ID3D11ShaderResourceView * game_t2{};
       ctx->OMGetDepthStencilState(&game_depth, &game_stencil);
       ctx->PSGetShaderResources(0, 1, &game_t0);
+      ctx->PSGetShaderResources(2, 1, &game_t2);
 
       ID3D11RenderTargetView * game_rtv[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT]{};
       ID3D11DepthStencilView * game_dsv{};
@@ -3608,7 +3641,6 @@ namespace edworld
 
       clouds.volume_values[15] = static_cast<float>(GetTickCount64() - clouds.wind_start) / 1000.f;
       clouds.volume_values[18] = half ? 2.f : 1.f;
-      clouds.volume_values[19] = static_cast<float>(clouds.frame++ % 64u);
       ctx->UpdateSubresource(clouds.volume_params, 0, nullptr, clouds.volume_values, 0, 0);
       if(half)
         {
@@ -3629,6 +3661,7 @@ namespace edworld
       ctx->PSSetConstantBuffers(1, 1, &frame);
       ctx->PSSetConstantBuffers(4, 1, &clouds.volume_params);
       ctx->PSSetShaderResources(0, 1, &clouds.depth_view);
+      ctx->PSSetShaderResources(2, 1, &clouds.blue_noise);
       ctx->OMSetBlendState(half ? clouds.half_blend : clouds.volume_blend, nullptr, 0xffffffffu);
       ctx->RSSetState(clouds.volume_raster);
       ctx->OMSetDepthStencilState(clouds.volume_depth_state, 0);
@@ -3668,10 +3701,13 @@ namespace edworld
 
       ctx->OMSetDepthStencilState(game_depth, game_stencil);
       ctx->PSSetShaderResources(0, 1, &game_t0);
+      ctx->PSSetShaderResources(2, 1, &game_t2);
       if(game_depth)
         game_depth->Release();
       if(game_t0)
         game_t0->Release();
+      if(game_t2)
+        game_t2->Release();
       }
 
     auto draw_clouds(
