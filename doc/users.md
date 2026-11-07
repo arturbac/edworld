@@ -47,7 +47,19 @@ Apart from the jump panel and the navballs nothing in the game changes.
 
 Both dlls are in `edworld-<version>.zip` on the [Releases](https://github.com/arturbac/edworld/releases) page.
 
+### Through edloader
+
+The usual way.
+
+[edloader](https://github.com/arturbac/edloader) runs several d3d11 mods at once. The release zip carries it in its
+`edloader` folder (its `d3d11.dll`, `edloader.txt.example` and its own `doc/users.md`, which tells how to install
+it). Put edworld's dll into `edloader\plugins` and list it in `edloader.txt`; there is nothing to set for the list to
+go on after it. Its `edworld.ini` is made in `edloader\config` and its log in `edloader\logs`. EDHM stays in the game's
+folder, under the name `d3d11_edhm.dll`, listed by its full path, before EDVR (edloader's doc/users.md).
+
 ### On its own
+
+For edworld as the only d3d11 mod, or for a player who does not want edloader.
 
 1. Find the game's folder: `Products/elite-dangerous-odyssey-64`, the one with `EliteDangerous64.exe`.
 2. If there is a `d3d11.dll` in it already (EDHM, ReShade, EDVR), rename it, for example to `d3d11_edhm.dll`.
@@ -55,14 +67,6 @@ Both dlls are in `edworld-<version>.zip` on the [Releases](https://github.com/ar
 4. If you renamed another mod's dll in step 2, create `edworld.ini` (or `edworld_eht.ini`) beside it with
    `next = d3d11_edhm.dll` (the name you gave it).
 5. Start the game; `edworld.log` (or `edworld_eht.log`) appears beside the dll.
-
-### Through edloader
-
-[edloader](https://github.com/arturbac/edloader) runs several d3d11 mods at once. The release zip carries it in its
-`edloader` folder (its `d3d11.dll`, `edloader.txt.example` and its own `doc/users.md`, which tells how to install
-it). Put edworld's dll into `edloader\plugins`, list it in `edloader.txt`, and put `edworld.ini` with
-`next = d3d11.dll` into `edloader\config`. Its log is then in `edloader\logs`. With EDHM and EDVR, list EDHM before
-EDVR (edloader's doc/users.md, "EDHM and EDVR").
 
 ### With Elite Help Tool
 
@@ -83,7 +87,7 @@ zip is the same start, by hand.
 
 | setting | default | what |
 |---|---|---|
-| `next` | empty | the next d3d11 mod (`d3d11_edhm.dll`); empty = the system's own; `d3d11.dll` under edloader |
+| `next` | empty | the next d3d11 mod (`d3d11_edhm.dll`); empty = the system's own, under edloader the next on its list |
 | `status_file` | in Saved Games | the game's `Status.json`, the journals beside it; for a game whose Saved Games lie elsewhere |
 | `patch` | `1` | `0` off, `1` the emblem and the list, `2` a test frame showing where they go |
 | `independent_colour` | `F2C14E` | the independents' emblem's colour, `RRGGBB` |

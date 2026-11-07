@@ -119,7 +119,7 @@ namespace edworld
 
     // every setting once: read from the ini and written to it by this list, in the order the ini gets them
     constexpr key_t keys[]{
-      {"next", &settings_t::next, "Where edworld goes on to, the next d3d11 mod; empty = the system's own. Through edloader, with other mods after edworld in edloader.txt: d3d11.dll. On its own, a mod's dll you renamed: d3d11_edhm.dll"},
+      {"next", &settings_t::next, "Where edworld goes on to, the next d3d11 mod. Through edloader leave it empty: edworld goes on down edloader.txt. On its own: a mod's dll you renamed, d3d11_edhm.dll; empty = the system's own"},
       {"status_file", &settings_t::status_file, "The game's Status.json, the journals beside it; change it only if edworld looks in the wrong place"},
       {"clouds", &settings_t::clouds, "Clouds over planets with an atmosphere: 0 = none"},
       {"clouds_height", &settings_t::clouds_height, "the layer's height over the surface, as a part of the planet's radius"},

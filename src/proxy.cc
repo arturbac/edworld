@@ -87,6 +87,9 @@ namespace
   auto chain_next() noexcept -> void
     {
     std::wstring path{edworld::settings().next};
+    // under edloader the way on is always edloader's list; a player has nothing to set for it
+    if(path.empty() and GetEnvironmentVariableW(L"EDLOADER_CONFIG_DIR", nullptr, 0) != 0)
+      path = L"d3d11.dll";
     if(path.empty())
       {
       edworld::log_line("chain: next is the system d3d11.dll");

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.2.0-beta.3
+
+- **Through edloader the mods after edworld are reached by themselves.** An empty `next` used to end the list at
+  edworld, so EDHM and EDVR were loaded and never used, and the ini edworld writes itself leaves `next` empty. Under
+  edloader an empty `next` now goes on down `edloader.txt`. On its own edworld works as before.
+- **edloader's guide:** EDHM stays in the game's folder and is listed by its full path.
+
 ## 1.2.0-beta.2
 
 - **Clouds with depth (`clouds_volume`, on by default; `clouds_bottom`, `clouds_top`, `clouds_density`, `clouds_opacity`,

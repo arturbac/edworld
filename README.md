@@ -53,7 +53,7 @@ place them right in every cockpit. `compass = 0` in the ini turns the navballs o
 
 Checked at 9000×2160 only; at 1920×1080 or lower expect little. See the warning in `doc/users.md`.
 
-- Players: [doc/users.md](doc/users.md): what it shows, which dll, install (alone, through edloader, with EHT),
+- Players: [doc/users.md](doc/users.md): what it shows, which dll, install (through edloader, alone, with EHT),
   settings, checking it works, after a verification of the game's files, removing it.
 - Developers: [doc/developers.md](doc/developers.md): how it works in the game process, build and test, what was
   found in the game, and how to write a d3d11 plugin of your own on the same pattern.

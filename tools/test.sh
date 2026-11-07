@@ -44,6 +44,9 @@ ini_cases() {  # $1 = edworld | edworld_eht; in the run directory
   ini_run
   [[ $(head -n 3 "$ini" | sed -n 3p) == ';compass = 0' ]] && [[ $(grep -c 'clouds_alpha =' "$ini") -eq 1 ]] && [[ $(grep -c 'compass =' "$ini") -eq 1 ]] && [[ $(grep -c 'status_file =' "$ini") -eq 1 ]] && grep -q '^status_file = C:\\x\\Status.json$' "$ini" && grep -q '^;clouds_cover = 0.55$' "$ini"
   ini_check "completed, the player's lines stay" $?
+  EDLOADER_CONFIG_DIR=. ini_run
+  grep -q 'chain: next = d3d11.dll is edworld itself' "$1.log"
+  ini_check "under edloader an empty next is d3d11.dll" $?
   set -e
 }
 run_variant() {  # $1 = edworld | edworld_eht; sets rc on failure
