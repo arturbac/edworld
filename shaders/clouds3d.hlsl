@@ -34,10 +34,11 @@ cbuffer clouds : register(b4)
   float cloud_wind_low;     // m/s at the layer's floor
   float cloud_wind_high;    // m/s at its top
   float cloud_pixel;        // pixels of the picture to a pixel drawn: 2 when the clouds are drawn at half size
-  float cloud_frame;        // the frame's number, 0 to 63: the grain of the steps moves with it
+  float cloud_pad;
   };
 
 Texture2D<float> scene_depth : register(t0);
+Texture2D<float> blue_noise : register(t2);  // 64x64, repeated: where each pixel's steps start
 
 struct vs_in
   {
@@ -193,11 +194,10 @@ float4 ps_main(ps_in input) : SV_TARGET
   int steps = (int)cloud_steps;
   float step_length = (leave - enter) / cloud_steps;
   float through = step_length / (top - bottom);
-  // a different start at each pixel turns the bands of the steps into a fine grain; interleaved gradient noise, as a hash
-  // of the pixel's place gave clumps of specks on a wide target. Held still it showed as fine slanting stripes where the
-  // steps are long (2026-11-07, at the horizon); moved each frame, a temporal anti-aliasing evens it out
-  float2 grain_at = input.pos.xy + 5.588238f * cloud_frame;
-  float start = frac(52.9829189f * frac(dot(grain_at, float2(0.06711056f, 0.00583715f))));
+  // a different start at each pixel turns the bands of the steps into a fine grain. Blue noise: a hash of the pixel's
+  // place gave clumps of specks on a wide target, interleaved gradient noise fine slanting stripes where the steps are
+  // long (2026-11-07, at the horizon), moved each frame they stayed without a temporal anti-aliasing, as in the game's own
+  float start = blue_noise.Load(int3(uint2(input.pos.xy) & 63u, 0));
   // along the ray the place on the screen and the place in the planet's frame change in proportion to t: worked out
   // once for the ray, each step only adds
   float4 clip_ray = frame_rows[270] * ray.x + frame_rows[271] * ray.y + frame_rows[272] * ray.z;

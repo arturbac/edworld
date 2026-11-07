@@ -18,6 +18,7 @@
 #include "../src/compass_math.h"
 #include "../src/edworld_share.h"
 #include "../src/faction_list.h"
+#include "../src/blue_noise.h"
 #include "../src/gate_math.h"
 #include "../src/gpu_timing.h"
 #include "../src/hologram_math.h"
@@ -613,6 +614,32 @@ int main()
   pad_text_tests();
   shader_shape_tests();
   holo_models_tests();
+  // the clouds' blue noise: every rank once, the low ranks never side by side, each 8x8 block near the mean (white
+  // noise strays about 400 from it in its worst block, this tile 122)
+  {
+  auto const r{edworld::blue_noise_ranks(64)};
+  std::vector<int> seen(4096);
+  for(auto v: r)
+    ++seen[v];
+  bool const each_once{std::all_of(seen.begin(), seen.end(), [](int c) { return c == 1; })};
+  int side_by_side{};
+  double worst{};
+  for(int y{}; y != 64; ++y)
+    for(int x{}; x != 64; ++x)
+      if(r[y * 64 + x] < 410 and (r[y * 64 + (x + 1) % 64] < 410 or r[((y + 1) % 64) * 64 + x] < 410))
+        ++side_by_side;
+  for(int by{}; by != 8; ++by)
+    for(int bx{}; bx != 8; ++bx)
+      {
+      double sum{};
+      for(int y{}; y != 8; ++y)
+        for(int x{}; x != 8; ++x)
+          sum += r[(by * 8 + y) * 64 + bx * 8 + x];
+      worst = std::max(worst, std::fabs(sum / 64. - 2047.5));
+      }
+  check(r.size() == 4096u and each_once and side_by_side == 0 and worst < 200., "clouds: the blue noise is spread evenly, no clumps");
+  check(edworld::blue_noise_ranks(64) == r, "clouds: the blue noise is the same every time");
+  }
   // the clouds' GPU time over a window: the median of the kept spans, the mean and the time per million pixels of all
   {
   edworld::gpu_span_window_t w;
