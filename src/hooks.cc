@@ -913,7 +913,7 @@ namespace edworld
     LONGLONG full_armed_qpc{};
     LONGLONG frame_gap_qpc{};  ///< the gap before the panel draw that began the current frame
 
-    ///rief a draw of another context than the immediate one while a whole frame is armed: counted, not recorded
+    ///\brief a draw of another context than the immediate one while a whole frame is armed: counted, not recorded
     auto note_full_other(ID3D11DeviceContext * self) noexcept -> void
       {
       full_other_draws.fetch_add(1, std::memory_order_relaxed);
@@ -3252,7 +3252,7 @@ namespace edworld
       return ok;
       }
 
-    ///rief takes in the spans the GPU has finished, and writes the window's sum to the log once it is 5 s long
+    ///\brief takes in the spans the GPU has finished, and writes the window's sum to the log once it is 5 s long
     auto collect_clouds_timing(ID3D11DeviceContext * ctx) noexcept -> void
       {
       for(auto & s: clouds_timing.slots)
