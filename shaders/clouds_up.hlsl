@@ -1,7 +1,8 @@
 // edworld (PoC, volumetric clouds at half size): the clouds marched into a target of half the picture's width and
-// height, laid over the picture. Each pixel of the picture takes the four nearest pixels of the half target, weighed
-// by distance as in a plain enlargement and by how near the scene's depth behind each of them is to its own, so the
-// clouds do not bleed over the edge of the ground or the ship in front of them. t0 is the copy of the scene's depth
+// height, laid over the picture. Each pixel of the picture takes the nine nearest pixels of the half target, weighed
+// by distance (a tent a pixel and a half wide, which also smooths the grain of the march's steps where they are long,
+// at the horizon) and by how near the scene's depth behind each of them is to its own, so the clouds do not bleed over
+// the edge of the ground or the ship in front of them. t0 is the copy of the scene's depth
 // (reversed: the larger, the nearer), t1 the clouds at half size, already weighed by how much of them there is.
 Texture2D<float> scene_depth : register(t0);
 Texture2D<float4> half_clouds : register(t1);
@@ -30,18 +31,18 @@ float4 ps_main(ps_in input) : SV_TARGET
 
   float depth = scene_depth.Load(int3(input.pos.xy, 0));
   float2 at = input.pos.xy * 0.5f - 0.5f;
-  float2 base = floor(at);
-  float2 f = at - base;
+  int2 middle = int2(floor(at + 0.5f));
   float4 sum = 0.f;
   float weights = 0.f;
   [unroll]
-  for(int k = 0; k != 4; ++k)
+  for(int k = 0; k != 9; ++k)
     {
-    int2 o = int2(k & 1, k >> 1);
-    int2 texel = clamp(int2(base) + o, 0, half_max);
+    int2 o = int2(k % 3, k / 3) - 1;
+    int2 texel = clamp(middle + o, 0, half_max);
     // the depth the march of that pixel stopped at: the same picture pixel it read
     float its_depth = scene_depth.Load(int3(clamp(texel * 2 + 1, 0, full_max), 0));
-    float near = (o.x ? f.x : 1.f - f.x) * (o.y ? f.y : 1.f - f.y);
+    float2 apart_by = abs(float2(middle + o) - at);
+    float near = max(1.5f - apart_by.x, 0.f) * max(1.5f - apart_by.y, 0.f);
     // reversed depth is a reciprocal of the distance: the relative difference is the same near and far
     float apart = abs(its_depth - depth) / max(max(its_depth, depth), 1e-7f);
     float w = (near + 1e-3f) / (1e-3f + apart);
