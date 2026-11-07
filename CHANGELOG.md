@@ -6,7 +6,8 @@
 
 - **The clouds with depth cost about a quarter of what they did.** They are worked out at half the picture's width and
   height and laid over it by the depth, so they keep to the edge of the ground and the ship; their march is cheaper
-  too. Measured at one place on a planet at 9000x2160: from 7.8 ms of the graphics card a frame to 1.6-2.0 ms.
+  too. Measured at one place on a planet at 9000x2160, the same settings both times (render 6750x1620): from 7.8 ms
+  of the graphics card a frame to 1.7 ms; the smoothing of the grain below adds about 0.2 ms.
 - **No slanting stripes in them near the horizon.** The steps of the march start by blue noise; what stays there is a
   fine, even grain, softened as the clouds are laid over the picture.
 - **The log tells what they cost:** a line `clouds gpu 5s` every 5 s.
