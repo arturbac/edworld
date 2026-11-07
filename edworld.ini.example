@@ -1,4 +1,5 @@
-; edworld's settings: you need this file only to change something. Everything here is edworld's own default.
+; edworld's settings: you need this file only to change something, or to chain edworld with other mods (next, below).
+; Everything else here is edworld's own default.
 ;
 ; Copy it as edworld.ini (without .example):
 ;   - on its own: into the game's folder, Products\elite-dangerous-odyssey-64, beside edworld's d3d11.dll
@@ -6,7 +7,10 @@
 ; Take the ';' off the start of a line to change it; a change takes a new start of the game.
 ; Comments stand on lines of their own. All the settings: doc/users.md.
 
-; If you renamed another mod's d3d11.dll for edworld to go on to it, name it here (not needed with edloader)
+; Where edworld goes on to. Leave this off if edworld is your only d3d11 mod.
+; Through edloader, with other mods after edworld in edloader.txt:
+;next = d3d11.dll
+; On its own, if you renamed another mod's d3d11.dll for edworld to go on to it:
 ;next = d3d11_edhm.dll
 
 ; Clouds over planets with an atmosphere: 0 = none
