@@ -63,6 +63,8 @@ edworld_fxc("${gen}/clouds_vs.h" vs_5_0 vs_main g_clouds_vs "${CMAKE_SOURCE_DIR}
 edworld_fxc("${gen}/clouds_ps.h" ps_5_0 ps_main g_clouds_ps "${CMAKE_SOURCE_DIR}/shaders/clouds.hlsl" /O3)
 edworld_fxc("${gen}/clouds3d_vs.h" vs_5_0 vs_main g_clouds3d_vs "${CMAKE_SOURCE_DIR}/shaders/clouds3d.hlsl" /O3)
 edworld_fxc("${gen}/clouds3d_ps.h" ps_5_0 ps_main g_clouds3d_ps "${CMAKE_SOURCE_DIR}/shaders/clouds3d.hlsl" /O3)
+edworld_fxc("${gen}/clouds_up_vs.h" vs_5_0 vs_main g_clouds_up_vs "${CMAKE_SOURCE_DIR}/shaders/clouds_up.hlsl" /O3)
+edworld_fxc("${gen}/clouds_up_ps.h" ps_5_0 ps_main g_clouds_up_ps "${CMAKE_SOURCE_DIR}/shaders/clouds_up.hlsl" /O3)
 
 add_custom_command(
   OUTPUT "${gen}/list_font.h"
@@ -82,7 +84,8 @@ add_custom_target(edworld_version
 add_custom_target(edworld_generated DEPENDS
   "${gen}/edvr_d3d11.def" "${gen}/edvr_thunks_d3d11.asm" "${gen}/edvr_exports_d3d11.inc"
   "${gen}/imgui_vs.h" "${gen}/imgui_ps.h" "${gen}/list_vs.h" "${gen}/list_ps.h" "${gen}/list_font.h"
-  "${gen}/clouds_vs.h" "${gen}/clouds_ps.h" "${gen}/clouds3d_vs.h" "${gen}/clouds3d_ps.h")
+  "${gen}/clouds_vs.h" "${gen}/clouds_ps.h" "${gen}/clouds3d_vs.h" "${gen}/clouds3d_ps.h"
+  "${gen}/clouds_up_vs.h" "${gen}/clouds_up_ps.h")
 
 set(imgui "${CMAKE_SOURCE_DIR}/third_party/imgui")
 add_library(edworld_imgui OBJECT

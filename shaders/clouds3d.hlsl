@@ -33,7 +33,8 @@ cbuffer clouds : register(b4)
   float cloud_wind_seconds; // since the first cloud of this game
   float cloud_wind_low;     // m/s at the layer's floor
   float cloud_wind_high;    // m/s at its top
-  float2 cloud_pad;
+  float cloud_pixel;        // pixels of the picture to a pixel drawn: 2 when the clouds are drawn at half size
+  float cloud_pad;
   };
 
 Texture2D<float> scene_depth : register(t0);
@@ -172,7 +173,7 @@ float4 ps_main(ps_in input) : SV_TARGET
   if(leave <= enter)
     discard;
 
-  float scene = scene_depth.Load(int3(input.pos.xy, 0));
+  float scene = scene_depth.Load(int3(input.pos.xy * cloud_pixel, 0));
   float3 seed = frac(planet / float3(977.f, 1543.f, 2111.f)) * 50.f;
   float inverse_square = 1.f / dot(object_rows[9].xyz, object_rows[9].xyz);
   float3 sun = -frame_rows[291].xyz;
