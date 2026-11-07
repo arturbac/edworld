@@ -303,14 +303,14 @@ namespace
       std::array<compass_direction_t, 3> const level{{{1.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, {0.f, 0.f, 1.f}}};
       picked_plane_t const flat{pick_pad_plane(*sc, level)};
       // the model's axes in the camera turned 24 degrees about Z: the wing leaning to +X is level with the ship
-      float const r{24.f / 57.29578f};
+      float const r{24.f / edworld::rad_to_deg_f};
       std::array<compass_direction_t, 3> const rolled{{{std::cos(r), std::sin(r), 0.f}, {-std::sin(r), std::cos(r), 0.f}, {0.f, 0.f, 1.f}}};
       picked_plane_t const wing{pick_pad_plane(*sc, rolled)};
       check(sc and not pad_planes_of(5238u) and flat.angle_deg == 0.f and std::fabs(flat.axes[0].y - 1.f) < 1e-4f and
               wing.angle_deg == 24.f and std::fabs(wing.axes[0].y - 1.f) < 1e-3f and std::fabs(wing.axes[1].z - 1.f) < 1e-4f,
             "carrier: the plane nearest the ship's up, the beam's level, the wing's when leaning 24 degrees");
       // half way between the beam's and the wing's (12 degrees, a little nearer the wing): the plane held stays
-      float const h12{13.f / 57.29578f};
+      float const h12{13.f / edworld::rad_to_deg_f};
       std::array<compass_direction_t, 3> const between{{{std::cos(h12), std::sin(h12), 0.f}, {-std::sin(h12), std::cos(h12), 0.f}, {0.f, 0.f, 1.f}}};
       check(pick_pad_plane(*sc, between).angle_deg == 24.f and pick_pad_plane(*sc, between, 0.f).angle_deg == 0.f and
               pick_pad_plane(*sc, rolled, 0.f).angle_deg == 24.f and wing.axes[1].z > 0.99f,
@@ -973,7 +973,7 @@ int main()
   auto const off = [](edworld::compass_direction_t const & a, float x, float y, float z) -> float
     {
     float const d{(a.x * x + a.y * y + a.z * z) / std::sqrt(x * x + y * y + z * z)};
-    return std::acos(std::clamp(d, -1.f, 1.f)) * 57.29578f;
+    return std::acos(std::clamp(d, -1.f, 1.f)) * edworld::rad_to_deg_f;
     };
   auto const plane_of = [&](std::uint32_t pad) { return edworld::pick_pad_plane(fc, model, 1000.f, edworld::pad_plane_of_pad(73389u, pad)); };
   auto const p2{plane_of(2u)}, p7{plane_of(7u)}, p13{plane_of(13u)}, p11{plane_of(11u)};
@@ -1172,7 +1172,7 @@ int main()
   check(edworld::approach_view(false, true, true, true, false, 10.f, 20.f),
         "approach: by a station or a carrier, close is enough - its pad stands ahead until the last metres");
   // near: a place 1 km off at 500 m, 20 km off; a station in this system while mass locked, the system itself
-  constexpr double r_planet{1.0e6}, km_deg{1000.0 / r_planet * 57.29577951308232};
+  constexpr double r_planet{1.0e6}, km_deg{1000.0 / r_planet * edworld::rad_to_deg};
   check(edworld::near_target(true, true, 10.0, 20.0, 500.0, 10.0 + km_deg, 20.0, r_planet, 9u, 0u, 5.f)
           and not edworld::near_target(true, true, 10.0, 20.0, 500.0, 10.0 + 20.0 * km_deg, 20.0, r_planet, 9u, 0u, 5.f),
         "approach: a place within 5 km is near, 20 km is not");

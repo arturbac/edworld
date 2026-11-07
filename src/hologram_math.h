@@ -366,7 +366,7 @@ namespace edworld
     compass_direction_t const & along{model[static_cast<std::size_t>(c.about_axis)]};
     auto const plane = [&](float deg) noexcept -> picked_plane_t
       {
-      float const a{deg / 57.29578f};
+      float const a{deg / rad_to_deg_f};
       float const co{std::cos(a)}, si{std::sin(a)};
       compass_direction_t const turned{co * up.x + si * towards.x, co * up.y + si * towards.y, co * up.z + si * towards.z};
       // the plane's lean, its up towards about_axis and the along away from it (a fleet carrier's deck, 10.1 degrees)
@@ -374,7 +374,7 @@ namespace edworld
       for(std::uint8_t i{}; i != c.planes; ++i)
         if(c.angle_deg[i] == deg)
           lean_deg = c.lean_deg[i];
-      float const l{lean_deg / 57.29578f};
+      float const l{lean_deg / rad_to_deg_f};
       float const cl{std::cos(l)}, sl{std::sin(l)};
       compass_direction_t const n{cl * turned.x + sl * along.x, cl * turned.y + sl * along.y, cl * turned.z + sl * along.z};
       compass_direction_t const on{cl * along.x - sl * turned.x, cl * along.y - sl * turned.y, cl * along.z - sl * turned.z};
@@ -383,7 +383,7 @@ namespace edworld
       };
     if(known_deg)
       return plane(*known_deg);  // the pad's own, by its number
-    auto const off_deg = [](picked_plane_t const & p) noexcept -> float { return std::acos(std::clamp(p.axes[0].y, -1.f, 1.f)) * 57.29578f; };
+    auto const off_deg = [](picked_plane_t const & p) noexcept -> float { return std::acos(std::clamp(p.axes[0].y, -1.f, 1.f)) * rad_to_deg_f; };
     picked_plane_t best{};
     float best_off{1000.f};
     bool held_known{};
@@ -425,7 +425,7 @@ namespace edworld
     float const n{std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z)};
     if(n <= 0.f)
       return 180.f;
-    return std::acos(std::clamp(v.z / n, -1.f, 1.f)) * 57.29578f;
+    return std::acos(std::clamp(v.z / n, -1.f, 1.f)) * rad_to_deg_f;
     }
 
   ///\brief whether a look before Docked agrees with the table: the pads' plane level with the ship's, the nose the table's
@@ -509,7 +509,7 @@ namespace edworld
     if(v.have_last)
       {
       float const c{unit.x * v.last.x + unit.y * v.last.y + unit.z * v.last.z};
-      if(c > std::cos(min_step_deg / 57.29578f))
+      if(c > std::cos(min_step_deg / rad_to_deg_f))
         return pad_up_event_e::none;
       }
     v.last = unit;
@@ -560,7 +560,7 @@ namespace edworld
       return 90.f;
     float const c{up_sign == 0 ? std::min(1.f, std::fabs(pad_normal.y) / n)
                                : std::clamp(static_cast<float>(up_sign) * pad_normal.y / n, -1.f, 1.f)};
-    return std::acos(c) * 57.29578f;
+    return std::acos(c) * rad_to_deg_f;
     }
 
   ///\brief how long a pad given by the tower is taken to hold without word from the journal (the game lets it go after a

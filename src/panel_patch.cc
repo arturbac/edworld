@@ -1844,7 +1844,7 @@ namespace edworld
       ImVec2 rim_points[points];
       for(int k{}; k != points; ++k)
         {
-        float const t{static_cast<float>(k) * 6.2831853f / static_cast<float>(points)};
+        float const t{static_cast<float>(k) * 2.f * std::numbers::pi_v<float> / static_cast<float>(points)};
         float const co{std::cos(t)}, si{std::sin(t)};
         rim_points[k] = at(compass_direction_t{co * py.x + si * pz.x, co * py.y + si * pz.y, co * py.z + si * pz.z});
         }
@@ -1924,7 +1924,7 @@ namespace edworld
       sphere_ground(dl, c, radius, 215);
       ImU32 const dim{col(s.compass_colour_grid)};
       for(float const a: {30.f, 60.f})
-        dl->AddCircle(c, radius * std::sin(a / compass_degrees), dim, 96, 2.f);
+        dl->AddCircle(c, radius * std::sin(a / rad_to_deg_f), dim, 96, 2.f);
       dl->AddLine(ImVec2{c.x - radius, c.y}, ImVec2{c.x + radius, c.y}, dim, 2.f);
       dl->AddLine(ImVec2{c.x, c.y - radius}, ImVec2{c.x, c.y + radius}, dim, 2.f);
       dl->AddCircle(c, radius, col(s.compass_colour_rim), 96, 5.f);
@@ -1956,7 +1956,7 @@ namespace edworld
       std::uint32_t const disc{s.compass_colour_disc}, grid{s.compass_colour_grid}, rim{s.compass_colour_rim};
       sphere_ground(dl, c, radius, 200);
       dl->AddCircle(c, radius, col(mix_rgb(disc, grid, 0.7f)), 96, 2.f);
-      constexpr float pi2{6.2831853f};
+      constexpr float pi2{2.f * std::numbers::pi_v<float>};
       auto const curve = [&](auto && point, ImU32 bright, ImU32 faint, float width)
         {
         constexpr int steps{96};
@@ -1971,7 +1971,7 @@ namespace edworld
       ImU32 const faint{col(mix_rgb(disc, grid, 0.5f))};
       for(float const a: {-30.f, -60.f})
         {
-        float const sa{std::sin(a / compass_degrees)}, ca{std::cos(a / compass_degrees)};
+        float const sa{std::sin(a / rad_to_deg_f)}, ca{std::cos(a / rad_to_deg_f)};
         curve([&](float t) { return compass_direction_t{ca * std::cos(t), sa, ca * std::sin(t)}; }, col(mix_rgb(disc, grid, 0.85f)), faint, 1.5f);
         }
       ImU32 const meridian{col(mix_rgb(grid, rim, 0.33f))};
@@ -2034,7 +2034,7 @@ namespace edworld
       sphere_ground(dl, c, radius, 215);
       ImU32 const dim{col(s.compass_colour_grid)};
       for(float const a: {15.f, 30.f, 60.f})
-        dl->AddCircle(c, radius * std::sin(a / compass_degrees), dim, 96, 2.f);
+        dl->AddCircle(c, radius * std::sin(a / rad_to_deg_f), dim, 96, 2.f);
       dl->AddLine(ImVec2{c.x - radius, c.y}, ImVec2{c.x + radius, c.y}, dim, 2.f);
       dl->AddLine(ImVec2{c.x, c.y - radius}, ImVec2{c.x, c.y + radius}, dim, 2.f);
       dl->AddCircle(c, radius, col(s.compass_colour_rim), 96, 5.f);
@@ -2094,7 +2094,7 @@ namespace edworld
         ImU32 const under{col(mix_rgb(disc, grid, 0.6f))};
         for(float const a: {-30.f, -60.f})
           {
-          float const sa{std::sin(a / compass_degrees)}, ca{std::cos(a / compass_degrees)};
+          float const sa{std::sin(a / rad_to_deg_f)}, ca{std::cos(a / rad_to_deg_f)};
           curve([&](float t) { return compass_direction_t{ca * std::cos(t), sa, ca * std::sin(t)}; }, 0.f, 2.f * pi, under, 1.5f);
           }
         curve([](float t) { return compass_direction_t{0.f, std::sin(t), std::cos(t)}; }, pi, 2.f * pi, under, 1.5f);
@@ -2147,7 +2147,7 @@ namespace edworld
       // the dome: rings at 30 and 60 degrees over the base, two half meridians, the top marked
       for(float const a: {30.f, 60.f})
         {
-        float const sa{std::sin(a / compass_degrees)}, ca{std::cos(a / compass_degrees)};
+        float const sa{std::sin(a / rad_to_deg_f)}, ca{std::cos(a / rad_to_deg_f)};
         curve([&](float t) { return compass_direction_t{ca * std::cos(t), sa, ca * std::sin(t)}; }, 0.f, 2.f * pi,
               col(mix_rgb(disc, grid, 0.85f)), 1.5f);
         }
@@ -2276,7 +2276,7 @@ namespace edworld
         std::snprintf(c1, sizeof c1, "NO DOT");
       else if(cut)
         {
-        float const below{-std::asin(std::clamp(dp.y, -1.f, 1.f)) * compass_degrees};
+        float const below{-std::asin(std::clamp(dp.y, -1.f, 1.f)) * rad_to_deg_f};
         std::snprintf(c1, sizeof c1, "%s %.0f%s", below >= 0.f ? "BELOW" : "ABOVE", static_cast<double>(std::fabs(below)), degree);
         std::snprintf(c2, sizeof c2, "OFF VERTICAL %.0f%s", static_cast<double>(po.off_vertical), degree);
         if(f.has_position)
