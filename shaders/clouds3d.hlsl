@@ -132,13 +132,21 @@ float4 ps_main(ps_in input) : SV_TARGET
   float leave = along + half_top;
   if(leave <= 0.f)
     discard;
+  // where the ray meets the floor, or comes nearest to it past the limb: moves smoothly with the ray and the eye
+  float anchor = along;
   if(miss < bottom * bottom)
     {
     float half_bottom = sqrt(bottom * bottom - miss);
     if(along - half_bottom > 0.f)
+      {
       leave = min(leave, along - half_bottom);  // from above: down to the layer's floor
+      anchor = along - half_bottom;
+      }
     else
+      {
       enter = max(enter, along + half_bottom);  // from under it: up from the floor
+      anchor = along + half_bottom;
+      }
     }
   if(leave <= enter)
     discard;
@@ -149,8 +157,9 @@ float4 ps_main(ps_in input) : SV_TARGET
   float3 sun = -frame_rows[291].xyz;
   float edge = 0.62f - 0.3f * cloud_cover;
 
-  // the swirls of the weather change slowly: worked out once for the ray
-  float3 middle = ray * (enter + leave) * 0.5f - centre;
+  // the swirls of the weather change slowly: worked out once for the ray. Not from the middle of its way through the
+  // layer, which jumps at the limb and as the eye enters the layer, and the whole shape with it
+  float3 middle = ray * max(anchor, 0.f) - centre;
   float3 middle_dir = normalize(object_rows[9].xyz * middle.x + object_rows[10].xyz * middle.y + object_rows[11].xyz * middle.z);
   // the wind: the large shape by the height, whose layers part slowly; the fine lumps all at the mean speed, or a
   // difference of 150 km/h would draw a lump of 3 km out into a streak in a minute. Each planet its own way
