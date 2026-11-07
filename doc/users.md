@@ -100,6 +100,8 @@ zip is the same start, by hand.
 | `clouds_bottom`, `clouds_top` | `0.003`, `0.012` | where the clouds with depth begin and end over the surface, as parts of the planet's radius |
 | `clouds_min_light` | `400` | the star's light the clouds with depth get at least, so a faint star does not lose them; `0` = as the game gives it |
 | `clouds_under_gain` | `2` | how much lighter the clouds with depth are seen from under them, against a day's sky; `1` = as they are |
+| `clouds_detail` | `1` | how much the fine shape near you cuts the clouds with depth; `0` = none, a smooth fog from the ground |
+| `clouds_detail_size`, `clouds_detail_range`, `clouds_detail_edge` | `3000`, `150000`, `8` | that shape's largest lumps and how far it reaches, in metres, and how sharp a cloud's edge is near you |
 | `clouds_top_gain` | `2` | how much lighter the clouds with depth are seen from above, over a light ground; `1` = as from under them |
 | `clouds_density`, `clouds_opacity`, `clouds_steps` | `1.2`, `0.75`, `32` | how thick they are, how much they cover at most, and the steps through them: fewer are lighter and coarser |
 | `list_top`, `list_x` | `500`, `1540` | where the list starts under the panel (pixels of the panel's surface) |

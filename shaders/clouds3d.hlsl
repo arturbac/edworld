@@ -25,7 +25,11 @@ cbuffer clouds : register(b4)
   float cloud_top_gain; // how much lighter they are seen from above, against a light ground
   float cloud_min_light; // the star's light they get at least, in the game's units; its hue stays
   float cloud_under_gain; // how much lighter they are seen from under the layer, against a day's sky
-  float2 cloud_pad;
+  float cloud_detail;       // how much the fine shape near the eye cuts the clouds, 0 = none
+  float cloud_detail_size;  // its largest lumps, in metres
+  float cloud_detail_range; // how far from the eye it reaches, in metres
+  float cloud_detail_edge;  // how sharp a cloud's edge is near the eye
+  float3 cloud_pad;
   };
 
 Texture2D<float> scene_depth : register(t0);
@@ -161,8 +165,18 @@ float4 ps_main(ps_in input) : SV_TARGET
     float3 dir = normalize(turned);
     float3 place = dir * 7.f + seed + warp * 3.5f + float3(0.f, height * 0.4f, 0.f);
     float shape = fbm(place, 5) - edge;
+    // the shape above has lumps of tens of km: fine from orbit, one smooth fog from under them. Near the eye lumps of a
+    // few km cut it, where the steps are short enough to show them
+    float near = saturate(1.f - t / cloud_detail_range) * saturate(cloud_detail_size * 2.f / step_length);
+    float sharpness = 2.5f;
+    if(cloud_detail > 0.f and near > 0.f and shape > -0.2f)
+      {
+      float3 fine = dir * (distance_to_centre / cloud_detail_size) + seed;
+      shape += (fbm(fine, 3) - 0.44f) * cloud_detail * near;
+      sharpness = lerp(2.5f, cloud_detail_edge, near);
+      }
     float profile = saturate(height * 5.f) * saturate((1.f - height) * 2.5f);
-    float density = saturate(shape * 2.5f);
+    float density = saturate(shape * sharpness);
     density *= density * profile;
     if(density > 0.001f)
       {

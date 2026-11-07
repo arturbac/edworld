@@ -114,6 +114,12 @@ namespace edworld
     float clouds_opacity{0.75f};
     ///\brief how much lighter the clouds with depth are seen from above the layer: a light ground hid them
     float clouds_top_gain{2.f};
+    ///\brief the fine shape near the eye (2026-11-07: from the ground the shape alone, lumps of 25 km and up, was a fog): how
+    /// much it cuts the clouds, 0 = none; its largest lumps and how far it reaches, in metres; a cloud's edge near the eye
+    float clouds_detail{1.f};
+    float clouds_detail_size{3000.f};
+    float clouds_detail_range{150000.f};
+    float clouds_detail_edge{8.f};
     ///\brief how much lighter they are seen from under the layer: a day's sky hid them (2026-11-07, LQ-F b31-7 A 4)
     float clouds_under_gain{2.f};
     ///\brief the star's light the clouds with depth get at least, in the game's units (2026-11-07: 970 and 547 by an M star,
