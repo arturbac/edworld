@@ -199,6 +199,11 @@ lighter. They are there only
 where the game draws its shell of the atmosphere, found by that shader, so an update of the game can take them away
 until edworld follows it. Changing a value takes a new start of the game.
 
+The clouds with depth are worked out at half the picture's width and height and laid over it by the depth of the
+scene, so they keep to the edge of the ground and the ship. Every 5 s the log has a line `clouds gpu 5s` with how
+long the graphics card spends on them (`ms median`) and how many pixels that takes; with a report about the speed of
+the game near a planet, that line helps.
+
 ## Check that it works
 
 The log lists `patch: first drawn` at your first charge, `superpower: ... reads Alliance on the panel` (or the
