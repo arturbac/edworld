@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 1.2.0-beta.5
+
+- **The clouds with depth cost about a quarter of what they did.** They are worked out at half the picture's width and
+  height and laid over it by the depth, so they keep to the edge of the ground and the ship; their march is cheaper
+  too. Measured at one place on a planet at 9000x2160: from 7.8 ms of the graphics card a frame to 1.6-2.0 ms.
+- **No slanting stripes in them near the horizon.** The steps of the march start by blue noise; what stays there is a
+  fine, even grain, softened as the clouds are laid over the picture.
+- **The log tells what they cost:** a line `clouds gpu 5s` every 5 s.
+- **Their swirls hold still at the planet's edge** and as you enter the layer.
+- **edloader's guide:** EDHM goes into `edloader\plugins` with its files and is listed by name; the list needs
+  `+d3dcompiler_47.dll` before it. EDHM in the game's folder, listed by its full path, works as before.
+
 ## 1.2.0-beta.4
 
 - **The guides: EDVR's `ui_quality = off`.** With EDVR's anti-aliasing on, its bigger cockpit panels took the navballs

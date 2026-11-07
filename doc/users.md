@@ -203,6 +203,7 @@ The clouds with depth are worked out at half the picture's width and height and 
 scene, so they keep to the edge of the ground and the ship. Every 5 s the log has a line `clouds gpu 5s` with how
 long the graphics card spends on them (`ms median`) and how many pixels that takes; with a report about the speed of
 the game near a planet, that line helps.
+Toward the horizon, where the way through the clouds is longest, they can show a fine, even grain.
 
 ## Check that it works
 
