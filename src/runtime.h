@@ -76,6 +76,8 @@ namespace edworld
     std::uint32_t patch_force{0};
     ///\brief ask EDSM for the destination's allegiance and factions (only the system's id goes out)
     bool edsm{true};
+    ///\brief the game's Status.json, the journals beside it; empty = in Saved Games (game_state.h status_path)
+    std::wstring status_file;
 
     // ---- the destination's factions, listed under the jump panel on the same surface ----
     ///\brief 0 off, 1 on: by influence, from EHT's `target` in edworld_eht when it has them, else from EDSM (marked so)
@@ -259,6 +261,9 @@ namespace edworld
 
   auto settings() noexcept -> settings_t const &;
   auto load_settings(std::wstring const & config_dir, std::wstring const & output_dir) -> void;
+  ///\brief the ini made if there is none, and every setting it does not name yet added as a comment with the value edworld
+  /// runs on; a line already there, comment or not, stays as it is. After log_open: a failure is logged, the game goes on
+  auto complete_settings(std::wstring const & config_dir) noexcept -> void;
 
   auto log_open(std::wstring const & dir) -> void;
   ///\brief one line, time-stamped (UTC), flushed

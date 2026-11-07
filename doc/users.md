@@ -74,12 +74,17 @@ own: two tools writing one folder replace each other's destination.
 ## Settings
 
 In `edworld.ini` (or `edworld_eht.ini`), beside the dll or in `edloader\config`; whole lines, `;` or `#` starts a
-comment line. Every setting has a default; the file is needed only to change one. `edworld.ini.example` in the zip
-is a start, and says where the file goes.
+comment line. Every setting has a default. At its first start edworld makes the file if there is none, with every
+setting as a comment holding the value it runs on (`;clouds_alpha = 0.45`), and at each start it adds the settings
+the file does not name yet, a new version's too, at the end; it never changes a line that is there. To change a
+setting, take the `;` off its line; a line left as a comment follows edworld's default, also when a new version
+changes it. Where the file cannot be written, edworld says so in its log and runs on. `edworld.ini.example` in the
+zip is the same start, by hand.
 
 | setting | default | what |
 |---|---|---|
 | `next` | empty | the next d3d11 mod (`d3d11_edhm.dll`); empty = the system's own; `d3d11.dll` under edloader |
+| `status_file` | in Saved Games | the game's `Status.json`, the journals beside it; for a game whose Saved Games lie elsewhere |
 | `patch` | `1` | `0` off, `1` the emblem and the list, `2` a test frame showing where they go |
 | `independent_colour` | `F2C14E` | the independents' emblem's colour, `RRGGBB` |
 | `list` | `1` | `0` = no factions list |

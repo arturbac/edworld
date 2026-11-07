@@ -24,6 +24,28 @@ fi
 # one wineserver for all the runs below and the next test within ten minutes
 wineserver -p600 >/dev/null 2>&1 || true  # already running (e.g. from wineboot) is fine
 rc=0
+ini_run() { EDWORLD_TEST_INI_KEEP=1 WINEDEBUG=-all WINEDLLOVERRIDES="d3d11=n,b" wine test_app.exe >/dev/null || echo "--- ini: test_app exit $?"; }
+ini_check() {  # $1 = what, $2 = a condition's result
+  echo "--- ini: $1: $([[ $2 -eq 0 ]] && echo ok || echo FAIL)"
+  [[ $2 -eq 0 ]] || rc=1
+}
+ini_cases() {  # $1 = edworld | edworld_eht; in the run directory
+  local ini=$1.ini before
+  mv "$ini" "$ini.session"
+  set +e
+  ini_run
+  grep -q '^;clouds_alpha = 0.45$' "$ini" && grep -qE '^;status_file = .+Status\.json' "$ini" && grep -q '^;dump_vs = ' "$ini" && ! grep -qvE '^(;.*)?\r?$' "$ini"
+  ini_check "made when there is none, all comments" $?
+  before=$(sha256sum "$ini")
+  ini_run
+  [[ $(sha256sum "$ini") == "$before" ]]
+  ini_check "a second start changes nothing" $?
+  printf 'clouds_alpha = 0.3\n; mine\n;compass = 0\nstatus_file = C:\\x\\Status.json' > "$ini"
+  ini_run
+  [[ $(head -n 3 "$ini" | sed -n 3p) == ';compass = 0' ]] && [[ $(grep -c 'clouds_alpha =' "$ini") -eq 1 ]] && [[ $(grep -c 'compass =' "$ini") -eq 1 ]] && [[ $(grep -c 'status_file =' "$ini") -eq 1 ]] && grep -q '^status_file = C:\\x\\Status.json$' "$ini" && grep -q '^;clouds_cover = 0.4$' "$ini"
+  ini_check "completed, the player's lines stay" $?
+  set -e
+}
 run_variant() {  # $1 = edworld | edworld_eht; sets rc on failure
   local V=$1 RUN r
   RUN=$(mktemp -d "$SCR/$V-test.XXXXXX")
@@ -53,6 +75,7 @@ run_variant() {  # $1 = edworld | edworld_eht; sets rc on failure
   [[ -e $V.log && ! -e d3d11.ini && ! -e d3d11.log ]] || { echo "FAIL: log not named after the build, or files named after the dll"; rc=1; }
   echo "--- $V.log"
   head -40 $V.log 2>/dev/null
+  ini_cases "$V"
   popd >/dev/null
 }
 run_variant edworld

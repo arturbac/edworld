@@ -1226,6 +1226,16 @@ int main()
   check(edworld::list_from_edsm("[]", 1ull, bad) == false and edworld::list_from_edsm("{}", 1ull, bad) and bad.count == 0, "no factions, empty list");
   }
 
+  // tools/test.sh's cases of the ini: the file stays as the script left it, edworld only starts
+  if(GetEnvironmentVariableW(L"EDWORLD_TEST_INI_KEEP", nullptr, 0))
+    {
+    ID3D11Device * device{};
+    D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &device, nullptr, nullptr);
+    if(device)
+      device->Release();
+    return 0;
+    }
+
   // The settings must be in place before the first d3d11 export call.
   std::uint64_t const watched{edworld::fnv1a64(g_panel_vs, sizeof g_panel_vs)};
   {

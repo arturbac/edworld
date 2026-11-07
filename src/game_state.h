@@ -63,6 +63,11 @@ namespace edworld
   [[nodiscard]]
   auto flight() noexcept -> flight_t;
 
+  ///\brief Status.json: the setting status_file, else in Saved Games; the journals are looked for beside it. Empty when
+  /// Windows names no Saved Games
+  [[nodiscard]]
+  auto status_path() -> std::wstring;
+
   ///\brief starts the thread that polls Status.json and asks EDSM about a new destination; once
   auto start_game_state() noexcept -> void;
 

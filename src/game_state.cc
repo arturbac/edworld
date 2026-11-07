@@ -44,16 +44,6 @@ namespace edworld
       ReleaseSRWLockExclusive(&list_lock);
       }
 
-    auto status_path() -> std::wstring
-      {
-      PWSTR saved{};
-      if(FAILED(SHGetKnownFolderPath(FOLDERID_SavedGames, 0, nullptr, &saved)) or not saved)
-        return {};
-      std::wstring path{saved};
-      CoTaskMemFree(saved);
-      return path + L"\\Frontier Developments\\Elite Dangerous\\Status.json";
-      }
-
     auto read_file(std::wstring const & path) -> std::string
       {
       std::string text;
@@ -611,6 +601,18 @@ namespace edworld
         }
       }
     }  // namespace
+
+  auto status_path() -> std::wstring
+    {
+    if(not settings().status_file.empty())
+      return settings().status_file;
+    PWSTR saved{};
+    if(FAILED(SHGetKnownFolderPath(FOLDERID_SavedGames, 0, nullptr, &saved)) or not saved)
+      return {};
+    std::wstring path{saved};
+    CoTaskMemFree(saved);
+    return path + L"\\Frontier Developments\\Elite Dangerous\\Status.json";
+    }
 
   auto start_game_state() noexcept -> void
     {
