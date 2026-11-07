@@ -1078,10 +1078,10 @@ int main()
     // E at 0.3 R sees the place 17 below the edge; the line Q-E has the nose on the edge seen from E; the turn at Q is 30
     edworld::dvec3_t const e{flat.point[2]}, qp{flat.point[1]};
     edworld::dvec3_t const f{edworld::unit(e - qp)};
-    double const nose_below{std::asin(-edworld::dot(f, edworld::unit(e))) / edworld::gate_rad};
-    double const turn{std::acos(edworld::dot(edworld::unit(qp - flat.point[0]), f)) / edworld::gate_rad};
+    double const nose_below{std::asin(-edworld::dot(f, edworld::unit(e))) / edworld::deg_to_rad};
+    double const turn{std::acos(edworld::dot(edworld::unit(qp - flat.point[0]), f)) / edworld::deg_to_rad};
     flat_ok = std::fabs(edworld::length(e) - 1.3 * RK) < 1e-3 and std::fabs(edworld::below_limb(e, kisekka, RK) - 17.0) < 1e-6
-              and std::fabs(nose_below - edworld::limb_dip(1.3 * RK, RK) / edworld::gate_rad) < 1e-6 and std::fabs(turn - 30.0) < 1e-6;
+              and std::fabs(nose_below - edworld::limb_dip(1.3 * RK, RK) / edworld::deg_to_rad) < 1e-6 and std::fabs(turn - 30.0) < 1e-6;
     }
   check(flat_ok, "gates: Kisekka still flat: to Q with a 30 degree turn, along the line with the nose on the edge, E at 0.3 R");
   auto const moller_dive{edworld::approach_path(10.273772, 157.013962, 221041.0, 0.248625, 148.506454, RM, 17.0, 0.3, 30.0, 73.0)};
@@ -1130,7 +1130,7 @@ int main()
     for(double pitch : {-50.0, -10.0, 20.0})
       for(double roll : {0.0, 30.0, -100.0})
         {
-        double const h{heading * edworld::gate_rad}, p{pitch * edworld::gate_rad}, f{roll * edworld::gate_rad};
+        double const h{heading * edworld::deg_to_rad}, p{pitch * edworld::deg_to_rad}, f{roll * edworld::deg_to_rad};
         edworld::dvec3_t const level{at.east * std::sin(h) + at.north * std::cos(h)};
         edworld::dvec3_t const forward{level * std::cos(p) + at.up * std::sin(p)};
         edworld::dvec3_t const right0{at.east * std::cos(h) - at.north * std::sin(h)};
@@ -1144,7 +1144,7 @@ int main()
   check(attitude_ok, "gates: the attitude from the compass and the heading comes back for 27 attitudes");
   edworld::attitude_t const axes{true, {1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}, 0.0, 0.0};
   auto const middle{edworld::project({0.0, 0.0, 100.0}, {}, axes, 60.0, 1920.0, 1080.0)};
-  auto const top{edworld::project({0.0, 100.0 * std::tan(30.0 * edworld::gate_rad), 100.0}, {}, axes, 60.0, 1920.0, 1080.0)};
+  auto const top{edworld::project({0.0, 100.0 * std::tan(30.0 * edworld::deg_to_rad), 100.0}, {}, axes, 60.0, 1920.0, 1080.0)};
   check(middle.in_front and std::fabs(middle.x - 960.0) < 1e-9 and std::fabs(middle.y - 540.0) < 1e-9 and std::fabs(top.y) < 1e-6
           and not edworld::project({0.0, 0.0, -1.0}, {}, axes, 60.0, 1920.0, 1080.0).in_front,
         "gates: the projection puts the nose in the middle, half the field at the edge, nothing behind");

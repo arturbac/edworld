@@ -45,6 +45,7 @@
 #include <cstdio>
 #include <cstring>
 #include <initializer_list>
+#include <numbers>
 #include <vector>
 
 namespace edworld
@@ -2074,7 +2075,7 @@ namespace edworld
         };
       auto const facing = [&](compass_direction_t const & v) -> bool { return not sphere_view(v, yaw, pitch).on_far_side; };
       sphere_ground(dl, c, radius, 200);
-      constexpr float pi{3.14159265f};
+      constexpr float pi{std::numbers::pi_v<float>};
       constexpr int steps{96};
       ImU32 const faint{col(mix_rgb(disc, grid, 0.5f))};
       auto const curve = [&](auto && point, float from, float to, ImU32 bright, float width)

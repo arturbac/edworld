@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <numbers>
 
 namespace edworld
   {
@@ -187,6 +188,8 @@ namespace edworld
     }
 
   inline constexpr float compass_degrees{57.29577951308232f};
+  ///\brief a degree in radians
+  inline constexpr double deg_to_rad{std::numbers::pi / 180.0};
 
   ///\brief the target's direction from the dot, in degrees
   struct compass_angles_t
@@ -226,14 +229,13 @@ namespace edworld
   inline auto flight_path_angle(double lat1, double lon1, double alt1, double lat2, double lon2, double alt2,
                                 double planet_radius) noexcept -> double
     {
-    constexpr double rad{3.14159265358979323846 / 180.0};
-    double const a1{lat1 * rad}, a2{lat2 * rad}, dl{(lon2 - lon1) * rad};
+    double const a1{lat1 * deg_to_rad}, a2{lat2 * deg_to_rad}, dl{(lon2 - lon1) * deg_to_rad};
     double const c{std::acos(std::clamp(std::sin(a1) * std::sin(a2) + std::cos(a1) * std::cos(a2) * std::cos(dl), -1.0, 1.0))};
     double const horizontal{c * (planet_radius + (alt1 + alt2) / 2.0)};
     double const vertical{alt2 - alt1};
     if(horizontal == 0.0 and vertical == 0.0)
       return std::nan("");
-    return std::atan2(vertical, horizontal) / rad;
+    return std::atan2(vertical, horizontal) / deg_to_rad;
     }
 
   ///\brief the straight line from the ship to a place on the surface
@@ -249,14 +251,13 @@ namespace edworld
   inline auto glide_to(double lat, double lon, double alt, double place_lat, double place_lon, double planet_radius) noexcept
     -> glide_t
     {
-    constexpr double rad{3.14159265358979323846 / 180.0};
-    double const a1{lat * rad}, a2{place_lat * rad}, dl{(place_lon - lon) * rad};
+    double const a1{lat * deg_to_rad}, a2{place_lat * deg_to_rad}, dl{(place_lon - lon) * deg_to_rad};
     // haversine: the cosine rule loses metres near the place, where they count
     double const sl{std::sin((a2 - a1) / 2.0)}, so{std::sin(dl / 2.0)};
     double const c{2.0 * std::asin(std::min(1.0, std::sqrt(sl * sl + std::cos(a1) * std::cos(a2) * so * so)))};
     double const horizontal{planet_radius * std::sin(c)};
     double const vertical{planet_radius + alt - planet_radius * std::cos(c)};
-    return glide_t{c * planet_radius, horizontal == 0.0 and vertical == 0.0 ? 0.0 : std::atan2(vertical, horizontal) / rad};
+    return glide_t{c * planet_radius, horizontal == 0.0 and vertical == 0.0 ? 0.0 : std::atan2(vertical, horizontal) / deg_to_rad};
     }
 
   // ---- the spheres drawn beside the dashboard (PoC): the target's direction in the ship's frame, and a view of it ----
