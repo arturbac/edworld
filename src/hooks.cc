@@ -3287,9 +3287,10 @@ namespace edworld
       depth.DepthFunc = D3D11_COMPARISON_ALWAYS;
       ok = ok and SUCCEEDED(device->CreateDepthStencilState(&depth, &clouds.volume_depth_state));
 
-      float const values[8]{
+      float const values[12]{
         settings().clouds_bottom, settings().clouds_top, settings().clouds_cover, settings().clouds_light,
-        settings().clouds_steps, settings().clouds_density, settings().clouds_opacity, settings().clouds_top_gain
+        settings().clouds_steps, settings().clouds_density, settings().clouds_opacity, settings().clouds_top_gain,
+        settings().clouds_min_light, 0.f, 0.f, 0.f
       };
       D3D11_BUFFER_DESC desc{};
       desc.ByteWidth = sizeof values;

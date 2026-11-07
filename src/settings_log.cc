@@ -132,6 +132,7 @@ namespace edworld
       {"clouds_steps", &settings_t::clouds_steps},
       {"clouds_density", &settings_t::clouds_density},
       {"clouds_opacity", &settings_t::clouds_opacity},
+      {"clouds_min_light", &settings_t::clouds_min_light, "the star's light the clouds with depth get at least, so a faint star does not lose them; 0 = as the game gives it"},
       {"clouds_top_gain", &settings_t::clouds_top_gain, "how much lighter the clouds with depth are seen from above, 1 = as from under them"},
       {"compass", &settings_t::compass, "The navballs beside the radar: 0 = none, the game's compass is not read at all"},
       {"edsm", &settings_t::edsm, "The destination's factions under the jump panel: 0 = never ask EDSM"},
