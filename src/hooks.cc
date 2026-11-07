@@ -9,6 +9,7 @@
 //    and map it frames later with DO_NOT_WAIT;
 //  - GetType before GetDesc; a fault in edworld's code disables edworld, never the game call.
 #include "edworld_share.h"
+#include "gpu_timing.h"
 #include "game_state.h"
 #include "hologram.h"
 #include "holo_models.h"
@@ -32,6 +33,8 @@
 #include <vector>
 #include "clouds3d_ps.h"
 #include "clouds3d_vs.h"
+#include "clouds_up_ps.h"
+#include "clouds_up_vs.h"
 #include "clouds_ps.h"
 #include "clouds_vs.h"
 
@@ -912,7 +915,7 @@ namespace edworld
     LONGLONG full_armed_qpc{};
     LONGLONG frame_gap_qpc{};  ///< the gap before the panel draw that began the current frame
 
-    ///rief a draw of another context than the immediate one while a whole frame is armed: counted, not recorded
+    ///\brief a draw of another context than the immediate one while a whole frame is armed: counted, not recorded
     auto note_full_other(ID3D11DeviceContext * self) noexcept -> void
       {
       full_other_draws.fetch_add(1, std::memory_order_relaxed);
@@ -3200,8 +3203,128 @@ namespace edworld
       UINT depth_height{};
       DXGI_FORMAT depth_format{};
       bool volume_failed{};
+      // the volume at half size (PoC): marched into a target of half the picture's width and height, then laid over
+      // the picture by the depth
+      ID3D11VertexShader * up_vs{};
+      ID3D11PixelShader * up_ps{};
+      ID3D11BlendState * half_blend{};
+      ID3D11Texture2D * half_target{};
+      ID3D11RenderTargetView * half_rtv{};
+      ID3D11ShaderResourceView * half_srv{};
+      UINT half_width{};
+      UINT half_height{};
+      bool half_failed{};
+      std::uint32_t frame{};  // the volume's draws so far, for the grain of the steps
       };
     clouds_t clouds;
+
+    // the GPU time of the volume (the copy of the depth and the draw), read back a few draws late without waiting for
+    // the GPU, and summed up in the log every 5 s with the pixels it shaded
+    struct clouds_timing_t
+      {
+      struct slot_t
+        {
+        ID3D11Query * disjoint{};
+        ID3D11Query * begin{};
+        ID3D11Query * end{};
+        ID3D11Query * stats{};
+        bool pending{};
+        };
+      std::array<slot_t, 6> slots{};
+      std::size_t next{};
+      bool tried{};
+      bool ready{};
+      edworld::gpu_span_window_t window{};
+      ULONGLONG window_start{};
+      std::uint32_t busy{};  // draws not timed as every slot still waited for the GPU
+      };
+    clouds_timing_t clouds_timing;
+
+    auto make_clouds_timing(ID3D11DeviceContext * ctx) noexcept -> bool
+      {
+      if(clouds_timing.tried)
+        return clouds_timing.ready;
+      clouds_timing.tried = true;
+      ID3D11Device * device{};
+      ctx->GetDevice(&device);
+      bool ok{device != nullptr};
+      for(auto & s: clouds_timing.slots)
+        {
+        D3D11_QUERY_DESC q{};
+        q.Query = D3D11_QUERY_TIMESTAMP_DISJOINT;
+        ok = ok and SUCCEEDED(device->CreateQuery(&q, &s.disjoint));
+        q.Query = D3D11_QUERY_TIMESTAMP;
+        ok = ok and SUCCEEDED(device->CreateQuery(&q, &s.begin)) and SUCCEEDED(device->CreateQuery(&q, &s.end));
+        q.Query = D3D11_QUERY_PIPELINE_STATISTICS;
+        ok = ok and SUCCEEDED(device->CreateQuery(&q, &s.stats));
+        }
+      if(device)
+        device->Release();
+      clouds_timing.ready = ok;
+      clouds_timing.window_start = GetTickCount64();
+      log_line("clouds: GPU timing %s", ok ? "on, summed up every 5 s" : "could not be made, the clouds are drawn untimed");
+      return ok;
+      }
+
+    ///\brief takes in the spans the GPU has finished, and writes the window's sum to the log once it is 5 s long
+    auto collect_clouds_timing(ID3D11DeviceContext * ctx) noexcept -> void
+      {
+      for(auto & s: clouds_timing.slots)
+        {
+        if(not s.pending)
+          continue;
+        D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disjoint{};
+        UINT64 begin{};
+        UINT64 end{};
+        D3D11_QUERY_DATA_PIPELINE_STATISTICS stats{};
+        UINT const flags{D3D11_ASYNC_GETDATA_DONOTFLUSH};
+        if(ctx->GetData(s.disjoint, &disjoint, sizeof disjoint, flags) != S_OK or ctx->GetData(s.begin, &begin, sizeof begin, flags) != S_OK
+           or ctx->GetData(s.end, &end, sizeof end, flags) != S_OK or ctx->GetData(s.stats, &stats, sizeof stats, flags) != S_OK)
+          continue;
+        s.pending = false;
+        if(not disjoint.Disjoint and disjoint.Frequency != 0u and end >= begin)
+          edworld::add_span(clouds_timing.window, static_cast<float>(static_cast<double>(end - begin) * 1000. / static_cast<double>(disjoint.Frequency)),
+                            static_cast<float>(static_cast<double>(stats.PSInvocations) / 1e6));
+        }
+      ULONGLONG const now{GetTickCount64()};
+      if(now - clouds_timing.window_start < 5000u)
+        return;
+      auto const s{edworld::span_summary(clouds_timing.window)};
+      log_line("clouds gpu 5s: draws %u, ms median %.2f mean %.2f max %.2f, pixels %.2f M a draw, %.2f ms per million pixels, untimed %u",
+               s.count, s.ms_median, s.ms_mean, s.ms_max, s.megapixels_mean, s.ms_per_megapixel, clouds_timing.busy);
+      clouds_timing.window = {};
+      clouds_timing.busy = 0u;
+      clouds_timing.window_start = now;
+      }
+
+    ///\brief the slot that times this draw, or none while every slot still waits for the GPU
+    auto start_clouds_timing(ID3D11DeviceContext * ctx) noexcept -> clouds_timing_t::slot_t *
+      {
+      if(not make_clouds_timing(ctx))
+        return nullptr;
+      collect_clouds_timing(ctx);
+      auto & s{clouds_timing.slots[clouds_timing.next]};
+      if(s.pending)
+        {
+        ++clouds_timing.busy;
+        return nullptr;
+        }
+      clouds_timing.next = (clouds_timing.next + 1u) % clouds_timing.slots.size();
+      ctx->Begin(s.disjoint);
+      ctx->End(s.begin);
+      ctx->Begin(s.stats);
+      return &s;
+      }
+
+    auto stop_clouds_timing(ID3D11DeviceContext * ctx, clouds_timing_t::slot_t * s) noexcept -> void
+      {
+      if(not s)
+        return;
+      ctx->End(s->stats);
+      ctx->End(s->end);
+      ctx->End(s->disjoint);
+      s->pending = true;
+      }
 
     auto make_clouds(ID3D11DeviceContext * ctx) noexcept -> bool
       {
@@ -3263,6 +3386,8 @@ namespace edworld
       creating_own.store(true);
       bool ok{SUCCEEDED(device->CreateVertexShader(g_clouds3d_vs, sizeof g_clouds3d_vs, nullptr, &clouds.volume_vs))};
       ok = ok and SUCCEEDED(device->CreatePixelShader(g_clouds3d_ps, sizeof g_clouds3d_ps, nullptr, &clouds.volume_ps));
+      clouds.half_failed = not(SUCCEEDED(device->CreateVertexShader(g_clouds_up_vs, sizeof g_clouds_up_vs, nullptr, &clouds.up_vs))
+                               and SUCCEEDED(device->CreatePixelShader(g_clouds_up_ps, sizeof g_clouds_up_ps, nullptr, &clouds.up_ps)));
       creating_own.store(false);
 
       // what the shader gives is already weighed by how much of it there is
@@ -3276,6 +3401,10 @@ namespace edworld
       blend.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
       blend.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
       ok = ok and SUCCEEDED(device->CreateBlendState(&blend, &clouds.volume_blend));
+      // into the half target, cleared first, the march's colour and cover as they are
+      D3D11_BLEND_DESC plain{};
+      plain.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+      clouds.half_failed = clouds.half_failed or FAILED(device->CreateBlendState(&plain, &clouds.half_blend));
 
       D3D11_RASTERIZER_DESC raster{};
       raster.FillMode = D3D11_FILL_SOLID;
@@ -3295,7 +3424,7 @@ namespace edworld
         settings().clouds_steps, settings().clouds_density, settings().clouds_opacity, settings().clouds_top_gain,
         settings().clouds_min_light, settings().clouds_under_gain, settings().clouds_detail, settings().clouds_detail_size,
         settings().clouds_detail_range, settings().clouds_detail_edge, settings().clouds_detail_gap, 0.f,
-        settings().clouds_wind_low / 3.6f, settings().clouds_wind_high / 3.6f, 0.f, 0.f
+        settings().clouds_wind_low / 3.6f, settings().clouds_wind_high / 3.6f, 1.f, 0.f
       };
       std::memcpy(clouds.volume_values, values, sizeof values);
       clouds.wind_start = GetTickCount64();
@@ -3313,7 +3442,60 @@ namespace edworld
         clouds.volume_params = params;
         clouds.volume_failed = false;
         }
-      log_line("clouds: the volume %s", ok ? "is ready" : "could not be made, the layer stays");
+      log_line("clouds: the volume %s%s", ok ? "is ready" : "could not be made, the layer stays",
+               ok and clouds.half_failed ? ", at full size (the half size could not be made)" : "");
+      return ok;
+      }
+
+    ///\brief the half target for a picture of the size of the bound target, made again when that size changes;
+    /// false when there is none, and the clouds are drawn at full size
+    auto make_half(ID3D11Device * device, ID3D11RenderTargetView * picture) noexcept -> bool
+      {
+      if(clouds.half_failed or not device or not picture)
+        return false;
+      ID3D11Resource * resource{};
+      picture->GetResource(&resource);
+      ID3D11Texture2D * texture{};
+      if(resource)
+        {
+        resource->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void **>(&texture));
+        resource->Release();
+        }
+      if(not texture)
+        return false;
+      D3D11_TEXTURE2D_DESC d{};
+      texture->GetDesc(&d);
+      texture->Release();
+      UINT const width{(d.Width + 1u) / 2u};
+      UINT const height{(d.Height + 1u) / 2u};
+      if(clouds.half_target and clouds.half_width == width and clouds.half_height == height)
+        return true;
+      for(IUnknown ** held: std::initializer_list<IUnknown **>{
+            reinterpret_cast<IUnknown **>(&clouds.half_srv), reinterpret_cast<IUnknown **>(&clouds.half_rtv),
+            reinterpret_cast<IUnknown **>(&clouds.half_target)
+          })
+        if(*held)
+          {
+          (*held)->Release();
+          *held = nullptr;
+          }
+      D3D11_TEXTURE2D_DESC c{};
+      c.Width = width;
+      c.Height = height;
+      c.MipLevels = 1;
+      c.ArraySize = 1;
+      c.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+      c.SampleDesc.Count = 1;
+      c.Usage = D3D11_USAGE_DEFAULT;
+      c.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+      bool const ok{SUCCEEDED(device->CreateTexture2D(&c, nullptr, &clouds.half_target))
+                    and SUCCEEDED(device->CreateRenderTargetView(clouds.half_target, nullptr, &clouds.half_rtv))
+                    and SUCCEEDED(device->CreateShaderResourceView(clouds.half_target, nullptr, &clouds.half_srv))};
+      clouds.half_width = width;
+      clouds.half_height = height;
+      clouds.half_failed = not ok;
+      log_line("clouds: half target %ux%u for a picture of %ux%u %s", width, height, d.Width, d.Height,
+               ok ? "made" : "could not be made, the clouds are drawn at full size");
       return ok;
       }
 
@@ -3412,8 +3594,34 @@ namespace edworld
       ctx->OMGetDepthStencilState(&game_depth, &game_stencil);
       ctx->PSGetShaderResources(0, 1, &game_t0);
 
+      ID3D11RenderTargetView * game_rtv[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT]{};
+      ID3D11DepthStencilView * game_dsv{};
+      ctx->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, game_rtv, &game_dsv);
+      D3D11_VIEWPORT game_ports[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE]{};
+      UINT game_port_count{D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE};
+      ctx->RSGetViewports(&game_port_count, game_ports);
+      ID3D11Device * device{};
+      ctx->GetDevice(&device);
+      bool const half{game_port_count != 0u and make_half(device, game_rtv[0])};
+      if(device)
+        device->Release();
+
       clouds.volume_values[15] = static_cast<float>(GetTickCount64() - clouds.wind_start) / 1000.f;
+      clouds.volume_values[18] = half ? 2.f : 1.f;
+      clouds.volume_values[19] = static_cast<float>(clouds.frame++ % 64u);
       ctx->UpdateSubresource(clouds.volume_params, 0, nullptr, clouds.volume_values, 0, 0);
+      if(half)
+        {
+        float const clear[4]{};
+        ctx->ClearRenderTargetView(clouds.half_rtv, clear);
+        ctx->OMSetRenderTargets(1, &clouds.half_rtv, nullptr);
+        D3D11_VIEWPORT port{game_ports[0]};
+        port.TopLeftX *= 0.5f;
+        port.TopLeftY *= 0.5f;
+        port.Width *= 0.5f;
+        port.Height *= 0.5f;
+        ctx->RSSetViewports(1, &port);
+        }
       orig_vs_set_shader(ctx, clouds.volume_vs, nullptr, 0);
       ctx->PSSetShader(clouds.volume_ps, nullptr, 0);
       ctx->VSSetConstantBuffers(4, 1, &clouds.volume_params);
@@ -3421,10 +3629,42 @@ namespace edworld
       ctx->PSSetConstantBuffers(1, 1, &frame);
       ctx->PSSetConstantBuffers(4, 1, &clouds.volume_params);
       ctx->PSSetShaderResources(0, 1, &clouds.depth_view);
-      ctx->OMSetBlendState(clouds.volume_blend, nullptr, 0xffffffffu);
+      ctx->OMSetBlendState(half ? clouds.half_blend : clouds.volume_blend, nullptr, 0xffffffffu);
       ctx->RSSetState(clouds.volume_raster);
       ctx->OMSetDepthStencilState(clouds.volume_depth_state, 0);
       orig_draw_indexed_instanced(ctx, index_count, instance_count, start_index, base_vertex, start_instance);
+
+      if(half)
+        {
+        // over the picture: one triangle from the vertex's number, nothing from the game's vertex buffers
+        ID3D11InputLayout * game_layout{};
+        D3D11_PRIMITIVE_TOPOLOGY game_topology{};
+        ID3D11ShaderResourceView * game_t1{};
+        ctx->IAGetInputLayout(&game_layout);
+        ctx->IAGetPrimitiveTopology(&game_topology);
+        ctx->PSGetShaderResources(1, 1, &game_t1);
+        ctx->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, game_rtv, game_dsv);
+        ctx->RSSetViewports(game_port_count, game_ports);
+        ctx->IASetInputLayout(nullptr);
+        ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        orig_vs_set_shader(ctx, clouds.up_vs, nullptr, 0);
+        ctx->PSSetShader(clouds.up_ps, nullptr, 0);
+        ctx->PSSetShaderResources(1, 1, &clouds.half_srv);
+        ctx->OMSetBlendState(clouds.volume_blend, nullptr, 0xffffffffu);
+        orig_draw(ctx, 3, 0);
+        ctx->PSSetShaderResources(1, 1, &game_t1);
+        ctx->IASetInputLayout(game_layout);
+        ctx->IASetPrimitiveTopology(game_topology);
+        if(game_layout)
+          game_layout->Release();
+        if(game_t1)
+          game_t1->Release();
+        }
+      for(ID3D11RenderTargetView * held: game_rtv)
+        if(held)
+          held->Release();
+      if(game_dsv)
+        game_dsv->Release();
 
       ctx->OMSetDepthStencilState(game_depth, game_stencil);
       ctx->PSSetShaderResources(0, 1, &game_t0);
@@ -3498,12 +3738,13 @@ namespace edworld
       D3D11_VIEWPORT port{};
       UINT ports{1u};
       ctx->RSGetViewports(&ports, &port);
-      bool const volume{
-        object and frame and settings().clouds_volume and port.Width >= 1024.f and make_volume(ctx) and copy_depth(ctx)
-      };
+      bool const volume_wanted{object and frame and settings().clouds_volume and port.Width >= 1024.f and make_volume(ctx)};
+      clouds_timing_t::slot_t * timing{volume_wanted ? start_clouds_timing(ctx) : nullptr};
+      bool const volume{volume_wanted and copy_depth(ctx)};
       if(volume)
         draw_volume(ctx, object, frame, index_count, instance_count, start_index, base_vertex, start_instance);
-      else if(object and frame)
+      stop_clouds_timing(ctx, timing);
+      if(not volume and object and frame)
         {
         orig_vs_set_shader(ctx, clouds.vs, nullptr, 0);
         ctx->PSSetShader(clouds.ps, nullptr, 0);
