@@ -19,6 +19,7 @@
 #include "../src/edworld_share.h"
 #include "../src/faction_list.h"
 #include "../src/gate_math.h"
+#include "../src/gpu_timing.h"
 #include "../src/hologram_math.h"
 #include "../src/holo_models.h"
 #include "../src/pad_text_read.h"
@@ -612,6 +613,22 @@ int main()
   pad_text_tests();
   shader_shape_tests();
   holo_models_tests();
+  // the clouds' GPU time over a window: the median of the kept spans, the mean and the time per million pixels of all
+  {
+  edworld::gpu_span_window_t w;
+  check(edworld::span_summary(w).count == 0u and edworld::span_summary(w).ms_per_megapixel == 0.f, "gpu timing: an empty window says nothing");
+  for(float ms: {3.f, 1.f, 2.f, 10.f, 4.f})
+    edworld::add_span(w, ms, 2.f);
+  auto const s{edworld::span_summary(w)};
+  check(s.count == 5u and near_eq(s.ms_median, 3.f) and near_eq(s.ms_mean, 4.f) and near_eq(s.ms_max, 10.f) and
+          near_eq(s.megapixels_mean, 2.f) and near_eq(s.ms_per_megapixel, 2.f),
+        "gpu timing: median, mean, longest and time per million pixels");
+  edworld::gpu_span_window_t full;
+  for(std::uint32_t i{}; i != 2000u; ++i)
+    edworld::add_span(full, 1.f, 0.f);
+  check(full.kept == full.ms.size() and edworld::span_summary(full).count == 2000u and edworld::span_summary(full).ms_per_megapixel == 0.f,
+        "gpu timing: a full window keeps counting, no pixels give no time per pixel");
+  }
   // the jump panel's four vertices as the game drew them on 2026-10-05 (ed-lab, geometry dump g10): local
   // x +-0.1196, y +-0.0588, shown at surface pixels x 1031..2045, y 2..493 of 3072x660
   {

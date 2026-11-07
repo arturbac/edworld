@@ -9,6 +9,7 @@
 //    and map it frames later with DO_NOT_WAIT;
 //  - GetType before GetDesc; a fault in edworld's code disables edworld, never the game call.
 #include "edworld_share.h"
+#include "gpu_timing.h"
 #include "game_state.h"
 #include "hologram.h"
 #include "holo_models.h"
@@ -3203,6 +3204,114 @@ namespace edworld
       };
     clouds_t clouds;
 
+    // the GPU time of the volume (the copy of the depth and the draw), read back a few draws late without waiting for
+    // the GPU, and summed up in the log every 5 s with the pixels it shaded
+    struct clouds_timing_t
+      {
+      struct slot_t
+        {
+        ID3D11Query * disjoint{};
+        ID3D11Query * begin{};
+        ID3D11Query * end{};
+        ID3D11Query * stats{};
+        bool pending{};
+        };
+      std::array<slot_t, 6> slots{};
+      std::size_t next{};
+      bool tried{};
+      bool ready{};
+      edworld::gpu_span_window_t window{};
+      ULONGLONG window_start{};
+      std::uint32_t busy{};  // draws not timed as every slot still waited for the GPU
+      };
+    clouds_timing_t clouds_timing;
+
+    auto make_clouds_timing(ID3D11DeviceContext * ctx) noexcept -> bool
+      {
+      if(clouds_timing.tried)
+        return clouds_timing.ready;
+      clouds_timing.tried = true;
+      ID3D11Device * device{};
+      ctx->GetDevice(&device);
+      bool ok{device != nullptr};
+      for(auto & s: clouds_timing.slots)
+        {
+        D3D11_QUERY_DESC q{};
+        q.Query = D3D11_QUERY_TIMESTAMP_DISJOINT;
+        ok = ok and SUCCEEDED(device->CreateQuery(&q, &s.disjoint));
+        q.Query = D3D11_QUERY_TIMESTAMP;
+        ok = ok and SUCCEEDED(device->CreateQuery(&q, &s.begin)) and SUCCEEDED(device->CreateQuery(&q, &s.end));
+        q.Query = D3D11_QUERY_PIPELINE_STATISTICS;
+        ok = ok and SUCCEEDED(device->CreateQuery(&q, &s.stats));
+        }
+      if(device)
+        device->Release();
+      clouds_timing.ready = ok;
+      clouds_timing.window_start = GetTickCount64();
+      log_line("clouds: GPU timing %s", ok ? "on, summed up every 5 s" : "could not be made, the clouds are drawn untimed");
+      return ok;
+      }
+
+    ///rief takes in the spans the GPU has finished, and writes the window's sum to the log once it is 5 s long
+    auto collect_clouds_timing(ID3D11DeviceContext * ctx) noexcept -> void
+      {
+      for(auto & s: clouds_timing.slots)
+        {
+        if(not s.pending)
+          continue;
+        D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disjoint{};
+        UINT64 begin{};
+        UINT64 end{};
+        D3D11_QUERY_DATA_PIPELINE_STATISTICS stats{};
+        UINT const flags{D3D11_ASYNC_GETDATA_DONOTFLUSH};
+        if(ctx->GetData(s.disjoint, &disjoint, sizeof disjoint, flags) != S_OK or ctx->GetData(s.begin, &begin, sizeof begin, flags) != S_OK
+           or ctx->GetData(s.end, &end, sizeof end, flags) != S_OK or ctx->GetData(s.stats, &stats, sizeof stats, flags) != S_OK)
+          continue;
+        s.pending = false;
+        if(not disjoint.Disjoint and disjoint.Frequency != 0u and end >= begin)
+          edworld::add_span(clouds_timing.window, static_cast<float>(static_cast<double>(end - begin) * 1000. / static_cast<double>(disjoint.Frequency)),
+                            static_cast<float>(static_cast<double>(stats.PSInvocations) / 1e6));
+        }
+      ULONGLONG const now{GetTickCount64()};
+      if(now - clouds_timing.window_start < 5000u)
+        return;
+      auto const s{edworld::span_summary(clouds_timing.window)};
+      log_line("clouds gpu 5s: draws %u, ms median %.2f mean %.2f max %.2f, pixels %.2f M a draw, %.2f ms per million pixels, untimed %u",
+               s.count, s.ms_median, s.ms_mean, s.ms_max, s.megapixels_mean, s.ms_per_megapixel, clouds_timing.busy);
+      clouds_timing.window = {};
+      clouds_timing.busy = 0u;
+      clouds_timing.window_start = now;
+      }
+
+    ///\brief the slot that times this draw, or none while every slot still waits for the GPU
+    auto start_clouds_timing(ID3D11DeviceContext * ctx) noexcept -> clouds_timing_t::slot_t *
+      {
+      if(not make_clouds_timing(ctx))
+        return nullptr;
+      collect_clouds_timing(ctx);
+      auto & s{clouds_timing.slots[clouds_timing.next]};
+      if(s.pending)
+        {
+        ++clouds_timing.busy;
+        return nullptr;
+        }
+      clouds_timing.next = (clouds_timing.next + 1u) % clouds_timing.slots.size();
+      ctx->Begin(s.disjoint);
+      ctx->End(s.begin);
+      ctx->Begin(s.stats);
+      return &s;
+      }
+
+    auto stop_clouds_timing(ID3D11DeviceContext * ctx, clouds_timing_t::slot_t * s) noexcept -> void
+      {
+      if(not s)
+        return;
+      ctx->End(s->stats);
+      ctx->End(s->end);
+      ctx->End(s->disjoint);
+      s->pending = true;
+      }
+
     auto make_clouds(ID3D11DeviceContext * ctx) noexcept -> bool
       {
       if(clouds.tried)
@@ -3498,12 +3607,13 @@ namespace edworld
       D3D11_VIEWPORT port{};
       UINT ports{1u};
       ctx->RSGetViewports(&ports, &port);
-      bool const volume{
-        object and frame and settings().clouds_volume and port.Width >= 1024.f and make_volume(ctx) and copy_depth(ctx)
-      };
+      bool const volume_wanted{object and frame and settings().clouds_volume and port.Width >= 1024.f and make_volume(ctx)};
+      clouds_timing_t::slot_t * timing{volume_wanted ? start_clouds_timing(ctx) : nullptr};
+      bool const volume{volume_wanted and copy_depth(ctx)};
       if(volume)
         draw_volume(ctx, object, frame, index_count, instance_count, start_index, base_vertex, start_instance);
-      else if(object and frame)
+      stop_clouds_timing(ctx, timing);
+      if(not volume and object and frame)
         {
         orig_vs_set_shader(ctx, clouds.vs, nullptr, 0);
         ctx->PSSetShader(clouds.ps, nullptr, 0);
