@@ -42,7 +42,7 @@ ini_cases() {  # $1 = edworld | edworld_eht; in the run directory
   ini_check "a second start changes nothing" $?
   printf 'clouds_alpha = 0.3\n; mine\n;compass = 0\nstatus_file = C:\\x\\Status.json' > "$ini"
   ini_run
-  [[ $(head -n 3 "$ini" | sed -n 3p) == ';compass = 0' ]] && [[ $(grep -c 'clouds_alpha =' "$ini") -eq 1 ]] && [[ $(grep -c 'compass =' "$ini") -eq 1 ]] && [[ $(grep -c 'status_file =' "$ini") -eq 1 ]] && grep -q '^status_file = C:\\x\\Status.json$' "$ini" && grep -q '^;clouds_cover = 0.4$' "$ini"
+  [[ $(head -n 3 "$ini" | sed -n 3p) == ';compass = 0' ]] && [[ $(grep -c 'clouds_alpha =' "$ini") -eq 1 ]] && [[ $(grep -c 'compass =' "$ini") -eq 1 ]] && [[ $(grep -c 'status_file =' "$ini") -eq 1 ]] && grep -q '^status_file = C:\\x\\Status.json$' "$ini" && grep -q '^;clouds_cover = 0.55$' "$ini"
   ini_check "completed, the player's lines stay" $?
   set -e
 }
