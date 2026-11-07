@@ -151,6 +151,7 @@ namespace
     edworld::load_settings(directory_from(L"EDLOADER_CONFIG_DIR"), log_dir);
     edworld::log_open(log_dir);
     edworld::log_line("%S %s, read-only d3d11 observer", edworld::plugin_name, EDWORLD_VERSION);
+    edworld::complete_settings(directory_from(L"EDLOADER_CONFIG_DIR"));
     chain_next();
     return TRUE;
     }

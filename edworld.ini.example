@@ -1,5 +1,5 @@
-; edworld's settings: you need this file only to change something, or to chain edworld with other mods (next, below).
-; Everything else here is edworld's own default.
+; edworld's settings: edworld makes this file by itself at its first start, with all its settings; a copy of this one
+; is for setting something before that. Everything else here is edworld's own default.
 ;
 ; Copy it as edworld.ini (without .example):
 ;   - on its own: into the game's folder, Products\elite-dangerous-odyssey-64, beside edworld's d3d11.dll
@@ -12,6 +12,9 @@
 ;next = d3d11.dll
 ; On its own, if you renamed another mod's d3d11.dll for edworld to go on to it:
 ;next = d3d11_edhm.dll
+
+; The game's Status.json, the journals beside it; only if edworld looks in the wrong place (its log says where it looks)
+;status_file = C:\Users\you\Saved Games\Frontier Developments\Elite Dangerous\Status.json
 
 ; Clouds over planets with an atmosphere: 0 = none
 ;clouds = 1

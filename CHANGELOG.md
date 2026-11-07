@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **The ini writes itself.** At the first start edworld makes `edworld.ini` if there is none, with every setting as a
+  comment holding the value it runs on, and at each start adds at the end what the file does not name yet. Lines that
+  are there stay as they are. See doc/users.md "Settings".
+- **`status_file`: where the game's Status.json is**, the journals beside it, for a game whose Saved Games lie elsewhere.
+
 ## 1.2.0-beta.1
 
 - **Clouds over a planet with an atmosphere (`clouds`, on by default; `clouds_height`, `clouds_alpha`, `clouds_cover`, `clouds_light`).**
