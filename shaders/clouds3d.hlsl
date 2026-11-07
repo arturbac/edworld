@@ -97,6 +97,27 @@ float noise(float3 p)
   );
   }
 
+// fbm(p, 5) in two parts: the first two octaves, then the last three. The last three add less than 0.21875 (noise is
+// under 1), so a point whose first two leave it that far under a cloud's edge is clear and needs no more
+float fbm_head(inout float3 p)
+  {
+  float sum = 0.5f * noise(p);
+  p = p * 2.03f + 7.1f;
+  sum += 0.25f * noise(p);
+  p = p * 2.03f + 7.1f;
+  return sum;
+  }
+
+float fbm_tail(float3 p, float sum)
+  {
+  sum += 0.125f * noise(p);
+  p = p * 2.03f + 7.1f;
+  sum += 0.0625f * noise(p);
+  p = p * 2.03f + 7.1f;
+  sum += 0.03125f * noise(p);
+  return sum;
+  }
+
 float fbm(float3 p, int octaves)
   {
   float sum = 0.f;
@@ -174,6 +195,13 @@ float4 ps_main(ps_in input) : SV_TARGET
   // a different start at each pixel turns the bands of the steps into a fine grain; interleaved gradient noise, as a hash
   // of the pixel's place gave clumps of specks on a wide target
   float start = frac(52.9829189f * frac(dot(input.pos.xy, float2(0.06711056f, 0.00583715f))));
+  // along the ray the place on the screen and the place in the planet's frame change in proportion to t: worked out
+  // once for the ray, each step only adds
+  float4 clip_ray = frame_rows[270] * ray.x + frame_rows[271] * ray.y + frame_rows[272] * ray.z;
+  float3 turned_ray = (object_rows[9].xyz * ray.x + object_rows[10].xyz * ray.y + object_rows[11].xyz * ray.z) * inverse_square;
+  float3 turned_centre = (object_rows[9].xyz * centre.x + object_rows[10].xyz * centre.y + object_rows[11].xyz * centre.z) * inverse_square;
+  // the most the fine shape near the eye can add to a point's shape
+  float detail_most = max(0.f, (0.875f - 0.44f) * cloud_detail - cloud_detail_gap);
   float t = enter + step_length * start;
   float3 light = 0.f;
   float clear = 1.f;
@@ -181,21 +209,22 @@ float4 ps_main(ps_in input) : SV_TARGET
   [loop]
   for(int i = 0; i != steps; ++i, t += step_length)
     {
-    float3 p = ray * t;
-    float4 clip = frame_rows[270] * p.x + frame_rows[271] * p.y + frame_rows[272] * p.z + frame_rows[273];
-    if(clip.z / clip.w < scene)  // the depth is reversed: the scene stands nearer than this point
+    float4 clip = clip_ray * t + frame_rows[273];
+    if(clip.z < scene * clip.w)  // the depth is reversed: the scene stands nearer than this point
       break;
-    float3 from_centre = p - centre;
+    float3 from_centre = ray * t - centre;
     float distance_to_centre = length(from_centre);
     float height = saturate((distance_to_centre - bottom) / (top - bottom));
-    float3 turned = (object_rows[9].xyz * from_centre.x + object_rows[10].xyz * from_centre.y + object_rows[11].xyz * from_centre.z)
-                    * inverse_square;
-    float3 dir = normalize(turned);
+    float3 dir = normalize(turned_ray * t - turned_centre);
     float3 place = blown(dir, wind_angle * lerp(cloud_wind_low, cloud_wind_high, height)) * 7.f + seed + warp * 3.5f + float3(0.f, height * 0.4f, 0.f);
-    float shape = fbm(place, 5) - edge;
     // the shape above has lumps of tens of km: fine from orbit, one smooth fog from under them. Near the eye lumps of a
     // few km cut it, where the steps are short enough to show them
     float near = saturate(1.f - t / cloud_detail_range) * saturate(cloud_detail_size * 2.f / step_length);
+    float head = fbm_head(place);
+    float most = head + 0.21875f - edge;
+    if(most + (cloud_detail > 0.f && most > -0.2f ? detail_most * near : 0.f) <= 0.f)
+      continue;
+    float shape = fbm_tail(place, head) - edge;
     float sharpness = 2.5f;
     if(cloud_detail > 0.f && near > 0.f && shape > -0.2f)
       {
