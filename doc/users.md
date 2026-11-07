@@ -74,7 +74,8 @@ own: two tools writing one folder replace each other's destination.
 ## Settings
 
 In `edworld.ini` (or `edworld_eht.ini`), beside the dll or in `edloader\config`; whole lines, `;` or `#` starts a
-comment line. Every setting has a default; the file is needed only to change one.
+comment line. Every setting has a default; the file is needed only to change one. `edworld.ini.example` in the zip
+is a start, and says where the file goes.
 
 | setting | default | what |
 |---|---|---|
