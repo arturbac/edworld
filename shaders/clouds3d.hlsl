@@ -146,8 +146,10 @@ float4 ps_main(ps_in input) : SV_TARGET
   int steps = (int)cloud_steps;
   float step_length = (leave - enter) / cloud_steps;
   float through = step_length / (top - bottom);
-  // a different start at each pixel turns the bands of the steps into a fine grain
-  float t = enter + step_length * hash(float3(input.pos.xy, 1.f));
+  // a different start at each pixel turns the bands of the steps into a fine grain; interleaved gradient noise, as a hash
+  // of the pixel's place gave clumps of specks on a wide target
+  float start = frac(52.9829189f * frac(dot(input.pos.xy, float2(0.06711056f, 0.00583715f))));
+  float t = enter + step_length * start;
   float3 light = 0.f;
   float clear = 1.f;
 
