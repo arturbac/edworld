@@ -139,6 +139,8 @@ namespace edworld
       {"clouds_detail_range", &settings_t::clouds_detail_range},
       {"clouds_detail_edge", &settings_t::clouds_detail_edge},
       {"clouds_detail_gap", &settings_t::clouds_detail_gap, "how much clear sky there is among the clouds with depth near you, from under them too; more = thinner, the view from orbit stays"},
+      {"clouds_wind_low", &settings_t::clouds_wind_low, "the wind in km/h at the floor of the clouds with depth and at their top; both 0 = still clouds"},
+      {"clouds_wind_high", &settings_t::clouds_wind_high},
       {"clouds_top_gain", &settings_t::clouds_top_gain, "how much lighter the clouds with depth are seen from above, 1 = as from under them"},
       {"compass", &settings_t::compass, "The navballs beside the radar: 0 = none, the game's compass is not read at all"},
       {"edsm", &settings_t::edsm, "The destination's factions under the jump panel: 0 = never ask EDSM"},

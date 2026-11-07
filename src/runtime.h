@@ -114,6 +114,9 @@ namespace edworld
     float clouds_opacity{0.75f};
     ///\brief how much lighter the clouds with depth are seen from above the layer: a light ground hid them
     float clouds_top_gain{2.f};
+    ///\brief the wind (PoC), km/h at the layer's floor and top; 0 and 0 = still clouds
+    float clouds_wind_low{50.f};
+    float clouds_wind_high{200.f};
     ///\brief the fine shape near the eye (2026-11-07: from the ground the shape alone, lumps of 25 km and up, was a fog): how
     /// much it cuts the clouds, 0 = none; its largest lumps and how far it reaches, in metres; a cloud's edge near the eye
     float clouds_detail{1.f};

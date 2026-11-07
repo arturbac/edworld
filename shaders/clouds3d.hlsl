@@ -30,7 +30,10 @@ cbuffer clouds : register(b4)
   float cloud_detail_range; // how far from the eye it reaches, in metres
   float cloud_detail_edge;  // how sharp a cloud's edge is near the eye
   float cloud_detail_gap;   // how much clear sky it opens near the eye
-  float cloud_pad;
+  float cloud_wind_seconds; // since the first cloud of this game
+  float cloud_wind_low;     // m/s at the layer's floor
+  float cloud_wind_high;    // m/s at its top
+  float2 cloud_pad;
   };
 
 Texture2D<float> scene_depth : register(t0);
@@ -57,6 +60,14 @@ ps_in vs_main(vs_in input)
   output.pos = frame_rows[270] * x + frame_rows[271] * y + frame_rows[272] * z + frame_rows[273];
   output.view = float3(x, y, z);
   return output;
+  }
+
+// around the planet's Y axis, the way the clouds drift
+float3 blown(float3 d, float angle)
+  {
+  float c = cos(angle);
+  float s = sin(angle);
+  return float3(c * d.x - s * d.z, d.y, s * d.x + c * d.z);
   }
 
 float hash(float3 p)
@@ -141,6 +152,11 @@ float4 ps_main(ps_in input) : SV_TARGET
   // the swirls of the weather change slowly: worked out once for the ray
   float3 middle = ray * (enter + leave) * 0.5f - centre;
   float3 middle_dir = normalize(object_rows[9].xyz * middle.x + object_rows[10].xyz * middle.y + object_rows[11].xyz * middle.z);
+  // the wind: the large shape by the height, whose layers part slowly; the fine lumps all at the mean speed, or a
+  // difference of 150 km/h would draw a lump of 3 km out into a streak in a minute. Each planet its own way
+  float wind_angle = (seed.x > 25.f ? 1.f : -1.f) * cloud_wind_seconds / planet;
+  float mean_angle = wind_angle * (cloud_wind_low + cloud_wind_high) * 0.5f;
+  middle_dir = blown(middle_dir, mean_angle);
   float3 warp = float3(fbm(middle_dir * 3.f + seed, 4), fbm(middle_dir * 3.f + seed + 11.f, 4), fbm(middle_dir * 3.f + seed + 23.f, 4));
 
   int steps = (int)cloud_steps;
@@ -166,7 +182,7 @@ float4 ps_main(ps_in input) : SV_TARGET
     float3 turned = (object_rows[9].xyz * from_centre.x + object_rows[10].xyz * from_centre.y + object_rows[11].xyz * from_centre.z)
                     * inverse_square;
     float3 dir = normalize(turned);
-    float3 place = dir * 7.f + seed + warp * 3.5f + float3(0.f, height * 0.4f, 0.f);
+    float3 place = blown(dir, wind_angle * lerp(cloud_wind_low, cloud_wind_high, height)) * 7.f + seed + warp * 3.5f + float3(0.f, height * 0.4f, 0.f);
     float shape = fbm(place, 5) - edge;
     // the shape above has lumps of tens of km: fine from orbit, one smooth fog from under them. Near the eye lumps of a
     // few km cut it, where the steps are short enough to show them
@@ -174,7 +190,7 @@ float4 ps_main(ps_in input) : SV_TARGET
     float sharpness = 2.5f;
     if(cloud_detail > 0.f && near > 0.f && shape > -0.2f)
       {
-      float3 fine = dir * (distance_to_centre / cloud_detail_size) + seed;
+      float3 fine = blown(dir, mean_angle) * (distance_to_centre / cloud_detail_size) + seed;
       shape += ((fbm(fine, 3) - 0.44f) * cloud_detail - cloud_detail_gap) * near;
       sharpness = lerp(2.5f, cloud_detail_edge, near);
       }

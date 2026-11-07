@@ -3191,6 +3191,9 @@ namespace edworld
       ID3D11RasterizerState * volume_raster{};
       ID3D11DepthStencilState * volume_depth_state{};
       ID3D11Buffer * volume_params{};
+      // the volume's parameters, the wind's seconds among them, written again for each draw
+      float volume_values[20]{};
+      ULONGLONG wind_start{};
       ID3D11Texture2D * depth_copy{};
       ID3D11ShaderResourceView * depth_view{};
       UINT depth_width{};
@@ -3287,15 +3290,18 @@ namespace edworld
       depth.DepthFunc = D3D11_COMPARISON_ALWAYS;
       ok = ok and SUCCEEDED(device->CreateDepthStencilState(&depth, &clouds.volume_depth_state));
 
-      float const values[16]{
+      float const values[20]{
         settings().clouds_bottom, settings().clouds_top, settings().clouds_cover, settings().clouds_light,
         settings().clouds_steps, settings().clouds_density, settings().clouds_opacity, settings().clouds_top_gain,
         settings().clouds_min_light, settings().clouds_under_gain, settings().clouds_detail, settings().clouds_detail_size,
-        settings().clouds_detail_range, settings().clouds_detail_edge, settings().clouds_detail_gap, 0.f
+        settings().clouds_detail_range, settings().clouds_detail_edge, settings().clouds_detail_gap, 0.f,
+        settings().clouds_wind_low / 3.6f, settings().clouds_wind_high / 3.6f, 0.f, 0.f
       };
+      std::memcpy(clouds.volume_values, values, sizeof values);
+      clouds.wind_start = GetTickCount64();
       D3D11_BUFFER_DESC desc{};
       desc.ByteWidth = sizeof values;
-      desc.Usage = D3D11_USAGE_IMMUTABLE;
+      desc.Usage = D3D11_USAGE_DEFAULT;
       desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
       D3D11_SUBRESOURCE_DATA data{};
       data.pSysMem = values;
@@ -3406,6 +3412,8 @@ namespace edworld
       ctx->OMGetDepthStencilState(&game_depth, &game_stencil);
       ctx->PSGetShaderResources(0, 1, &game_t0);
 
+      clouds.volume_values[15] = static_cast<float>(GetTickCount64() - clouds.wind_start) / 1000.f;
+      ctx->UpdateSubresource(clouds.volume_params, 0, nullptr, clouds.volume_values, 0, 0);
       orig_vs_set_shader(ctx, clouds.volume_vs, nullptr, 0);
       ctx->PSSetShader(clouds.volume_ps, nullptr, 0);
       ctx->VSSetConstantBuffers(4, 1, &clouds.volume_params);

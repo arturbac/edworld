@@ -103,6 +103,7 @@ zip is the same start, by hand.
 | `clouds_detail` | `1` | how much the fine shape near you cuts the clouds with depth; `0` = none, a smooth fog from the ground |
 | `clouds_detail_size`, `clouds_detail_range`, `clouds_detail_edge` | `3000`, `150000`, `8` | that shape's largest lumps and how far it reaches, in metres, and how sharp a cloud's edge is near you |
 | `clouds_detail_gap` | `0.14` | how much clear sky there is among the clouds with depth near you; more = thinner, the view from orbit stays |
+| `clouds_wind_low`, `clouds_wind_high` | `50`, `200` | the wind in km/h at the floor of the clouds with depth and at their top; both `0` = still clouds |
 | `clouds_top_gain` | `2` | how much lighter the clouds with depth are seen from above, over a light ground; `1` = as from under them |
 | `clouds_density`, `clouds_opacity`, `clouds_steps` | `1.2`, `0.75`, `48` | how thick they are, how much they cover at most, and the steps through them: fewer are lighter and coarser |
 | `list_top`, `list_x` | `500`, `1540` | where the list starts under the panel (pixels of the panel's surface) |
