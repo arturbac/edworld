@@ -23,11 +23,13 @@
 ; how much they cover what is under them, 0 to 1
 ;clouds_alpha = 0.45
 ; how much of the sky they take, 0 clear to 1 overcast
-;clouds_cover = 0.4
+;clouds_cover = 0.55
 ; how much of the sun they give back
 ;clouds_light = 0.4
 ; Clouds with depth you fly through: 0 = the flat layer, lighter for a weaker graphics card
 ;clouds_volume = 1
+; how much clear sky there is among them near you; more = thinner, the view from orbit stays
+;clouds_detail_gap = 0.14
 
 ; The navballs beside the radar: 0 = none, the game's compass is not read at all
 ;compass = 1

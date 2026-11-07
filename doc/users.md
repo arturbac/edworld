@@ -94,7 +94,7 @@ zip is the same start, by hand.
 | `clouds` | `1` | clouds over a planet with an atmosphere that the game draws without any, `0` = none: see [Clouds](#clouds) |
 | `clouds_height` | `0.005` | the height of the layer over the surface, as a part of the planet's radius |
 | `clouds_alpha` | `0.45` | how much the clouds cover what is under them, `0` nothing to `1` all |
-| `clouds_cover` | `0.4` | how much of the sky they take, `0` clear to `1` overcast |
+| `clouds_cover` | `0.55` | how much of the sky they take, `0` clear to `1` overcast |
 | `clouds_light` | `0.4` | how much of the sun they give back |
 | `clouds_volume` | `1` | clouds with depth you fly through; `0` = the flat layer, lighter for a weaker graphics card |
 | `clouds_bottom`, `clouds_top` | `0.003`, `0.012` | where the clouds with depth begin and end over the surface, as parts of the planet's radius |
@@ -102,9 +102,9 @@ zip is the same start, by hand.
 | `clouds_under_gain` | `2` | how much lighter the clouds with depth are seen from under them, against a day's sky; `1` = as they are |
 | `clouds_detail` | `1` | how much the fine shape near you cuts the clouds with depth; `0` = none, a smooth fog from the ground |
 | `clouds_detail_size`, `clouds_detail_range`, `clouds_detail_edge` | `3000`, `150000`, `8` | that shape's largest lumps and how far it reaches, in metres, and how sharp a cloud's edge is near you |
-| `clouds_detail_gap` | `0.06` | how much clear sky there is among the clouds with depth near you; more = thinner, the view from orbit stays |
+| `clouds_detail_gap` | `0.14` | how much clear sky there is among the clouds with depth near you; more = thinner, the view from orbit stays |
 | `clouds_top_gain` | `2` | how much lighter the clouds with depth are seen from above, over a light ground; `1` = as from under them |
-| `clouds_density`, `clouds_opacity`, `clouds_steps` | `1.2`, `0.75`, `32` | how thick they are, how much they cover at most, and the steps through them: fewer are lighter and coarser |
+| `clouds_density`, `clouds_opacity`, `clouds_steps` | `1.2`, `0.75`, `48` | how thick they are, how much they cover at most, and the steps through them: fewer are lighter and coarser |
 | `list_top`, `list_x` | `500`, `1540` | where the list starts under the panel (pixels of the panel's surface) |
 | `list_rows` | `7` | factions listed at most |
 | `edsm` | `1` | `0` = never ask EDSM (no list then without EHT) |
@@ -184,7 +184,7 @@ EDSM is asked once per new destination, with the system's id only.
 A planet the game gives an atmosphere and no clouds gets a layer of them (`clouds = 0` turns them off): from orbit, on the way
 through it and from under it on the ground. The clouds are worked out from noise on the graphics card, each planet
 its own; the game's data is not used for them and nothing of them reaches anyone else, they are only in your picture.
-They have depth: you fly into them and they thin out around you as you pass. That costs the graphics card more; if the
+They have depth: you fly into them and they thin out around you as you pass, and near you they have lumps with clear sky among them. That costs the graphics card more; if the
 game slows down near a planet, `clouds_volume = 0` in the ini gives the flat layer instead, which has no depth and is
 lighter. They are there only
 where the game draws its shell of the atmosphere, found by that shader, so an update of the game can take them away
