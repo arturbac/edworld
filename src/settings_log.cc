@@ -126,7 +126,7 @@ namespace edworld
       {"clouds_alpha", &settings_t::clouds_alpha, "how much they cover what is under them, 0 to 1"},
       {"clouds_cover", &settings_t::clouds_cover, "how much of the sky they take, 0 clear to 1 overcast"},
       {"clouds_light", &settings_t::clouds_light, "how much of the sun they give back"},
-      {"clouds_volume", &settings_t::clouds_volume},
+      {"clouds_volume", &settings_t::clouds_volume, "Clouds with depth you fly through: 0 = the flat layer, lighter for a weaker graphics card"},
       {"clouds_bottom", &settings_t::clouds_bottom},
       {"clouds_top", &settings_t::clouds_top},
       {"clouds_steps", &settings_t::clouds_steps},

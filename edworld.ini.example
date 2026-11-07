@@ -26,6 +26,8 @@
 ;clouds_cover = 0.4
 ; how much of the sun they give back
 ;clouds_light = 0.4
+; Clouds with depth you fly through: 0 = the flat layer, lighter for a weaker graphics card
+;clouds_volume = 1
 
 ; The navballs beside the radar: 0 = none, the game's compass is not read at all
 ;compass = 1

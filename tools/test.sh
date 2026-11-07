@@ -34,7 +34,7 @@ ini_cases() {  # $1 = edworld | edworld_eht; in the run directory
   mv "$ini" "$ini.session"
   set +e
   ini_run
-  grep -q '^;clouds_alpha = 0.45$' "$ini" && grep -qE '^;status_file = .+Status\.json' "$ini" && grep -q '^;dump_vs = ' "$ini" && ! grep -qvE '^(;.*)?\r?$' "$ini"
+  grep -q '^;clouds_alpha = 0.45$' "$ini" && grep -q '^;clouds_volume = 1$' "$ini" && grep -qE '^;status_file = .+Status\.json' "$ini" && grep -q '^;dump_vs = ' "$ini" && ! grep -qvE '^(;.*)?\r?$' "$ini"
   ini_check "made when there is none, all comments" $?
   before=$(sha256sum "$ini")
   ini_run

@@ -106,7 +106,7 @@ namespace edworld
     float clouds_light{0.4f};
     ///\brief (PoC) the clouds as a volume instead of a layer; its floor and top over the surface, as parts of the
     /// planet's radius, how many steps a ray takes through it and how thick it is
-    bool clouds_volume{false};
+    bool clouds_volume{true};
     float clouds_bottom{0.003f};
     float clouds_top{0.012f};
     float clouds_steps{32.f};
