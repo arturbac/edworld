@@ -35,6 +35,14 @@ cbuffer clouds : register(b4)
   float cloud_wind_high;    // m/s at its top
   float cloud_pixel;        // pixels of the picture to a pixel drawn: 2 when the clouds are drawn at half size
   float cloud_pad;
+  float cloud_mode;         // 0 near or far by the eye's height, 1 always near, 2 always far
+  float cloud_far_steps;    // the steps from afar: the same shape, fewer of them
+  float cloud_near_from;    // all near under this height of the eye over the surface, as a part of the planet's radius
+  float cloud_near_to;      // all far over this one, a blend between
+  float cloud_debug;        // 1: each pixel worked out painted magenta
+  float cloud_pad1;
+  float cloud_pad2;
+  float cloud_pad3;
   };
 
 Texture2D<float> scene_depth : register(t0);
@@ -174,6 +182,13 @@ float4 ps_main(ps_in input) : SV_TARGET
   if(leave <= enter)
     discard;
 
+  if(cloud_debug >= 0.5f)
+    return float4(0.6f, 0.f, 0.6f, 0.6f);
+
+  // near and far are the same shape: from afar only fewer steps and no fine shape, which is out of its reach there
+  // anyway, so nothing jumps where they meet. Whole steps: a blend of their count changes the grain, not the clouds
+  float eye_height = length(centre) / planet - 1.f;
+  float near_weight = cloud_mode >= 1.5f ? 0.f : cloud_mode >= 0.5f ? 1.f : 1.f - smoothstep(cloud_near_from, cloud_near_to, eye_height);
   float scene = scene_depth.Load(int3(input.pos.xy * cloud_pixel, 0));
   float3 seed = frac(planet / float3(977.f, 1543.f, 2111.f)) * 50.f;
   float inverse_square = 1.f / dot(object_rows[9].xyz, object_rows[9].xyz);
@@ -191,8 +206,8 @@ float4 ps_main(ps_in input) : SV_TARGET
   middle_dir = blown(middle_dir, mean_angle);
   float3 warp = float3(fbm(middle_dir * 3.f + seed, 4), fbm(middle_dir * 3.f + seed + 11.f, 4), fbm(middle_dir * 3.f + seed + 23.f, 4));
 
-  int steps = (int)cloud_steps;
-  float step_length = (leave - enter) / cloud_steps;
+  int steps = max(1, (int)ceil(lerp(cloud_far_steps, cloud_steps, near_weight)));
+  float step_length = (leave - enter) / steps;
   float through = step_length / (top - bottom);
   // a different start at each pixel turns the bands of the steps into a fine grain. Blue noise: a hash of the pixel's
   // place gave clumps of specks on a wide target, interleaved gradient noise fine slanting stripes where the steps are
@@ -222,7 +237,7 @@ float4 ps_main(ps_in input) : SV_TARGET
     float3 place = blown(dir, wind_angle * lerp(cloud_wind_low, cloud_wind_high, height)) * 7.f + seed + warp * 3.5f + float3(0.f, height * 0.4f, 0.f);
     // the shape above has lumps of tens of km: fine from orbit, one smooth fog from under them. Near the eye lumps of a
     // few km cut it, where the steps are short enough to show them
-    float near = saturate(1.f - t / cloud_detail_range) * saturate(cloud_detail_size * 2.f / step_length);
+    float near = saturate(1.f - t / cloud_detail_range) * saturate(cloud_detail_size * 2.f / step_length) * near_weight;
     float head = fbm_head(place);
     float most = head + 0.21875f - edge;
     if(most + (cloud_detail > 0.f && most > -0.2f ? detail_most * near : 0.f) <= 0.f)

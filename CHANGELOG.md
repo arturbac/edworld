@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **(test) The clouds with depth from afar in fewer steps.** The same shape as near, without the fine shape that does
+  not reach that far, so nothing changes where near and far meet: near steps under `clouds_near_from` over the surface,
+  far ones (`clouds_far_steps`) over `clouds_near_to`, a blend between. `clouds_mode` forces either, and `clouds_debug = 1`
+  paints the pixels they are worked out for; these five are read again while the game runs, at most once a second.
+  Not yet looked at in the game.
+
 ## 1.2.0-beta.5
 
 - **The clouds with depth cost about a quarter of what they did.** They are worked out at half the picture's width and

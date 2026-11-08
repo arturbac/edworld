@@ -114,6 +114,10 @@ zip is the same start, by hand.
 | `clouds_wind_low`, `clouds_wind_high` | `100`, `400` | the wind in km/h at the floor of the clouds with depth and at their top; both `0` = still clouds |
 | `clouds_top_gain` | `2` | how much lighter the clouds with depth are seen from above, over a light ground; `1` = as from under them |
 | `clouds_density`, `clouds_opacity`, `clouds_steps` | `1.2`, `0.75`, `32` | how thick they are, how much they cover at most, and the steps through them: fewer are lighter and coarser |
+| `clouds_mode` | `0` | (test) the clouds with depth from afar in fewer steps, the same shape: `0` = by your height, `1` = always near, `2` = always far |
+| `clouds_far_steps` | `6` | the steps through the clouds with depth from afar |
+| `clouds_near_from`, `clouds_near_to` | `0.25`, `0.5` | near steps under the first height over the surface, far ones over the second, a blend between; parts of the planet's radius |
+| `clouds_debug` | `0` | (test) `1` = every pixel the clouds with depth are worked out for painted magenta |
 | `list_top`, `list_x` | `500`, `1540` | where the list starts under the panel (pixels of the panel's surface) |
 | `list_rows` | `7` | factions listed at most |
 | `edsm` | `1` | `0` = never ask EDSM (no list then without EHT) |

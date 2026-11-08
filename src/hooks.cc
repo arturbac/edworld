@@ -3196,7 +3196,7 @@ namespace edworld
       ID3D11DepthStencilState * volume_depth_state{};
       ID3D11Buffer * volume_params{};
       // the volume's parameters, the wind's seconds among them, written again for each draw
-      float volume_values[20]{};
+      float volume_values[28]{};
       ULONGLONG wind_start{};
       ID3D11Texture2D * depth_copy{};
       ID3D11ShaderResourceView * depth_view{};
@@ -3450,12 +3450,14 @@ namespace edworld
         ok = false;
         }
 
-      float const values[20]{
+      // 20..24 (near and far, the debug colour) are written again for each draw, as they change while the game runs
+      float const values[28]{
         settings().clouds_bottom, settings().clouds_top, settings().clouds_cover, settings().clouds_light,
         settings().clouds_steps, settings().clouds_density, settings().clouds_opacity, settings().clouds_top_gain,
         settings().clouds_min_light, settings().clouds_under_gain, settings().clouds_detail, settings().clouds_detail_size,
         settings().clouds_detail_range, settings().clouds_detail_edge, settings().clouds_detail_gap, 0.f,
-        settings().clouds_wind_low / 3.6f, settings().clouds_wind_high / 3.6f, 1.f, 0.f
+        settings().clouds_wind_low / 3.6f, settings().clouds_wind_high / 3.6f, 1.f, 0.f,
+        0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f
       };
       std::memcpy(clouds.volume_values, values, sizeof values);
       clouds.wind_start = GetTickCount64();
@@ -3641,6 +3643,11 @@ namespace edworld
 
       clouds.volume_values[15] = static_cast<float>(GetTickCount64() - clouds.wind_start) / 1000.f;
       clouds.volume_values[18] = half ? 2.f : 1.f;
+      clouds.volume_values[20] = static_cast<float>(settings().clouds_mode);
+      clouds.volume_values[21] = std::max(1.f, settings().clouds_far_steps);
+      clouds.volume_values[22] = settings().clouds_near_from;
+      clouds.volume_values[23] = std::max(settings().clouds_near_to, settings().clouds_near_from + 0.001f);
+      clouds.volume_values[24] = static_cast<float>(settings().clouds_debug);
       ctx->UpdateSubresource(clouds.volume_params, 0, nullptr, clouds.volume_values, 0, 0);
       if(half)
         {
@@ -3770,6 +3777,7 @@ namespace edworld
           dsv->Release();
         }
 
+      refresh_live_settings();
       // the game draws the shell into a small target too, for its reflections: the volume is for the picture itself
       D3D11_VIEWPORT port{};
       UINT ports{1u};

@@ -58,6 +58,17 @@
 ; how much lighter the clouds with depth are seen from above, 1 = as from under them
 ;clouds_top_gain = 2
 
+; (test) clouds with depth from afar in fewer steps: 0 = by the height, 1 = always near, 2 = always far; this and the four below change while the game runs
+;clouds_mode = 0
+;clouds_far_steps = 6
+
+; near steps under this height over the surface, far ones over the next, as parts of the planet's radius
+;clouds_near_from = 0.25
+;clouds_near_to = 0.5
+
+; (test) 1 = the pixels of the clouds with depth painted magenta
+;clouds_debug = 0
+
 ; The navballs beside the radar: 0 = none, the game's compass is not read at all
 ;compass = 1
 

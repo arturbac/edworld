@@ -130,6 +130,15 @@ namespace edworld
     ///\brief the star's light the clouds with depth get at least, in the game's units (2026-11-07: 970 and 547 by an M star,
     /// 442 and 40 by L stars); the light's hue stays; 0 = as the game gives it
     float clouds_min_light{400.f};
+    ///\brief (PoC) the clouds with depth from afar: the same shape in fewer steps and without the fine shape, so nothing
+    /// changes where near and far meet. Near steps under clouds_near_from over the surface, far ones over clouds_near_to
+    /// (parts of the planet's radius), a blend between. Read again while the game runs, with clouds_debug
+    std::uint32_t clouds_mode{0};  ///< 0 by the height, 1 always near, 2 always far
+    float clouds_far_steps{6.f};
+    float clouds_near_from{0.25f};
+    float clouds_near_to{0.5f};
+    ///\brief 1 = every pixel the clouds with depth are worked out for painted magenta, to see where they draw
+    std::uint32_t clouds_debug{0};
 
     // ---- the compass (PoC): the HUD compass's dot read off its interface surface, the angles written beside it ----
     ///\brief 0 off, 1 the angles, 2 also everything known for checking them, 3 also a grid of the surface's pixels
@@ -290,6 +299,9 @@ namespace edworld
   ///\brief the ini made if there is none, and every setting it does not name yet added as a comment with the value edworld
   /// runs on; a line already there, comment or not, stays as it is. After log_open: a failure is logged, the game goes on
   auto complete_settings(std::wstring const & config_dir) noexcept -> void;
+  ///\brief clouds_mode, clouds_far_steps, clouds_near_from, clouds_near_to and clouds_debug read again from the ini when
+  /// it changed - looked at most once a second, from the render thread
+  auto refresh_live_settings() noexcept -> void;
 
   auto log_open(std::wstring const & dir) -> void;
   ///\brief one line, time-stamped (UTC), flushed
