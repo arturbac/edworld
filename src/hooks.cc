@@ -172,6 +172,13 @@ namespace edworld
     std::atomic<std::uint32_t> census_shell{};
     std::atomic<bool> census_on{};
 
+    ///\brief +1 without a locked instruction: on every draw it has to cost next to nothing, and a count lost between two
+    /// threads does not matter to a diagnostic line
+    auto census_add(std::atomic<std::uint32_t> & counter) noexcept -> void
+      {
+      counter.store(counter.load(std::memory_order_relaxed) + 1u, std::memory_order_relaxed);
+      }
+
     auto census_note(ID3D11DeviceContext * self) noexcept -> void
       {
       if(not census_on.load(std::memory_order_relaxed))
@@ -179,7 +186,7 @@ namespace edworld
       std::uint32_t at{};
       while(at != census_contexts and census_context[at].load(std::memory_order_relaxed) != self)
         ++at;
-      census_draws[at].fetch_add(1, std::memory_order_relaxed);
+      census_add(census_draws[at]);
       }
 
     ///\brief the census counts (with `counts`) and each device's draw hooks, one line each
@@ -3948,7 +3955,7 @@ namespace edworld
       {
       census_note(self);
       if(current_shell and census_on.load(std::memory_order_relaxed))
-        census_shell.fetch_add(1, std::memory_order_relaxed);
+        census_add(census_shell);
       if(full_armed)
         {
         if(self == immediate.load(std::memory_order_relaxed))
@@ -4014,21 +4021,21 @@ namespace edworld
     void STDMETHODCALLTYPE hook_draw_indexed_instanced_indirect(ID3D11DeviceContext * self, ID3D11Buffer * args, UINT offset)
       {
       if(census_on.load(std::memory_order_relaxed))
-        census_indirect.fetch_add(1, std::memory_order_relaxed);
+        census_add(census_indirect);
       orig_draw_indexed_instanced_indirect(self, args, offset);
       }
 
     void STDMETHODCALLTYPE hook_draw_instanced_indirect(ID3D11DeviceContext * self, ID3D11Buffer * args, UINT offset)
       {
       if(census_on.load(std::memory_order_relaxed))
-        census_indirect.fetch_add(1, std::memory_order_relaxed);
+        census_add(census_indirect);
       orig_draw_instanced_indirect(self, args, offset);
       }
 
     void STDMETHODCALLTYPE hook_execute_command_list(ID3D11DeviceContext * self, ID3D11CommandList * list, BOOL restore)
       {
       if(census_on.load(std::memory_order_relaxed))
-        census_lists.fetch_add(1, std::memory_order_relaxed);
+        census_add(census_lists);
       orig_execute_command_list(self, list, restore);
       }
 
