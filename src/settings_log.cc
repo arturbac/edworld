@@ -150,6 +150,9 @@ namespace edworld
       {"clouds_hide_below_px", &settings_t::clouds_hide_below_px, "(test) no clouds with depth while the planet is smaller on the screen than this many pixels across, all of them from the next"},
       {"clouds_full_from_px", &settings_t::clouds_full_from_px},
       {"clouds_max_steps", &settings_t::clouds_max_steps, "(test) the most steps through the clouds with depth, taken where the way through them is long, at the planet's edge"},
+      {"clouds_edge_hide_px", &settings_t::clouds_edge_hide_px, "(test) no clouds with depth out of the planet's edge while their layer is thinner on the screen than this many pixels, all of them from the next; on the disc the same within clouds_edge_band_px of the edge"},
+      {"clouds_edge_full_px", &settings_t::clouds_edge_full_px},
+      {"clouds_edge_band_px", &settings_t::clouds_edge_band_px},
       {"compass", &settings_t::compass, "The navballs beside the radar: 0 = none, the game's compass is not read at all"},
       {"edsm", &settings_t::edsm, "The destination's factions under the jump panel: 0 = never ask EDSM"},
       {"list_alpha", &settings_t::list_alpha, "how much the list's box covers what is behind it, 0 to 1"},
@@ -454,11 +457,17 @@ namespace edworld
       current.clouds_hide_below_px = read.clouds_hide_below_px;
       current.clouds_full_from_px = read.clouds_full_from_px;
       current.clouds_max_steps = read.clouds_max_steps;
+      current.clouds_edge_hide_px = read.clouds_edge_hide_px;
+      current.clouds_edge_full_px = read.clouds_edge_full_px;
+      current.clouds_edge_band_px = read.clouds_edge_band_px;
       log_line("settings: read again: clouds_mode %u, clouds_far_steps %g, clouds_near_from %g, clouds_near_to %g, clouds_debug %u, "
-               "clouds_hide_below_px %g, clouds_full_from_px %g, clouds_max_steps %g",
+               "clouds_hide_below_px %g, clouds_full_from_px %g, clouds_max_steps %g, clouds_edge_hide_px %g, "
+               "clouds_edge_full_px %g, clouds_edge_band_px %g",
                current.clouds_mode, static_cast<double>(current.clouds_far_steps), static_cast<double>(current.clouds_near_from),
                static_cast<double>(current.clouds_near_to), current.clouds_debug, static_cast<double>(current.clouds_hide_below_px),
-               static_cast<double>(current.clouds_full_from_px), static_cast<double>(current.clouds_max_steps));
+               static_cast<double>(current.clouds_full_from_px), static_cast<double>(current.clouds_max_steps),
+               static_cast<double>(current.clouds_edge_hide_px), static_cast<double>(current.clouds_edge_full_px),
+               static_cast<double>(current.clouds_edge_band_px));
       }
     catch(std::exception const & e)
       {

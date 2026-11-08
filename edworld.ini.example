@@ -76,6 +76,11 @@
 ; (test) the most steps through the clouds with depth, taken where the way through them is long, at the planet's edge
 ;clouds_max_steps = 64
 
+; (test) no clouds with depth out of the planet's edge while their layer is thinner on the screen than this many pixels, all of them from the next; on the disc the same within clouds_edge_band_px of the edge
+;clouds_edge_hide_px = 2
+;clouds_edge_full_px = 8
+;clouds_edge_band_px = 16
+
 ; The navballs beside the radar: 0 = none, the game's compass is not read at all
 ;compass = 1
 

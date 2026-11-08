@@ -3450,8 +3450,8 @@ namespace edworld
         ok = false;
         }
 
-      // 20..28 (near and far, the debug colour, the planet's size on the screen, the steps' most) are written again for
-      // each draw, as they change while the game runs
+      // 20..31 (near and far, the debug colour, the planet's size on the screen, the steps' most, the edge) are written
+      // again for each draw, as they change while the game runs
       float const values[32]{
         settings().clouds_bottom, settings().clouds_top, settings().clouds_cover, settings().clouds_light,
         settings().clouds_steps, settings().clouds_density, settings().clouds_opacity, settings().clouds_top_gain,
@@ -3653,6 +3653,9 @@ namespace edworld
       clouds.volume_values[26] = settings().clouds_hide_below_px;
       clouds.volume_values[27] = std::max(settings().clouds_full_from_px, settings().clouds_hide_below_px + 1.f);
       clouds.volume_values[28] = std::max(settings().clouds_max_steps, 1.f);
+      clouds.volume_values[29] = settings().clouds_edge_hide_px;
+      clouds.volume_values[30] = std::max(settings().clouds_edge_full_px, settings().clouds_edge_hide_px + 0.01f);
+      clouds.volume_values[31] = std::max(settings().clouds_edge_band_px, 0.01f);
       ctx->UpdateSubresource(clouds.volume_params, 0, nullptr, clouds.volume_values, 0, 0);
       if(half)
         {

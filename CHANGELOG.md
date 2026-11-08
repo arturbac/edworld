@@ -12,7 +12,11 @@
 - **(test) The steps follow the way through the clouds:** at the planet's edge, seen edge on, the way is long and a fixed
   count of steps jumped over the lumps, which flickered as the ship moved; now a step is at most half the smallest lumps,
   up to `clouds_max_steps` (64), and at least the count for near or far. These three are read again while the game
-  runs too. Not yet looked at in the game.
+  runs too. Looked at once in the game (2026-11-08): the disc's middle stays still, the lumps out of its edge flicker.
+- **(test) Fewer clouds at the planet's edge:** out of the edge the layer stood a pixel or two thin and its lumps
+  flickered as the ship moved. None there while the layer is thinner on the screen than `clouds_edge_hide_px` (2), all
+  from `clouds_edge_full_px` (8); on the disc the same within `clouds_edge_band_px` (16) of the edge, all further in.
+  Read again while the game runs. Not yet looked at in the game.
 
 ## 1.2.0-beta.5
 

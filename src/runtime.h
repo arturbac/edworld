@@ -146,6 +146,14 @@ namespace edworld
     ///\brief (PoC) the most steps a ray takes: through the layer's edge, seen edge on, the way is long and a fixed count of
     /// steps jumped over the lumps, which flickered there as the ship moved (2026-11-08); the steps follow the way's length
     float clouds_max_steps{64.f};
+    ///\brief (PoC) the clouds at the planet's edge: the layer stands out of the edge as thin as these pixels when the planet
+    /// is small, its lumps there a pixel or two of the half size picture each, which flickered as the ship moved
+    /// (2026-11-08) while the disc's middle stayed still. None out of the edge while the layer is thinner on the screen
+    /// than clouds_edge_hide_px, all from clouds_edge_full_px; on the disc the same less within clouds_edge_band_px of the
+    /// edge, all further in
+    float clouds_edge_hide_px{2.f};
+    float clouds_edge_full_px{8.f};
+    float clouds_edge_band_px{16.f};
 
     // ---- the compass (PoC): the HUD compass's dot read off its interface surface, the angles written beside it ----
     ///\brief 0 off, 1 the angles, 2 also everything known for checking them, 3 also a grid of the surface's pixels
@@ -307,7 +315,7 @@ namespace edworld
   /// runs on; a line already there, comment or not, stays as it is. After log_open: a failure is logged, the game goes on
   auto complete_settings(std::wstring const & config_dir) noexcept -> void;
   ///\brief clouds_mode, clouds_far_steps, clouds_near_from, clouds_near_to, clouds_debug, clouds_hide_below_px,
-  /// clouds_full_from_px and clouds_max_steps read again from the ini when it changed - looked at most once a second,
+  /// clouds_full_from_px, clouds_max_steps and the three clouds_edge_* read again from the ini when it changed - looked at most once a second,
   /// from the render thread
   auto refresh_live_settings() noexcept -> void;
 

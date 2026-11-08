@@ -44,9 +44,9 @@ cbuffer clouds : register(b4)
   float cloud_hide_px;      // no clouds while the planet is narrower on the screen than this, all of them from the next
   float cloud_full_px;
   float cloud_max_steps;    // the most steps a ray takes, where its way through the layer is long
-  float cloud_pad1;
-  float cloud_pad2;
-  float cloud_pad3;
+  float cloud_edge_hide_px; // none out of the planet's edge while the layer is thinner on the screen than this, all from the next
+  float cloud_edge_full_px;
+  float cloud_edge_band_px; // on the disc the same within this many pixels of the edge, all further in
   };
 
 Texture2D<float> scene_depth : register(t0);
@@ -189,6 +189,13 @@ float4 ps_main(ps_in input) : SV_TARGET
   // a planet of a few dozen pixels across shows no clouds, only lumps standing out of its edge: none until it is larger
   float across = 2.f * planet / max(length(centre), planet) * abs(frame_rows[270].x) * cloud_view_width * 0.5f;
   float shown = smoothstep(cloud_hide_px, cloud_full_px, across);
+  // out of the edge the layer stands as thin as its height on the screen, a pixel or two of the half size picture whose
+  // lumps flickered as the ship moved, while the disc's middle stayed still (2026-11-08): none there while it is that thin,
+  // and on the disc less near the edge, where the rays go through the layer edge on
+  float pixels_a_metre = across / (2.f * planet);
+  float edge_kept = smoothstep(cloud_edge_hide_px, cloud_edge_full_px, (top - bottom) * pixels_a_metre);
+  float from_edge = (bottom - sqrt(miss)) * pixels_a_metre;
+  shown *= lerp(edge_kept, 1.f, saturate(from_edge / cloud_edge_band_px));
   if(shown <= 0.f)
     discard;
   if(cloud_debug >= 0.5f)
