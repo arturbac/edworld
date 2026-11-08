@@ -34,12 +34,12 @@ cbuffer clouds : register(b4)
   float cloud_wind_low;     // m/s at the layer's floor
   float cloud_wind_high;    // m/s at its top
   float cloud_pixel;        // pixels of the picture to a pixel drawn: 2 when the clouds are drawn at half size
-  float cloud_pad;
+  float cloud_game_fade;    // 1: they fade with the game's own atmosphere's shell, 0: never
   float cloud_mode;         // 0 near or far by the eye's height, 1 always near, 2 always far
   float cloud_far_steps;    // the steps from afar: the same shape, fewer of them
   float cloud_near_from;    // all near under this height of the eye over the surface, as a part of the planet's radius
   float cloud_near_to;      // all far over this one, a blend between
-  float cloud_debug;        // 1: each pixel worked out painted magenta
+  float cloud_debug;        // 1: each pixel worked out painted magenta, 2: the game's fade, green at 1, red at 0
   float cloud_view_width;   // the picture's width in pixels
   float cloud_hide_px;      // no clouds while the planet is narrower on the screen than this, all of them from the next
   float cloud_full_px;
@@ -198,6 +198,11 @@ float4 ps_main(ps_in input) : SV_TARGET
   shown *= lerp(edge_kept, 1.f, saturate(from_edge / cloud_edge_band_px));
   if(shown <= 0.f)
     discard;
+  // the game's own fade of its atmosphere's shell: on the way in the clouds faded out for a moment with it, where the
+  // game changes the planet's detail (2026-11-08, about 8.3 Mm out)
+  float game_fade = cloud_game_fade >= 0.5f ? frame_rows[126].z : 1.f;
+  if(cloud_debug >= 1.5f)
+    return float4(0.8f * (1.f - saturate(frame_rows[126].z)), 0.8f * saturate(frame_rows[126].z), 0.f, 0.8f);
   if(cloud_debug >= 0.5f)
     return float4(0.6f, 0.f, 0.6f, 0.6f);
 
@@ -296,7 +301,6 @@ float4 ps_main(ps_in input) : SV_TARGET
   float strongest = max(max(star.r, star.g), max(star.b, 0.001f));
   star *= max(1.f, cloud_min_light / strongest);
   float3 colour = light * star * cloud_light * frame_rows[90].y * gain;
-  float fade = frame_rows[126].z;
-  float weight = fade * cloud_opacity * shown;
+  float weight = game_fade * cloud_opacity * shown;
   return float4(colour * weight, (1.f - clear) * weight);
   }

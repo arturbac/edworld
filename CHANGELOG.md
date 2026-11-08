@@ -16,7 +16,11 @@
 - **(test) Fewer clouds at the planet's edge:** out of the edge the layer stood a pixel or two thin and its lumps
   flickered as the ship moved. None there while the layer is thinner on the screen than `clouds_edge_hide_px` (2), all
   from `clouds_edge_full_px` (8); on the disc the same within `clouds_edge_band_px` (16) of the edge, all further in.
-  Read again while the game runs. Not yet looked at in the game.
+  Read again while the game runs. Looked at once in the game (2026-11-08): no lumps out of the edge any more.
+- **(test) The game's fade of its atmosphere:** on the way in the clouds with depth faded out for a moment about 8.3 Mm
+  from a planet, where the game changes the planet's detail, while still drawn. `clouds_debug = 2` paints the game's
+  fade (green at 1, red at 0), `clouds_game_fade = 0` keeps the clouds from following it; both read again while the
+  game runs. Not yet looked at in the game.
 
 ## 1.2.0-beta.5
 

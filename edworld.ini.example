@@ -66,8 +66,11 @@
 ;clouds_near_from = 0.25
 ;clouds_near_to = 0.5
 
-; (test) 1 = the pixels of the clouds with depth painted magenta
+; (test) 1 = the pixels of the clouds with depth painted magenta, 2 = the game's fade of its atmosphere painted, green at 1, red at 0
 ;clouds_debug = 0
+
+; (test) 1 = the clouds with depth fade with the game's own atmosphere, 0 = never
+;clouds_game_fade = 1
 
 ; (test) no clouds with depth while the planet is smaller on the screen than this many pixels across, all of them from the next
 ;clouds_hide_below_px = 40

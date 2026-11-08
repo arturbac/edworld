@@ -137,8 +137,12 @@ namespace edworld
     float clouds_far_steps{6.f};
     float clouds_near_from{0.25f};
     float clouds_near_to{0.5f};
-    ///\brief 1 = every pixel the clouds with depth are worked out for painted magenta, to see where they draw
+    ///\brief 1 = every pixel the clouds with depth are worked out for painted magenta, to see where they draw; 2 = the
+    /// game's own fade of its atmosphere's shell painted, green at 1, red at 0
     std::uint32_t clouds_debug{0};
+    ///\brief (PoC) 1 = the clouds with depth fade with the game's own atmosphere's shell, 0 = never: on the way in they
+    /// faded out for a moment where the game changes the planet's detail (2026-11-08, about 8.3 Mm from a planet)
+    std::uint32_t clouds_game_fade{1};
     ///\brief (PoC) no clouds while the planet is smaller on the screen than this many pixels across, all of them from the
     /// next; a blend between. A planet of a few dozen pixels showed only lumps standing out of its edge (2026-11-08)
     float clouds_hide_below_px{40.f};
@@ -315,7 +319,7 @@ namespace edworld
   /// runs on; a line already there, comment or not, stays as it is. After log_open: a failure is logged, the game goes on
   auto complete_settings(std::wstring const & config_dir) noexcept -> void;
   ///\brief clouds_mode, clouds_far_steps, clouds_near_from, clouds_near_to, clouds_debug, clouds_hide_below_px,
-  /// clouds_full_from_px, clouds_max_steps and the three clouds_edge_* read again from the ini when it changed - looked at most once a second,
+  /// clouds_full_from_px, clouds_max_steps, the three clouds_edge_* and clouds_game_fade read again from the ini when it changed - looked at most once a second,
   /// from the render thread
   auto refresh_live_settings() noexcept -> void;
 

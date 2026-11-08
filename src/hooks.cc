@@ -3450,8 +3450,8 @@ namespace edworld
         ok = false;
         }
 
-      // 20..31 (near and far, the debug colour, the planet's size on the screen, the steps' most, the edge) are written
-      // again for each draw, as they change while the game runs
+      // 19..31 (the game's fade, near and far, the debug colour, the planet's size on the screen, the steps' most, the
+      // edge) are written again for each draw, as they change while the game runs
       float const values[32]{
         settings().clouds_bottom, settings().clouds_top, settings().clouds_cover, settings().clouds_light,
         settings().clouds_steps, settings().clouds_density, settings().clouds_opacity, settings().clouds_top_gain,
@@ -3644,6 +3644,7 @@ namespace edworld
 
       clouds.volume_values[15] = static_cast<float>(GetTickCount64() - clouds.wind_start) / 1000.f;
       clouds.volume_values[18] = half ? 2.f : 1.f;
+      clouds.volume_values[19] = static_cast<float>(settings().clouds_game_fade);
       clouds.volume_values[20] = static_cast<float>(settings().clouds_mode);
       clouds.volume_values[21] = std::max(1.f, settings().clouds_far_steps);
       clouds.volume_values[22] = settings().clouds_near_from;
