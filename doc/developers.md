@@ -21,9 +21,15 @@ The ini and log names are fixed by the build, not taken from the dll's file name
 - Forwards every d3d11 export to the next d3d11 in the chain (`next` in `<plugin>.ini`: EDHM, a renamed
   EDVR, or the system copy). Chaining discipline from EDVR (MIT): system copy loaded in DllMain, next proxy
   on the first export call, a thread-local depth guard for a next proxy that asks for `d3d11.dll` by name.
-- Hooks (in place, vtable slots): `ID3D11Device::CreateVertexShader` (FNV-1a 64 of the bytecode, the hash EDVR
-  names shaders by) and `ID3D11DeviceContext::VSSetShader`, `Draw`, `DrawIndexed`, `DrawInstanced`,
-  `DrawIndexedInstanced`, on the immediate context.
+- Hooks (vtable slots): `ID3D11Device::CreateVertexShader` (FNV-1a 64 of the bytecode, the hash EDVR
+  names shaders by, in place) and `ID3D11DeviceContext::VSSetShader`, `Draw`, `DrawIndexed`, `DrawInstanced`,
+  `DrawIndexedInstanced`, the two indirect draws and `ExecuteCommandList`, on the immediate context. When three
+  quarters of the context's first 96 methods are the system d3d11's (the runtime's own object), the context is
+  pointed at a table of edworld's own: the hooks in their slots, and in every slot a 12-byte stub that jumps through
+  the runtime's entry of that slot at the call (EDVR's LiveCopy, `src/common/vtable_hook.h` there), so a rewrite of
+  the runtime's table is followed; the two words before the table (the C++ type information) are copied. Any other
+  context (a wrapper's: 3Dmigoto, ReShade) is hooked in place. `context_hook` (`0` auto, `1` in place, `2` own table)
+  overrides the choice.
 - Watches the cockpit holo-panel vertex shaders (`81216C77F90DEDD6`, and `1989E6D3B405FDE0` when the game's
   "Disable GUI effects" is on, and `925ACEDA0153AA5B`, which the game switches the same panels to near a war
   settlement, with the surface at PS t1). Whether that shader's instance records decode like the family's is not
@@ -448,6 +454,8 @@ log_interval_ms = 1000
 frame_gap_us = 2500
 ; 1 = log every vertex shader hash the game creates
 log_all_vs = 0
+; the game's context: 0 = a table of edworld's own when its methods are the system d3d11's, else in place; 1 = in place; 2 = edworld's table
+context_hook = 0
 ; shaders whose draws a whole-frame dump looks into (bytecode, index and vertex buffers, t33 pool); the target's hologram
 dump_vs = 5B0068AF5630F96B, 5559BD94B6852E83
 ; 0 = observe only; 1 = the jump panel patch; 2 = a test frame where the patch goes, whatever the destination
@@ -488,7 +496,9 @@ clouds_cover = 0.4
 clouds_light = 0.4
 ```
 
-The values above are the defaults. `shm_dir` is where EHT writes `target` (`edworld.dir` in its settings,
+The values above are the defaults. Sizes and places on the game's surfaces are in the pixels of the surfaces' size
+at 2160 rows; the game draws them smaller or larger for another height (`surface_scale` in `src/compass_math.h`), and
+the compass is read and drawn at that scale. `shm_dir` is where EHT writes `target` (`edworld.dir` in its settings,
 default `/dev/shm/eht`).
 
 ## Game runs

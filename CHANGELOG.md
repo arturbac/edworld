@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+## 1.2.0-beta.8
+
+- **Fixed: no navballs below 2160 rows.** The game draws its HUD's surfaces at a size that follows the picture's
+  height: the compass's 2200×1800 at 2160 rows is 1466×1200 at 1440 and 1100×900 at 1080 (the width rounded down;
+  measured in the game in a window). edworld looked for 2200×1800 only, so at a lower resolution it found no compass
+  and the game's own stayed. Now a surface of the same shape at another scale is taken: the compass is read on it in
+  its own pixels and the reading goes back to the pixels the settings are measured in, so the settings stay as they
+  are; what edworld draws there is scaled onto the surface. The log says the scale (`compass: first drawn (... surface
+  1466x1200 = 0.667 of its size at 2160 rows ...)`). Checked in the game at 2560×1440 and 1920×1080 in a window.
+- **Fixed: nothing seen of the game on a Windows where the hooks in the context's table were taken back.** On a
+  player's Windows (AMD, Epic's version) every draw hook was back to d3d11.dll 30 s after the start and no draw
+  reached edworld. When the context's methods are the system d3d11's own, the game's context now points at a table
+  of edworld's: edworld's hooks in their slots, and in every slot a call through the runtime's own entry as it is at
+  that moment (EDVR's way, its LiveCopy), so whatever the runtime does to its table is followed. A wrapper's context
+  (EDHM's 3Dmigoto, ReShade) keeps its table, hooked in place as before. `context_hook` in the ini: `0` this choice,
+  `1` in place always, `2` edworld's table always. The log says which (`context: ...`), the multithread protection
+  at the start and in the `census` lines, and how many of edworld's slots the runtime changed since the start.
+  Checked on that player's Windows (clouds, the target's hologram and the panels seen) and under Proton with EDHM and
+  EDVR (in place, as before). Why the hooks were taken back there is not known: in the run with edworld's table the
+  runtime changed none of the slots.
+- The pad's number is read off the HUD at 2200×1800 only (its digits are known at that size); at another size the log
+  says so once. The jump panel's emblem still needs the panel at 3072×660, so below 2160 rows the game's emblem
+  stays.
+
 ## 1.2.0-beta.7
 
 - **Fixed: nothing shown with Epic's overlay.** The overlay of Epic Online Services (`EOSOVH-Win64-Shipping.dll`)

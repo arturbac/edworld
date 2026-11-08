@@ -21,13 +21,13 @@ the target's angle off the nose. In a planet's gravity well it assumes the plane
 `NOSE` (the nose's angle below or above the horizon), `PUSH DOWN` / `PULL UP` towards a dive of `compass_should_dive`
 degrees (`ON PATH` within 2°) and `ALT`, the altitude with the vertical speed.
 
-> **Warning: screen resolution.** The navballs are checked at one resolution only: 9000×2160 over three screens,
-> the cockpit on the middle 3840×2160. At 1920×1080 or lower, do not expect much:
-> - edworld reads the game's compass off the HUD surface the game draws it into: 2200×1800 here
->   (`compass_surface_width`, `compass_surface_height`), the compass about 54 px in radius (`compass_radius`).
->   Whether the game sizes that surface by the screen resolution is not checked. If it does, edworld may not find
->   the compass at all until those settings match. A smaller compass also reads coarser: here about 0.2° near the
->   nose and about 2° near the rim.
+> **Warning: screen resolution.** The navballs are measured at 9000×2160 over three screens, the cockpit on the
+> middle 3840×2160, and checked in a window at 2560×1440 and 1920×1080 too. At a lower resolution, expect less:
+> - edworld reads the game's compass off the HUD surface the game draws it into. The game sizes that surface by the
+>   picture's height: 2200×1800 at 2160 rows, 1466×1200 at 1440, 1100×900 at 1080. edworld finds it at any of
+>   these and reads the compass in its pixels; the settings (`compass_surface_width`, `compass_surface_height`,
+>   `compass_radius` and the rest) stay in the pixels of the 2160-row size. A smaller compass reads coarser: at
+>   2160 rows about 0.2° near the nose and about 2° near the rim, at 1080 about twice that.
 > - The spheres and their lines are drawn into textures of a fixed size laid on the cockpit, so on screen they
 >   shrink with the resolution. Here the lines in the two columns near a planet are about 10 px tall; at
 >   1920×1080 they would be about half that, too small to read.
@@ -259,6 +259,8 @@ Delete edworld's `d3d11.dll` and its ini; put back the mod's dll you renamed, as
 
 - The game's wrong emblem may show for a few frames at the first charge to a destination, while edworld reads the
   panel.
+- Below 2160 rows the game draws the jump panel smaller than 3072×660, and edworld leaves it as it is: the game's
+  emblem stays. The pad's number is read off the HUD at 2160 rows only as well.
 - After an on-foot conflict zone edworld once saw no panel for about four minutes; the jump panel kept the game's
   emblem until then.
 - Navballs: placed and checked in the Kestrel's cockpit only; other cockpits are larger or smaller, so the
