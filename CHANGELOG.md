@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+## 1.2.0-beta.7
+
+- **Fixed: nothing shown with Epic's overlay.** The overlay of Epic Online Services (`EOSOVH-Win64-Shipping.dll`)
+  makes a graphics device of its own a moment after the game's. edworld took the latest device for the game's, so it
+  passed over all of the game's draws: no navballs, no panel, no clouds. Now a device asked for from outside the game's
+  folder is logged (`asked by ... from outside the game's folder: not followed`) and not followed; one asked for by
+  the game, or by nothing edworld can tell, is followed as before. Through edloader, EDHM and EDVR are passed over as
+  they are proxies of d3d11, not the asker.
+- **The log says what the game runs on:** at each start `machine:` lines (Windows or Wine, the processor, the
+  memory, the graphics cards with their drivers and displays) and `graphics:` lines (the game's display settings,
+  options and presets); for each device its card, feature level and whether the driver takes command lists, and who
+  asked for it. Names and numbers only, no folder and no user name.
+- **`census` lines 30 s and 5 min after the start:** the draws seen on each device and on others, the indirect ones,
+  the command lists run, how often the atmosphere's shell was drawn, and whether edworld's draw hooks are still in
+  place (or which dll took them); the same check of the hooks when a jump's probe sees no draw at all. The log also
+  says when the game makes the atmosphere shell's shader.
+- Checked under Proton (in a window and full screen, alone and with EDHM and EDVR). The overlay case is checked by
+  the smoke test only, not yet in the game on Windows; the 5-minute census line is not yet seen in the game.
+
 ## 1.2.0-beta.6
 
 - **The clouds with depth come in smoothly as you fly in.** None while the planet is narrower on the screen than

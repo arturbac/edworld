@@ -224,6 +224,22 @@ Navballs: the log lists `compass: first drawn`, `compass: the left sphere first 
 one), and `compass: the left sphere's centre at local (...)` with its size each time its place changes, for example
 in another ship.
 
+### What the log says about your setup
+
+At each start the log lists the machine the game runs on and the game's graphics options, so a log you send tells
+what it ran on without more questions: `machine:` lines (Windows or Wine, the processor, the memory, each graphics
+card with its driver and its displays) and `graphics:` lines (the game's `DisplaySettings.xml`, `Settings.xml`,
+`StartPreset.start` and its custom preset). For each graphics device the game makes, a `device ...: card ...` line
+gives the card it stands on. Only names and numbers: no folder and no user name.
+
+Each device's line says who asked for it (`asked by EliteDangerous64.exe`). An overlay that makes a device of its own
+from outside the game's folder (Epic's overlay `EOSOVH-Win64-Shipping.dll`, for example) is logged as
+`from outside the game's folder: not followed`: edworld stays with the game's device.
+
+30 seconds and 5 minutes after the start, `census` lines count the game's draws edworld saw and say whether its
+hooks are still in place (`draw hooks in place`, or which dll took them). No draws seen, or hooks taken, means
+edworld sees nothing of the game: the navballs, the panel and the clouds stay away.
+
 ### Testing the navballs
 
 For each ship you fly with edworld, open an [issue](https://github.com/arturbac/edworld/issues) with the ship's
