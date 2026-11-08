@@ -40,6 +40,10 @@ cbuffer clouds : register(b4)
   float cloud_near_from;    // all near under this height of the eye over the surface, as a part of the planet's radius
   float cloud_near_to;      // all far over this one, a blend between
   float cloud_debug;        // 1: each pixel worked out painted magenta
+  float cloud_view_width;   // the picture's width in pixels
+  float cloud_hide_px;      // no clouds while the planet is narrower on the screen than this, all of them from the next
+  float cloud_full_px;
+  float cloud_max_steps;    // the most steps a ray takes, where its way through the layer is long
   float cloud_pad1;
   float cloud_pad2;
   float cloud_pad3;
@@ -182,6 +186,11 @@ float4 ps_main(ps_in input) : SV_TARGET
   if(leave <= enter)
     discard;
 
+  // a planet of a few dozen pixels across shows no clouds, only lumps standing out of its edge: none until it is larger
+  float across = 2.f * planet / max(length(centre), planet) * abs(frame_rows[270].x) * cloud_view_width * 0.5f;
+  float shown = smoothstep(cloud_hide_px, cloud_full_px, across);
+  if(shown <= 0.f)
+    discard;
   if(cloud_debug >= 0.5f)
     return float4(0.6f, 0.f, 0.6f, 0.6f);
 
@@ -206,7 +215,12 @@ float4 ps_main(ps_in input) : SV_TARGET
   middle_dir = blown(middle_dir, mean_angle);
   float3 warp = float3(fbm(middle_dir * 3.f + seed, 4), fbm(middle_dir * 3.f + seed + 11.f, 4), fbm(middle_dir * 3.f + seed + 23.f, 4));
 
-  int steps = max(1, (int)ceil(lerp(cloud_far_steps, cloud_steps, near_weight)));
+  // the steps follow the way's length through the layer: a step no longer than half the smallest lumps (the shape's
+  // last octave, about a 118th of the radius), at the edge seen edge on many, across the layer few - at least the count
+  // set for near or far, at most cloud_max_steps
+  float least_steps = lerp(cloud_far_steps, cloud_steps, near_weight);
+  float wanted_steps = (leave - enter) / (planet / 236.f);
+  int steps = max(1, (int)ceil(clamp(wanted_steps, least_steps, max(cloud_max_steps, least_steps))));
   float step_length = (leave - enter) / steps;
   float through = step_length / (top - bottom);
   // a different start at each pixel turns the bands of the steps into a fine grain. Blue noise: a hash of the pixel's
@@ -276,6 +290,6 @@ float4 ps_main(ps_in input) : SV_TARGET
   star *= max(1.f, cloud_min_light / strongest);
   float3 colour = light * star * cloud_light * frame_rows[90].y * gain;
   float fade = frame_rows[126].z;
-  float weight = fade * cloud_opacity;
+  float weight = fade * cloud_opacity * shown;
   return float4(colour * weight, (1.f - clear) * weight);
   }

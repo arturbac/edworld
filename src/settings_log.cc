@@ -147,6 +147,9 @@ namespace edworld
       {"clouds_near_from", &settings_t::clouds_near_from, "near steps under this height over the surface, far ones over the next, as parts of the planet's radius"},
       {"clouds_near_to", &settings_t::clouds_near_to},
       {"clouds_debug", &settings_t::clouds_debug, "(test) 1 = the pixels of the clouds with depth painted magenta"},
+      {"clouds_hide_below_px", &settings_t::clouds_hide_below_px, "(test) no clouds with depth while the planet is smaller on the screen than this many pixels across, all of them from the next"},
+      {"clouds_full_from_px", &settings_t::clouds_full_from_px},
+      {"clouds_max_steps", &settings_t::clouds_max_steps, "(test) the most steps through the clouds with depth, taken where the way through them is long, at the planet's edge"},
       {"compass", &settings_t::compass, "The navballs beside the radar: 0 = none, the game's compass is not read at all"},
       {"edsm", &settings_t::edsm, "The destination's factions under the jump panel: 0 = never ask EDSM"},
       {"list_alpha", &settings_t::list_alpha, "how much the list's box covers what is behind it, 0 to 1"},
@@ -448,9 +451,14 @@ namespace edworld
       current.clouds_near_from = read.clouds_near_from;
       current.clouds_near_to = read.clouds_near_to;
       current.clouds_debug = read.clouds_debug;
-      log_line("settings: read again: clouds_mode %u, clouds_far_steps %g, clouds_near_from %g, clouds_near_to %g, clouds_debug %u",
+      current.clouds_hide_below_px = read.clouds_hide_below_px;
+      current.clouds_full_from_px = read.clouds_full_from_px;
+      current.clouds_max_steps = read.clouds_max_steps;
+      log_line("settings: read again: clouds_mode %u, clouds_far_steps %g, clouds_near_from %g, clouds_near_to %g, clouds_debug %u, "
+               "clouds_hide_below_px %g, clouds_full_from_px %g, clouds_max_steps %g",
                current.clouds_mode, static_cast<double>(current.clouds_far_steps), static_cast<double>(current.clouds_near_from),
-               static_cast<double>(current.clouds_near_to), current.clouds_debug);
+               static_cast<double>(current.clouds_near_to), current.clouds_debug, static_cast<double>(current.clouds_hide_below_px),
+               static_cast<double>(current.clouds_full_from_px), static_cast<double>(current.clouds_max_steps));
       }
     catch(std::exception const & e)
       {

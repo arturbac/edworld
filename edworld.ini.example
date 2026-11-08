@@ -69,6 +69,13 @@
 ; (test) 1 = the pixels of the clouds with depth painted magenta
 ;clouds_debug = 0
 
+; (test) no clouds with depth while the planet is smaller on the screen than this many pixels across, all of them from the next
+;clouds_hide_below_px = 40
+;clouds_full_from_px = 120
+
+; (test) the most steps through the clouds with depth, taken where the way through them is long, at the planet's edge
+;clouds_max_steps = 64
+
 ; The navballs beside the radar: 0 = none, the game's compass is not read at all
 ;compass = 1
 

@@ -139,6 +139,13 @@ namespace edworld
     float clouds_near_to{0.5f};
     ///\brief 1 = every pixel the clouds with depth are worked out for painted magenta, to see where they draw
     std::uint32_t clouds_debug{0};
+    ///\brief (PoC) no clouds while the planet is smaller on the screen than this many pixels across, all of them from the
+    /// next; a blend between. A planet of a few dozen pixels showed only lumps standing out of its edge (2026-11-08)
+    float clouds_hide_below_px{40.f};
+    float clouds_full_from_px{120.f};
+    ///\brief (PoC) the most steps a ray takes: through the layer's edge, seen edge on, the way is long and a fixed count of
+    /// steps jumped over the lumps, which flickered there as the ship moved (2026-11-08); the steps follow the way's length
+    float clouds_max_steps{64.f};
 
     // ---- the compass (PoC): the HUD compass's dot read off its interface surface, the angles written beside it ----
     ///\brief 0 off, 1 the angles, 2 also everything known for checking them, 3 also a grid of the surface's pixels
@@ -299,8 +306,9 @@ namespace edworld
   ///\brief the ini made if there is none, and every setting it does not name yet added as a comment with the value edworld
   /// runs on; a line already there, comment or not, stays as it is. After log_open: a failure is logged, the game goes on
   auto complete_settings(std::wstring const & config_dir) noexcept -> void;
-  ///\brief clouds_mode, clouds_far_steps, clouds_near_from, clouds_near_to and clouds_debug read again from the ini when
-  /// it changed - looked at most once a second, from the render thread
+  ///\brief clouds_mode, clouds_far_steps, clouds_near_from, clouds_near_to, clouds_debug, clouds_hide_below_px,
+  /// clouds_full_from_px and clouds_max_steps read again from the ini when it changed - looked at most once a second,
+  /// from the render thread
   auto refresh_live_settings() noexcept -> void;
 
   auto log_open(std::wstring const & dir) -> void;

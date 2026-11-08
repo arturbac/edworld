@@ -6,7 +6,13 @@
   not reach that far, so nothing changes where near and far meet: near steps under `clouds_near_from` over the surface,
   far ones (`clouds_far_steps`) over `clouds_near_to`, a blend between. `clouds_mode` forces either, and `clouds_debug = 1`
   paints the pixels they are worked out for; these five are read again while the game runs, at most once a second.
-  Not yet looked at in the game.
+  Looked at once in the game (2026-11-08): the switch reads, the magenta shows only the planet's disc.
+- **(test) No clouds on a planet a few dozen pixels across:** under `clouds_hide_below_px` (40) none, from
+  `clouds_full_from_px` (120) all, a blend between; there they only stood out of the edge as lumps.
+- **(test) The steps follow the way through the clouds:** at the planet's edge, seen edge on, the way is long and a fixed
+  count of steps jumped over the lumps, which flickered as the ship moved; now a step is at most half the smallest lumps,
+  up to `clouds_max_steps` (64), and at least the count for near or far. These three are read again while the game
+  runs too. Not yet looked at in the game.
 
 ## 1.2.0-beta.5
 

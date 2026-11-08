@@ -118,6 +118,8 @@ zip is the same start, by hand.
 | `clouds_far_steps` | `6` | the steps through the clouds with depth from afar |
 | `clouds_near_from`, `clouds_near_to` | `0.25`, `0.5` | near steps under the first height over the surface, far ones over the second, a blend between; parts of the planet's radius |
 | `clouds_debug` | `0` | (test) `1` = every pixel the clouds with depth are worked out for painted magenta |
+| `clouds_hide_below_px`, `clouds_full_from_px` | `40`, `120` | (test) no clouds with depth while the planet is narrower on the screen than the first many pixels, all of them from the second, a blend between |
+| `clouds_max_steps` | `64` | (test) the most steps through the clouds with depth: the steps follow the way's length through them, many at the planet's edge |
 | `list_top`, `list_x` | `500`, `1540` | where the list starts under the panel (pixels of the panel's surface) |
 | `list_rows` | `7` | factions listed at most |
 | `edsm` | `1` | `0` = never ask EDSM (no list then without EHT) |
