@@ -34,7 +34,19 @@ cbuffer clouds : register(b4)
   float cloud_wind_low;     // m/s at the layer's floor
   float cloud_wind_high;    // m/s at its top
   float cloud_pixel;        // pixels of the picture to a pixel drawn: 2 when the clouds are drawn at half size
-  float cloud_pad;
+  float cloud_game_fade;    // 1: they fade with the game's own atmosphere's shell, 0: never
+  float cloud_mode;         // 0 near or far by the eye's height, 1 always near, 2 always far
+  float cloud_far_steps;    // the steps from afar: the same shape, fewer of them
+  float cloud_near_from;    // all near under this height of the eye over the surface, as a part of the planet's radius
+  float cloud_near_to;      // all far over this one, a blend between
+  float cloud_debug;        // 1: each pixel worked out painted magenta, 2: the game's fade, green at 1, red at 0
+  float cloud_view_width;   // the picture's width in pixels
+  float cloud_hide_px;      // no clouds while the planet is narrower on the screen than this, all of them from the next
+  float cloud_full_px;
+  float cloud_max_steps;    // the most steps a ray takes, where its way through the layer is long
+  float cloud_edge_hide_px; // none out of the planet's edge while the layer is thinner on the screen than this, all from the next
+  float cloud_edge_full_px;
+  float cloud_edge_band_px; // on the disc the same within this many pixels of the edge, all further in
   };
 
 Texture2D<float> scene_depth : register(t0);
@@ -174,6 +186,33 @@ float4 ps_main(ps_in input) : SV_TARGET
   if(leave <= enter)
     discard;
 
+  // a planet of a few dozen pixels across shows no clouds, only lumps standing out of its edge: none until it is larger
+  // rows 270..272 take a place in the world's axes: the screen's x of one metre is the length of their x, whichever way
+  // the ship looks. Their x alone also held the turn of the view and the size followed the ship's heading (2026-11-08)
+  float x_scale = length(float3(frame_rows[270].x, frame_rows[271].x, frame_rows[272].x));
+  float across = 2.f * planet / max(length(centre), planet) * x_scale * cloud_view_width * 0.5f;
+  float shown = smoothstep(cloud_hide_px, cloud_full_px, across);
+  // out of the edge the layer stands as thin as its height on the screen, a pixel or two of the half size picture whose
+  // lumps flickered as the ship moved, while the disc's middle stayed still (2026-11-08): none there while it is that thin,
+  // and on the disc less near the edge, where the rays go through the layer edge on
+  float pixels_a_metre = across / (2.f * planet);
+  float edge_kept = smoothstep(cloud_edge_hide_px, cloud_edge_full_px, (top - bottom) * pixels_a_metre);
+  float from_edge = (bottom - sqrt(miss)) * pixels_a_metre;
+  shown *= lerp(edge_kept, 1.f, saturate(from_edge / cloud_edge_band_px));
+  if(shown <= 0.f)
+    discard;
+  // the game's own fade of its atmosphere's shell: on the way in the clouds faded out for a moment with it, where the
+  // game changes the planet's detail (2026-11-08, about 8.3 Mm out)
+  float game_fade = cloud_game_fade >= 0.5f ? frame_rows[126].z : 1.f;
+  if(cloud_debug >= 1.5f)
+    return float4(0.8f * (1.f - saturate(frame_rows[126].z)), 0.8f * saturate(frame_rows[126].z), 0.f, 0.8f);
+  if(cloud_debug >= 0.5f)
+    return float4(0.6f, 0.f, 0.6f, 0.6f);
+
+  // near and far are the same shape: from afar only fewer steps and no fine shape, which is out of its reach there
+  // anyway, so nothing jumps where they meet. Whole steps: a blend of their count changes the grain, not the clouds
+  float eye_height = length(centre) / planet - 1.f;
+  float near_weight = cloud_mode >= 1.5f ? 0.f : cloud_mode >= 0.5f ? 1.f : 1.f - smoothstep(cloud_near_from, cloud_near_to, eye_height);
   float scene = scene_depth.Load(int3(input.pos.xy * cloud_pixel, 0));
   float3 seed = frac(planet / float3(977.f, 1543.f, 2111.f)) * 50.f;
   float inverse_square = 1.f / dot(object_rows[9].xyz, object_rows[9].xyz);
@@ -191,8 +230,13 @@ float4 ps_main(ps_in input) : SV_TARGET
   middle_dir = blown(middle_dir, mean_angle);
   float3 warp = float3(fbm(middle_dir * 3.f + seed, 4), fbm(middle_dir * 3.f + seed + 11.f, 4), fbm(middle_dir * 3.f + seed + 23.f, 4));
 
-  int steps = (int)cloud_steps;
-  float step_length = (leave - enter) / cloud_steps;
+  // the steps follow the way's length through the layer: a step no longer than half the smallest lumps (the shape's
+  // last octave, about a 118th of the radius), at the edge seen edge on many, across the layer few - at least the count
+  // set for near or far, at most cloud_max_steps
+  float least_steps = lerp(cloud_far_steps, cloud_steps, near_weight);
+  float wanted_steps = (leave - enter) / (planet / 236.f);
+  int steps = max(1, (int)ceil(clamp(wanted_steps, least_steps, max(cloud_max_steps, least_steps))));
+  float step_length = (leave - enter) / steps;
   float through = step_length / (top - bottom);
   // a different start at each pixel turns the bands of the steps into a fine grain. Blue noise: a hash of the pixel's
   // place gave clumps of specks on a wide target, interleaved gradient noise fine slanting stripes where the steps are
@@ -222,7 +266,7 @@ float4 ps_main(ps_in input) : SV_TARGET
     float3 place = blown(dir, wind_angle * lerp(cloud_wind_low, cloud_wind_high, height)) * 7.f + seed + warp * 3.5f + float3(0.f, height * 0.4f, 0.f);
     // the shape above has lumps of tens of km: fine from orbit, one smooth fog from under them. Near the eye lumps of a
     // few km cut it, where the steps are short enough to show them
-    float near = saturate(1.f - t / cloud_detail_range) * saturate(cloud_detail_size * 2.f / step_length);
+    float near = saturate(1.f - t / cloud_detail_range) * saturate(cloud_detail_size * 2.f / step_length) * near_weight;
     float head = fbm_head(place);
     float most = head + 0.21875f - edge;
     if(most + (cloud_detail > 0.f && most > -0.2f ? detail_most * near : 0.f) <= 0.f)
@@ -260,7 +304,6 @@ float4 ps_main(ps_in input) : SV_TARGET
   float strongest = max(max(star.r, star.g), max(star.b, 0.001f));
   star *= max(1.f, cloud_min_light / strongest);
   float3 colour = light * star * cloud_light * frame_rows[90].y * gain;
-  float fade = frame_rows[126].z;
-  float weight = fade * cloud_opacity;
+  float weight = game_fade * cloud_opacity * shown;
   return float4(colour * weight, (1.f - clear) * weight);
   }

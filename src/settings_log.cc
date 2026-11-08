@@ -142,6 +142,18 @@ namespace edworld
       {"clouds_wind_low", &settings_t::clouds_wind_low, "the wind in km/h at the floor of the clouds with depth and at their top; both 0 = still clouds"},
       {"clouds_wind_high", &settings_t::clouds_wind_high},
       {"clouds_top_gain", &settings_t::clouds_top_gain, "how much lighter the clouds with depth are seen from above, 1 = as from under them"},
+      {"clouds_mode", &settings_t::clouds_mode, "(test) clouds with depth from afar in fewer steps: 0 = by the height, 1 = always near, 2 = always far; this and the four below change while the game runs"},
+      {"clouds_far_steps", &settings_t::clouds_far_steps},
+      {"clouds_near_from", &settings_t::clouds_near_from, "near steps under this height over the surface, far ones over the next, as parts of the planet's radius"},
+      {"clouds_near_to", &settings_t::clouds_near_to},
+      {"clouds_debug", &settings_t::clouds_debug, "(test) 1 = the pixels of the clouds with depth painted magenta, 2 = the game's fade of its atmosphere painted, green at 1, red at 0"},
+      {"clouds_game_fade", &settings_t::clouds_game_fade, "(test) 1 = the clouds with depth fade with the game's own atmosphere, 0 = never"},
+      {"clouds_hide_below_px", &settings_t::clouds_hide_below_px, "(test) no clouds with depth while the planet is smaller on the screen than this many pixels across, all of them from the next"},
+      {"clouds_full_from_px", &settings_t::clouds_full_from_px},
+      {"clouds_max_steps", &settings_t::clouds_max_steps, "(test) the most steps through the clouds with depth, taken where the way through them is long, at the planet's edge"},
+      {"clouds_edge_hide_px", &settings_t::clouds_edge_hide_px, "(test) no clouds with depth out of the planet's edge while their layer is thinner on the screen than this many pixels, all of them from the next; on the disc the same within clouds_edge_band_px of the edge"},
+      {"clouds_edge_full_px", &settings_t::clouds_edge_full_px},
+      {"clouds_edge_band_px", &settings_t::clouds_edge_band_px},
       {"compass", &settings_t::compass, "The navballs beside the radar: 0 = none, the game's compass is not read at all"},
       {"edsm", &settings_t::edsm, "The destination's factions under the jump panel: 0 = never ask EDSM"},
       {"list_alpha", &settings_t::list_alpha, "how much the list's box covers what is behind it, 0 to 1"},
@@ -380,29 +392,93 @@ namespace edworld
 
   auto settings() noexcept -> settings_t const & { return current; }
 
+  namespace
+    {
+    std::wstring ini_path;
+
+    auto read_ini(std::wstring const & path, settings_t & s) -> bool
+      {
+      std::FILE * f{_wfopen(path.c_str(), L"rb")};
+      if(not f)
+        return false;
+      char line[1024];
+      while(std::fgets(line, sizeof line, f))
+        {
+        std::string_view const text{trim(line)};
+        if(text.empty() or text.front() == ';' or text.front() == '#' or text.front() == '[')
+          continue;
+        auto const eq{text.find('=')};
+        if(eq == std::string_view::npos)
+          continue;
+        std::string_view const key{trim(text.substr(0, eq))};
+        std::string_view const value{trim(text.substr(eq + 1))};
+        auto const found{std::find_if(std::begin(keys), std::end(keys), [&](key_t const & k) { return k.name == key; })};
+        if(found != std::end(keys))
+          read_value(s, found->field, value);
+        }
+      std::fclose(f);
+      return true;
+      }
+    }  // namespace
+
   auto load_settings(std::wstring const & config_dir, std::wstring const & output_dir) -> void
     {
     current.dir = output_dir;
-    std::wstring const path{config_dir + L"\\" + plugin_name + L".ini"};
-    std::FILE * f{_wfopen(path.c_str(), L"rb")};
-    if(not f)
+    ini_path = config_dir + L"\\" + plugin_name + L".ini";
+    read_ini(ini_path, current);
+    }
+
+  auto refresh_live_settings() noexcept -> void
+    {
+    static ULONGLONG looked{};
+    static FILETIME written{};
+    ULONGLONG const now{GetTickCount64()};
+    if(now - looked < 1000u or ini_path.empty())
       return;
-    char line[1024];
-    while(std::fgets(line, sizeof line, f))
+    looked = now;
+    WIN32_FILE_ATTRIBUTE_DATA data{};
+    if(not GetFileAttributesExW(ini_path.c_str(), GetFileExInfoStandard, &data))
+      return;
+    if(CompareFileTime(&data.ftLastWriteTime, &written) == 0)
+      return;
+    bool const first{written.dwLowDateTime == 0u and written.dwHighDateTime == 0u};
+    written = data.ftLastWriteTime;
+    if(first)
+      return;  // the ini load_settings read
+    try
       {
-      std::string_view const text{trim(line)};
-      if(text.empty() or text.front() == ';' or text.front() == '#' or text.front() == '[')
-        continue;
-      auto const eq{text.find('=')};
-      if(eq == std::string_view::npos)
-        continue;
-      std::string_view const key{trim(text.substr(0, eq))};
-      std::string_view const value{trim(text.substr(eq + 1))};
-      auto const found{std::find_if(std::begin(keys), std::end(keys), [&](key_t const & k) { return k.name == key; })};
-      if(found != std::end(keys))
-        read_value(current, found->field, value);
+      settings_t read{current};
+      if(not read_ini(ini_path, read))
+        return;
+      current.clouds_mode = read.clouds_mode;
+      current.clouds_far_steps = read.clouds_far_steps;
+      current.clouds_near_from = read.clouds_near_from;
+      current.clouds_near_to = read.clouds_near_to;
+      current.clouds_debug = read.clouds_debug;
+      current.clouds_hide_below_px = read.clouds_hide_below_px;
+      current.clouds_full_from_px = read.clouds_full_from_px;
+      current.clouds_max_steps = read.clouds_max_steps;
+      current.clouds_edge_hide_px = read.clouds_edge_hide_px;
+      current.clouds_edge_full_px = read.clouds_edge_full_px;
+      current.clouds_edge_band_px = read.clouds_edge_band_px;
+      current.clouds_game_fade = read.clouds_game_fade;
+      log_line("settings: read again: clouds_mode %u, clouds_far_steps %g, clouds_near_from %g, clouds_near_to %g, clouds_debug %u, "
+               "clouds_hide_below_px %g, clouds_full_from_px %g, clouds_max_steps %g, clouds_edge_hide_px %g, "
+               "clouds_edge_full_px %g, clouds_edge_band_px %g, clouds_game_fade %u",
+               current.clouds_mode, static_cast<double>(current.clouds_far_steps), static_cast<double>(current.clouds_near_from),
+               static_cast<double>(current.clouds_near_to), current.clouds_debug, static_cast<double>(current.clouds_hide_below_px),
+               static_cast<double>(current.clouds_full_from_px), static_cast<double>(current.clouds_max_steps),
+               static_cast<double>(current.clouds_edge_hide_px), static_cast<double>(current.clouds_edge_full_px),
+               static_cast<double>(current.clouds_edge_band_px), current.clouds_game_fade);
       }
-    std::fclose(f);
+    catch(std::exception const & e)
+      {
+      log_line("settings: the ini not read again: %s", e.what());
+      }
+    catch(...)
+      {
+      log_line("settings: the ini not read again");
+      }
     }
 
   auto complete_settings(std::wstring const & config_dir) noexcept -> void

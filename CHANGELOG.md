@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+- **(test) The clouds with depth from afar in fewer steps.** The same shape as near, without the fine shape that does
+  not reach that far, so nothing changes where near and far meet: near steps under `clouds_near_from` over the surface,
+  far ones (`clouds_far_steps`) over `clouds_near_to`, a blend between. `clouds_mode` forces either, and `clouds_debug = 1`
+  paints the pixels they are worked out for; these five are read again while the game runs, at most once a second.
+  Looked at once in the game (2026-11-08): the switch reads, the magenta shows only the planet's disc.
+- **(test) No clouds on a planet a few dozen pixels across:** under `clouds_hide_below_px` (40) none, from
+  `clouds_full_from_px` (120) all, a blend between; there they only stood out of the edge as lumps.
+- **(test) The steps follow the way through the clouds:** at the planet's edge, seen edge on, the way is long and a fixed
+  count of steps jumped over the lumps, which flickered as the ship moved; now a step is at most half the smallest lumps,
+  up to `clouds_max_steps` (64), and at least the count for near or far. These three are read again while the game
+  runs too. Looked at once in the game (2026-11-08): the disc's middle stays still, the lumps out of its edge flicker.
+- **(test) Fewer clouds at the planet's edge:** out of the edge the layer stood a pixel or two thin and its lumps
+  flickered as the ship moved. None there while the layer is thinner on the screen than `clouds_edge_hide_px` (2), all
+  from `clouds_edge_full_px` (8); on the disc the same within `clouds_edge_band_px` (16) of the edge, all further in.
+  Read again while the game runs. Looked at once in the game (2026-11-08): no lumps out of the edge any more.
+- **(test) The game's fade of its atmosphere:** on the way in the clouds with depth faded out for a moment about 8.3 Mm
+  from a planet, where the game changes the planet's detail, while still drawn. `clouds_debug = 2` paints the game's
+  fade (green at 1, red at 0), `clouds_game_fade = 0` keeps the clouds from following it; both read again while the
+  game runs. Not yet looked at in the game.
+- **(test) The planet's size on the screen whichever way the ship looks:** it was worked out from one number of the
+  view's matrix, which also held the view's turn, so the clouds came in up to a few times later than set, and suddenly
+  as the ship turned (2026-11-08: at 71 pixels instead of 20). The edge's thresholds count true pixels now too.
+
 ## 1.2.0-beta.5
 
 - **The clouds with depth cost about a quarter of what they did.** They are worked out at half the picture's width and
