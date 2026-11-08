@@ -50,6 +50,9 @@ namespace edworld
     constexpr int slot_draw{13};
     constexpr int slot_draw_indexed_instanced{20};
     constexpr int slot_draw_instanced{21};
+    constexpr int slot_draw_indexed_instanced_indirect{39};
+    constexpr int slot_draw_instanced_indirect{40};
+    constexpr int slot_execute_command_list{58};
     // the catalog's (edworld_eht): the device's other creations of shaders and input layouts (d3d11.h)
     constexpr int slot_create_input_layout{11};
     constexpr int slot_create_geometry_shader{13};
@@ -68,6 +71,8 @@ namespace edworld
     using draw_fn = void(STDMETHODCALLTYPE *)(ID3D11DeviceContext *, UINT, UINT);
     using draw_indexed_instanced_fn = void(STDMETHODCALLTYPE *)(ID3D11DeviceContext *, UINT, UINT, UINT, INT, UINT);
     using draw_instanced_fn = void(STDMETHODCALLTYPE *)(ID3D11DeviceContext *, UINT, UINT, UINT, UINT);
+    using draw_indirect_fn = void(STDMETHODCALLTYPE *)(ID3D11DeviceContext *, ID3D11Buffer *, UINT);
+    using execute_command_list_fn = void(STDMETHODCALLTYPE *)(ID3D11DeviceContext *, ID3D11CommandList *, BOOL);
 
     create_vs_fn orig_create_vs{};
     vs_set_shader_fn orig_vs_set_shader{};
@@ -75,6 +80,9 @@ namespace edworld
     draw_fn orig_draw{};
     draw_indexed_instanced_fn orig_draw_indexed_instanced{};
     draw_instanced_fn orig_draw_instanced{};
+    draw_indirect_fn orig_draw_indexed_instanced_indirect{};
+    draw_indirect_fn orig_draw_instanced_indirect{};
+    execute_command_list_fn orig_execute_command_list{};
 
     // ---- watched vertex shaders: written by CreateVertexShader (any thread), read on the render thread ----
     constexpr std::uint32_t max_watched{32};
@@ -152,6 +160,30 @@ namespace edworld
     std::atomic<std::uint64_t> last_watched_ms{};  // GetTickCount64 of the latest panel draw
     std::atomic<bool> probe_request{};             // set by the probe thread, cleared by the render thread
     std::atomic<std::uint32_t> probe_draws{};
+
+    // ---- the draw census (diagnostics): which contexts the game's draws come through in the first minutes after the
+    // first device, and whether the hooks still stand in the contexts' tables ----
+    constexpr std::uint32_t census_contexts{4};
+    std::atomic<ID3D11DeviceContext *> census_context[census_contexts]{};  // each device's own, in the order they came
+    std::atomic<std::uint32_t> census_attached{};
+    std::atomic<std::uint32_t> census_draws[census_contexts + 1]{};  // the last one: any other context
+    std::atomic<std::uint32_t> census_indirect{};
+    std::atomic<std::uint32_t> census_lists{};
+    std::atomic<std::uint32_t> census_shell{};
+    std::atomic<bool> census_on{};
+
+    auto census_note(ID3D11DeviceContext * self) noexcept -> void
+      {
+      if(not census_on.load(std::memory_order_relaxed))
+        return;
+      std::uint32_t at{};
+      while(at != census_contexts and census_context[at].load(std::memory_order_relaxed) != self)
+        ++at;
+      census_draws[at].fetch_add(1, std::memory_order_relaxed);
+      }
+
+    ///\brief the census counts (with `counts`) and each device's draw hooks, one line each
+    auto census_report(char const * when, bool counts) noexcept -> void;
 
     // ---- render-thread state ----
     std::atomic<ID3D11DeviceContext *> immediate{};
@@ -1692,6 +1724,7 @@ namespace edworld
           {
           probe_request.store(false);
           log_line("probe: a jump charges, no panel draw, and no draw at all reached the hooks in 2 s");
+          census_report("at the jump", false);
           armed_at = 0;
           }
         }
@@ -2740,7 +2773,8 @@ namespace edworld
       if(hash == atmosphere_shell_vs and not creating_own.load())
         {
         static_cast<IUnknown *>(*shader)->AddRef();  // pinned, as the watched ones
-        shell_vs.store(*shader, std::memory_order_relaxed);
+        if(shell_vs.exchange(*shader, std::memory_order_relaxed) == nullptr)
+          log_line("clouds: the game made the atmosphere shell's shader");
         }
       auto const & listed{settings().watch_vs};
       for(std::size_t i{}; i != listed.size(); ++i)
@@ -3849,6 +3883,7 @@ namespace edworld
 
     void STDMETHODCALLTYPE hook_draw_indexed(ID3D11DeviceContext * self, UINT index_count, UINT start_index, INT base_vertex)
       {
+      census_note(self);
       if(full_armed)
         {
         if(self == immediate.load(std::memory_order_relaxed))
@@ -3880,6 +3915,7 @@ namespace edworld
 
     void STDMETHODCALLTYPE hook_draw(ID3D11DeviceContext * self, UINT vertex_count, UINT start_vertex)
       {
+      census_note(self);
       if(full_armed)
         {
         if(self == immediate.load(std::memory_order_relaxed))
@@ -3910,6 +3946,9 @@ namespace edworld
       UINT start_instance
     )
       {
+      census_note(self);
+      if(current_shell and census_on.load(std::memory_order_relaxed))
+        census_shell.fetch_add(1, std::memory_order_relaxed);
       if(full_armed)
         {
         if(self == immediate.load(std::memory_order_relaxed))
@@ -3950,6 +3989,7 @@ namespace edworld
       UINT start_instance
     )
       {
+      census_note(self);
       if(full_armed)
         {
         if(self == immediate.load(std::memory_order_relaxed))
@@ -3969,6 +4009,114 @@ namespace edworld
       orig_draw_instanced(self, vertex_count, instance_count, start_vertex, start_instance);
       if(full_after_draw and self == immediate.load(std::memory_order_relaxed))
         guarded_full_after(self);
+      }
+
+    void STDMETHODCALLTYPE hook_draw_indexed_instanced_indirect(ID3D11DeviceContext * self, ID3D11Buffer * args, UINT offset)
+      {
+      if(census_on.load(std::memory_order_relaxed))
+        census_indirect.fetch_add(1, std::memory_order_relaxed);
+      orig_draw_indexed_instanced_indirect(self, args, offset);
+      }
+
+    void STDMETHODCALLTYPE hook_draw_instanced_indirect(ID3D11DeviceContext * self, ID3D11Buffer * args, UINT offset)
+      {
+      if(census_on.load(std::memory_order_relaxed))
+        census_indirect.fetch_add(1, std::memory_order_relaxed);
+      orig_draw_instanced_indirect(self, args, offset);
+      }
+
+    void STDMETHODCALLTYPE hook_execute_command_list(ID3D11DeviceContext * self, ID3D11CommandList * list, BOOL restore)
+      {
+      if(census_on.load(std::memory_order_relaxed))
+        census_lists.fetch_add(1, std::memory_order_relaxed);
+      orig_execute_command_list(self, list, restore);
+      }
+
+    ///\brief "in place", or each draw slot of the context's table another module took over and that module's file name
+    auto census_hooks(ID3D11DeviceContext * ctx, char * out, std::size_t size) noexcept -> void
+      {
+      struct
+        {
+        int slot;
+        void * hook;
+        char const * name;
+        } const slots[]{
+        {slot_draw_indexed, reinterpret_cast<void *>(&hook_draw_indexed), "DrawIndexed"},
+        {slot_draw, reinterpret_cast<void *>(&hook_draw), "Draw"},
+        {slot_draw_indexed_instanced, reinterpret_cast<void *>(&hook_draw_indexed_instanced), "DrawIndexedInstanced"},
+        {slot_draw_instanced, reinterpret_cast<void *>(&hook_draw_instanced), "DrawInstanced"},
+      };
+      void * const * const table{*reinterpret_cast<void * const * const *>(ctx)};
+      std::size_t used{};
+      out[0] = '\0';
+      for(auto const & s: slots)
+        {
+        if(table[s.slot] == s.hook or used + 1 >= size)
+          continue;
+        char module[MAX_PATH]{"unknown"};
+        HMODULE owner{};
+        if(GetModuleHandleExA(
+             GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+             static_cast<char const *>(table[s.slot]),
+             &owner
+           ))
+          {
+          char path[MAX_PATH]{};
+          if(GetModuleFileNameA(owner, path, MAX_PATH))
+            {
+            char const * const slash{std::strrchr(path, '\\')};
+            std::snprintf(module, sizeof module, "%s", slash ? slash + 1 : path);
+            }
+          }
+        int const n{std::snprintf(out + used, size - used, "%s%s taken by %s", used ? ", " : "", s.name, module)};
+        if(n > 0)
+          used = std::min(size - 1, used + static_cast<std::size_t>(n));
+        }
+      if(used == 0)
+        std::snprintf(out, size, "in place");
+      }
+
+    auto census_report(char const * when, bool counts) noexcept -> void
+      {
+      std::uint32_t const attached{std::min(census_attached.load(), census_contexts)};
+      if(counts)
+        {
+        char own[160]{};
+        std::size_t used{};
+        for(std::uint32_t i{}; i != attached and used + 1 < sizeof own; ++i)
+          {
+          int const n{std::snprintf(own + used, sizeof own - used, "%s%u", i ? " + " : "", census_draws[i].load())};
+          if(n > 0)
+            used = std::min(sizeof own - 1, used + static_cast<std::size_t>(n));
+          }
+        log_line(
+          "census %s: draws %s on the devices' own contexts (in the order they came), %u on other contexts, %u indirect, "
+          "%u command lists run; the atmosphere shell drawn %u times",
+          when,
+          own,
+          census_draws[census_contexts].load(),
+          census_indirect.load(),
+          census_lists.load(),
+          census_shell.load()
+        );
+        }
+      for(std::uint32_t i{}; i != attached; ++i)
+        if(ID3D11DeviceContext * const ctx{census_context[i].load()})
+          {
+          char hooks[1024];
+          census_hooks(ctx, hooks, sizeof hooks);
+          log_line("census %s: device %u's draw hooks %s", when, i + 1, hooks);
+          }
+      }
+
+    DWORD WINAPI census_thread(void *)
+      {
+      Sleep(30000);
+      census_report("after 30 s", true);
+      Sleep(270000);
+      census_report("after 5 min", true);
+      census_on.store(false);
+      return 0;
       }
     }  // namespace
 
@@ -3995,6 +4143,7 @@ namespace edworld
       log_line("attach: device %p has no immediate context", dev);
       return;
       }
+    log_device(dev);
     {
     LARGE_INTEGER f;
     QueryPerformanceFrequency(&f);
@@ -4007,6 +4156,9 @@ namespace edworld
     ok = ok and patch_slot(ctx, slot_draw, reinterpret_cast<void *>(&hook_draw), reinterpret_cast<void **>(&orig_draw));
     ok = ok and patch_slot(ctx, slot_draw_indexed_instanced, reinterpret_cast<void *>(&hook_draw_indexed_instanced), reinterpret_cast<void **>(&orig_draw_indexed_instanced));
     ok = ok and patch_slot(ctx, slot_draw_instanced, reinterpret_cast<void *>(&hook_draw_instanced), reinterpret_cast<void **>(&orig_draw_instanced));
+    ok = ok and patch_slot(ctx, slot_draw_indexed_instanced_indirect, reinterpret_cast<void *>(&hook_draw_indexed_instanced_indirect), reinterpret_cast<void **>(&orig_draw_indexed_instanced_indirect));
+    ok = ok and patch_slot(ctx, slot_draw_instanced_indirect, reinterpret_cast<void *>(&hook_draw_instanced_indirect), reinterpret_cast<void **>(&orig_draw_instanced_indirect));
+    ok = ok and patch_slot(ctx, slot_execute_command_list, reinterpret_cast<void *>(&hook_execute_command_list), reinterpret_cast<void **>(&orig_execute_command_list));
     if(not ok)
       {
       log_line("attach: could not patch the device/context tables; observing nothing");
@@ -4046,6 +4198,25 @@ namespace edworld
     attach_qpc = qpc_now();
     immediate1 = ctx1;
     immediate.store(ctx);  // the latest device wins; its context stays referenced for the process lifetime
+    if(std::uint32_t const order{census_attached.fetch_add(1)}; order < census_contexts)
+      {
+      census_context[order].store(ctx);
+      if(order == 0)
+        {
+        census_on.store(true);
+        if(HANDLE const t{CreateThread(nullptr, 0, &census_thread, nullptr, 0, nullptr)})
+          CloseHandle(t);
+        }
+      else
+        {
+        ID3D11DeviceContext * const first{census_context[0].load()};
+        log_line(
+          "attach: device %u's context %s the first device's table",
+          order + 1,
+          *reinterpret_cast<void **>(ctx) == *reinterpret_cast<void **>(first) ? "shares" : "does not share"
+        );
+        }
+      }
 #if defined(EDWORLD_EHT)
     if(not share)
       open_share();

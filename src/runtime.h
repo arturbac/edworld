@@ -336,4 +336,10 @@ namespace edworld
 
   ///\brief once per device the game gets from the chain
   auto attach_to_device(ID3D11Device * device) noexcept -> void;
+
+  ///\brief once per process, on its own thread: the machine (Windows or Wine, the processor, the memory, the graphics
+  /// cards with their drivers and displays) and the game's graphics options, for a player's log to say what it ran on
+  auto log_machine() noexcept -> void;
+  ///\brief the card a device of the game stands on, its feature level and flags, whether the driver takes command lists
+  auto log_device(ID3D11Device * device) noexcept -> void;
   }  // namespace edworld
