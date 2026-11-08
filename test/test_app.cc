@@ -606,6 +606,37 @@ namespace
             "pad text: the game's samples read sure, as the data source named the pad");
       }
     }
+
+  // Windows' d3d11 rewrites its own context table's entries when it switches its variants of the methods (the
+  // multithread protection): stand-ins put into the runtime's table count the calls and call on
+  using relaid_draw_indexed_fn = void(STDMETHODCALLTYPE *)(ID3D11DeviceContext *, UINT, UINT, INT);
+  using relaid_draw_indexed_instanced_fn = void(STDMETHODCALLTYPE *)(ID3D11DeviceContext *, UINT, UINT, UINT, INT, UINT);
+  relaid_draw_indexed_fn runtime_draw_indexed{};
+  relaid_draw_indexed_instanced_fn runtime_draw_indexed_instanced{};
+  LONG relaid_calls{};
+
+  void STDMETHODCALLTYPE relaid_draw_indexed(ID3D11DeviceContext * c, UINT n, UINT s, INT b)
+    {
+    InterlockedIncrement(&relaid_calls);
+    runtime_draw_indexed(c, n, s, b);
+    }
+
+  void STDMETHODCALLTYPE relaid_draw_indexed_instanced(ID3D11DeviceContext * c, UINT n, UINT i, UINT s, INT b, UINT f)
+    {
+    InterlockedIncrement(&relaid_calls);
+    runtime_draw_indexed_instanced(c, n, i, s, b, f);
+    }
+
+  auto relay_slot(void ** table, int slot, void * stand_in, void ** was) -> bool
+    {
+    DWORD old{};
+    if(not VirtualProtect(&table[slot], sizeof(void *), PAGE_READWRITE, &old))
+      return false;
+    *was = table[slot];
+    table[slot] = stand_in;
+    VirtualProtect(&table[slot], sizeof(void *), old, &old);
+    return true;
+    }
   }  // namespace
 
 int main()
@@ -1368,6 +1399,29 @@ int main()
   auto const make_foreign{foreign ? reinterpret_cast<foreign_fn>(GetProcAddress(foreign, "foreign_make_device")) : nullptr};
   check(make_foreign and SUCCEEDED(make_foreign()), "an overlay's own device made through edworld");
 
+  // the runtime's own context table, from a device made past edworld (the system copy by its path); the game's context
+  // must be on a table of edworld's own, and the panels below are drawn after the runtime re-points two draw slots:
+  // edworld must still see them, and the draws must reach the runtime's new entries
+  {
+  wchar_t sys[MAX_PATH]{};
+  GetSystemDirectoryW(sys, MAX_PATH);
+  HMODULE const system_d3d11{LoadLibraryW((std::wstring{sys} + L"\\d3d11.dll").c_str())};
+  auto const system_create{
+    system_d3d11 ? reinterpret_cast<decltype(&D3D11CreateDevice)>(GetProcAddress(system_d3d11, "D3D11CreateDevice")) : nullptr
+  };
+  ID3D11Device * bare_dev{};
+  ID3D11DeviceContext * bare_ctx{};
+  if(system_create)
+    system_create(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &bare_dev, nullptr, &bare_ctx);
+  void ** const runtime_table{bare_ctx ? *reinterpret_cast<void ***>(bare_ctx) : nullptr};
+  check(runtime_table and *reinterpret_cast<void ***>(ctx) != runtime_table, "the game's context is on a table of edworld's own");
+  check(runtime_table
+          and relay_slot(runtime_table, 12, reinterpret_cast<void *>(&relaid_draw_indexed), reinterpret_cast<void **>(&runtime_draw_indexed))
+          and relay_slot(runtime_table, 20, reinterpret_cast<void *>(&relaid_draw_indexed_instanced),
+                         reinterpret_cast<void **>(&runtime_draw_indexed_instanced)),
+        "the runtime's table re-pointed (DrawIndexed, DrawIndexedInstanced)");
+  }
+
   ID3D11VertexShader * panel_vs{};
   ID3D11VertexShader * other_vs{};
   ID3D11PixelShader * ps{};
@@ -1651,6 +1705,8 @@ int main()
       log_text.append(buf, got);
     std::fclose(lf);
     }
+  check(relaid_calls > 0, "the game's draws reached the runtime's re-pointed entries");
+  check(log_text.find("context: a table of edworld's own") != std::string::npos, "the log says the context is on edworld's table");
   check(log_text.find("asked by test_foreign.dll from outside the game's folder: not followed") != std::string::npos,
         "an overlay's device from another folder is not followed");
   check(log_text.find("asked by test_app.exe") != std::string::npos, "the game's device is asked by the exe");

@@ -43,6 +43,10 @@ namespace edworld
     std::uint32_t frame_gap_us{2500};
     ///\brief log the hash of every vertex shader the game creates (discovery)
     bool log_all_vs{false};
+    ///\brief how the game's context is watched: 0 auto (a table of edworld's own when the context's methods are the
+    /// system d3d11's, else in place), 1 in place (its own table patched), 2 a table of edworld's own whatever the
+    /// context is
+    std::uint32_t context_hook{0};
     ///\brief vertex shaders looked into by a whole-frame dump: their bytecode (kept from creation) and, for each of
     /// their draws, the index and vertex buffers and the t33 record pool are written too, and what their pixel shader
     /// reads (t0..t7) is listed and copied; the target's hologram: its model drawn to 512x512 surfaces (5B0068AF), laid
@@ -336,6 +340,9 @@ namespace edworld
 
   ///\brief once per device the game gets from the chain
   auto attach_to_device(ID3D11Device * device) noexcept -> void;
+  ///\brief the system copy of d3d11.dll edworld loaded (Windows' own, under Proton DXVK's); null when it could not
+  [[nodiscard]]
+  auto system_d3d11() noexcept -> HMODULE;
 
   ///\brief once per process, on its own thread: the machine (Windows or Wine, the processor, the memory, the graphics
   /// cards with their drivers and displays) and the game's graphics options, for a player's log to say what it ran on

@@ -246,6 +246,7 @@ namespace edworld
       {"log_interval_ms", &settings_t::log_interval_ms},
       {"frame_gap_us", &settings_t::frame_gap_us},
       {"log_all_vs", &settings_t::log_all_vs},
+      {"context_hook", &settings_t::context_hook},
       {"watch_vs", list_field_t{&settings_t::watch_vs}},
       {"dump_vs", list_field_t{&settings_t::dump_vs}},
     };
