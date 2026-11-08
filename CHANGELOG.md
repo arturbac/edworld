@@ -2,28 +2,28 @@
 
 ## Unreleased
 
-- **(test) The clouds with depth from afar in fewer steps.** The same shape as near, without the fine shape that does
-  not reach that far, so nothing changes where near and far meet: near steps under `clouds_near_from` over the surface,
-  far ones (`clouds_far_steps`) over `clouds_near_to`, a blend between. `clouds_mode` forces either, and `clouds_debug = 1`
-  paints the pixels they are worked out for; these five are read again while the game runs, at most once a second.
-  Looked at once in the game (2026-11-08): the switch reads, the magenta shows only the planet's disc.
-- **(test) No clouds on a planet a few dozen pixels across:** under `clouds_hide_below_px` (40) none, from
-  `clouds_full_from_px` (120) all, a blend between; there they only stood out of the edge as lumps.
-- **(test) The steps follow the way through the clouds:** at the planet's edge, seen edge on, the way is long and a fixed
-  count of steps jumped over the lumps, which flickered as the ship moved; now a step is at most half the smallest lumps,
-  up to `clouds_max_steps` (64), and at least the count for near or far. These three are read again while the game
-  runs too. Looked at once in the game (2026-11-08): the disc's middle stays still, the lumps out of its edge flicker.
-- **(test) Fewer clouds at the planet's edge:** out of the edge the layer stood a pixel or two thin and its lumps
-  flickered as the ship moved. None there while the layer is thinner on the screen than `clouds_edge_hide_px` (2), all
-  from `clouds_edge_full_px` (8); on the disc the same within `clouds_edge_band_px` (16) of the edge, all further in.
-  Read again while the game runs. Looked at once in the game (2026-11-08): no lumps out of the edge any more.
-- **(test) The game's fade of its atmosphere:** on the way in the clouds with depth faded out for a moment about 8.3 Mm
-  from a planet, where the game changes the planet's detail, while still drawn. `clouds_debug = 2` paints the game's
-  fade (green at 1, red at 0), `clouds_game_fade = 0` keeps the clouds from following it; both read again while the
-  game runs. Not yet looked at in the game.
-- **(test) The planet's size on the screen whichever way the ship looks:** it was worked out from one number of the
-  view's matrix, which also held the view's turn, so the clouds came in up to a few times later than set, and suddenly
-  as the ship turned (2026-11-08: at 71 pixels instead of 20). The edge's thresholds count true pixels now too.
+## 1.2.0-beta.6
+
+- **The clouds with depth come in smoothly as you fly in.** None while the planet is narrower on the screen than
+  `clouds_hide_below_px` (20) pixels, all of them from `clouds_full_from_px` (80), a blend between; before, a planet a
+  few dozen pixels across showed only big white lumps, some beside it.
+- **No lumps standing out of the planet's edge.** Seen from afar the layer is a pixel or two thin there and its lumps
+  flickered as the ship moved: none out of the edge while the layer is thinner on the screen than
+  `clouds_edge_hide_px` (2) pixels, all from `clouds_edge_full_px` (8); on the disc the same within
+  `clouds_edge_band_px` (16) of the edge. The disc's middle stays as it was.
+- **The planet's size on the screen whichever way the ship looks:** it followed the ship's heading, so the clouds came
+  in later than set, and suddenly as the ship turned.
+- **From afar the same shape in fewer steps** (`clouds_far_steps`, 6), near ones under `clouds_near_from` (0.25 of the
+  radius) over the surface, a blend up to `clouds_near_to` (0.5); the steps follow the way through the layer, up to
+  `clouds_max_steps` (64), many at the edge seen edge on.
+- **(test) Settings to look into the clouds while the game runs:** `clouds_mode` forces near or far, `clouds_debug = 1`
+  paints the pixels the clouds are worked out for, `2` the game's fade of its atmosphere, `clouds_game_fade = 0` keeps
+  the clouds from following that fade. Once, on the way in, the clouds faded out for a moment about 8.3 Mm from a
+  planet; on later flights it did not come back and the game's fade stayed full. These and all the thresholds above
+  are read again from the ini while the game runs, at most once a second.
+- The pixels of the thresholds are the picture the game draws, before its upscaling: with FSR or a lower
+  supersampling they are fewer than the screen's. Looked at in the game on one commander's screen (9000x2160 with FSR);
+  not yet on another setup.
 
 ## 1.2.0-beta.5
 

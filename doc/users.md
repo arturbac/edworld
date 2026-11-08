@@ -119,9 +119,9 @@ zip is the same start, by hand.
 | `clouds_near_from`, `clouds_near_to` | `0.25`, `0.5` | near steps under the first height over the surface, far ones over the second, a blend between; parts of the planet's radius |
 | `clouds_debug` | `0` | (test) `1` = every pixel the clouds with depth are worked out for painted magenta, `2` = the game's fade of its atmosphere painted, green at 1, red at 0 |
 | `clouds_game_fade` | `1` | (test) `1` = the clouds with depth fade with the game's own atmosphere, `0` = never |
-| `clouds_hide_below_px`, `clouds_full_from_px` | `40`, `120` | (test) no clouds with depth while the planet is narrower on the screen than the first many pixels, all of them from the second, a blend between |
+| `clouds_hide_below_px`, `clouds_full_from_px` | `20`, `80` | no clouds with depth while the planet is narrower on the screen than the first many pixels, all of them from the second, a blend between; pixels of the picture the game draws, before its upscaling |
 | `clouds_max_steps` | `64` | (test) the most steps through the clouds with depth: the steps follow the way's length through them, many at the planet's edge |
-| `clouds_edge_hide_px`, `clouds_edge_full_px`, `clouds_edge_band_px` | `2`, `8`, `16` | (test) no clouds with depth out of the planet's edge while their layer is thinner on the screen than the first many pixels, all from the second; on the disc the same within the third many pixels of the edge |
+| `clouds_edge_hide_px`, `clouds_edge_full_px`, `clouds_edge_band_px` | `2`, `8`, `16` | no clouds with depth out of the planet's edge while their layer is thinner on the screen than the first many pixels, all from the second; on the disc the same within the third many pixels of the edge |
 | `list_top`, `list_x` | `500`, `1540` | where the list starts under the panel (pixels of the panel's surface) |
 | `list_rows` | `7` | factions listed at most |
 | `edsm` | `1` | `0` = never ask EDSM (no list then without EHT) |

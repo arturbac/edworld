@@ -145,8 +145,8 @@ namespace edworld
     std::uint32_t clouds_game_fade{1};
     ///\brief (PoC) no clouds while the planet is smaller on the screen than this many pixels across, all of them from the
     /// next; a blend between. A planet of a few dozen pixels showed only lumps standing out of its edge (2026-11-08)
-    float clouds_hide_below_px{40.f};
-    float clouds_full_from_px{120.f};
+    float clouds_hide_below_px{20.f};
+    float clouds_full_from_px{80.f};
     ///\brief (PoC) the most steps a ray takes: through the layer's edge, seen edge on, the way is long and a fixed count of
     /// steps jumped over the lumps, which flickered there as the ship moved (2026-11-08); the steps follow the way's length
     float clouds_max_steps{64.f};
