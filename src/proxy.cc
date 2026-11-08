@@ -12,6 +12,8 @@
 #include <cstdarg>
 #include <cstring>
 #include <ctime>
+#include <iterator>
+#include <string_view>
 #include <mutex>
 
 extern "C"
@@ -154,6 +156,7 @@ namespace
     edworld::load_settings(directory_from(L"EDLOADER_CONFIG_DIR"), log_dir);
     edworld::log_open(log_dir);
     edworld::log_line("%S %s, read-only d3d11 observer", edworld::plugin_name, EDWORLD_VERSION);
+    edworld::log_machine();
     edworld::complete_settings(directory_from(L"EDLOADER_CONFIG_DIR"));
     chain_next();
     return TRUE;
@@ -178,13 +181,69 @@ namespace
 
   bool loop_reported{};
 
-  ///\brief the first few device creations, to see which of them made the device edworld attaches to
-  auto log_create(char const * what, HRESULT hr, bool asked, bool made, bool nested) noexcept -> void
+  enum struct creator_e : std::uint8_t
+    {
+    game,     ///< the game's exe or a module beside it
+    foreign,  ///< a module elsewhere: an overlay (Epic's, Discord's, Steam's) making a device of its own
+    unknown   ///< nothing on the stack told: taken as the game's, as before
+    };
+
+  struct creator_t
+    {
+    creator_e kind{creator_e::unknown};
+    char name[MAX_PATH]{"unknown"};
+    };
+
+  ///\brief the folder of a module's file, with its last backslash
+  auto folder_of(wchar_t const * path) noexcept -> std::wstring_view
+    {
+    std::wstring_view const p{path};
+    auto const slash{p.find_last_of(L"\\/")};
+    return slash == std::wstring_view::npos ? std::wstring_view{} : p.substr(0, slash + 1);
+    }
+
+  ///\brief who asks for a device: the first module on the stack that is neither edworld nor a d3d11 proxy (one that
+  /// exports D3D11CreateDevice: edloader, EDHM, EDVR, the system copy); code outside any module (a hook's trampoline) is
+  /// passed over. The game's when that module lies in the game exe's folder, foreign elsewhere
+  auto find_creator() noexcept -> creator_t
+    {
+    creator_t c{};
+    void * frames[48]{};
+    USHORT const n{RtlCaptureStackBackTrace(1, static_cast<DWORD>(std::size(frames)), frames, nullptr)};
+    for(USHORT i{}; i != n; ++i)
+      {
+      HMODULE m{};
+      if(not GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                static_cast<LPCWSTR>(frames[i]), &m)
+         or not m)
+        continue;
+      if(m == self_module or GetProcAddress(m, "D3D11CreateDevice"))
+        continue;
+      wchar_t path[MAX_PATH]{};
+      wchar_t exe[MAX_PATH]{};
+      if(not GetModuleFileNameW(m, path, MAX_PATH) or not GetModuleFileNameW(nullptr, exe, MAX_PATH))
+        return c;
+      std::wstring_view const folder{folder_of(path)};
+      std::wstring_view const exe_folder{folder_of(exe)};
+      bool const beside_game{not exe_folder.empty() and folder.size() == exe_folder.size()
+                             and CompareStringOrdinal(folder.data(), static_cast<int>(folder.size()), exe_folder.data(),
+                                                      static_cast<int>(exe_folder.size()), TRUE)
+                                   == CSTR_EQUAL};
+      c.kind = beside_game ? creator_e::game : creator_e::foreign;
+      WideCharToMultiByte(CP_UTF8, 0, path + folder.size(), -1, c.name, sizeof c.name - 1, nullptr, nullptr);
+      return c;
+      }
+    return c;
+    }
+
+  ///\brief the first few device creations, to see which of them made the device edworld attaches to, and who asked
+  auto log_create(char const * what, HRESULT hr, bool asked, bool made, bool nested, creator_t const & by) noexcept -> void
     {
     static int told{};
-    if(told++ < 8)
-      edworld::log_line("%s: hr 0x%08lX, device %s%s", what, static_cast<unsigned long>(hr),
-                        made ? "made" : asked ? "asked, none made" : "not asked", nested ? " (nested, not attached)" : "");
+    if(told++ < 8 or (made and by.kind == creator_e::foreign))
+      edworld::log_line("%s: hr 0x%08lX, device %s%s, asked by %s%s", what, static_cast<unsigned long>(hr),
+                        made ? "made" : asked ? "asked, none made" : "not asked", nested ? " (nested, not attached)" : "",
+                        by.name, by.kind == creator_e::foreign ? " from outside the game's folder: not followed" : "");
     }
   }  // namespace
 
@@ -215,10 +274,11 @@ extern "C" HRESULT WINAPI edvr_impl_D3D11CreateDevice(
     }
   if(not target)
     return E_FAIL;
+  creator_t const by{find_creator()};
   HRESULT const hr{target(adapter, driver_type, software, flags, levels, level_count, sdk, device, level, context)};
   bool const made{SUCCEEDED(hr) and device and *device};
-  log_create("D3D11CreateDevice", hr, device != nullptr, made, depth.reentrant());
-  if(made and not depth.reentrant())
+  log_create("D3D11CreateDevice", hr, device != nullptr, made, depth.reentrant(), by);
+  if(made and not depth.reentrant() and by.kind != creator_e::foreign)
     edworld::attach_to_device(*device);
   return hr;
   }
@@ -243,12 +303,13 @@ extern "C" HRESULT WINAPI edvr_impl_D3D11CreateDeviceAndSwapChain(
   create_device_swap_fn target{depth.reentrant() ? system_create_swap : next_create_swap};
   if(not target)
     return E_FAIL;
+  creator_t const by{find_creator()};
   HRESULT const hr{
     target(adapter, driver_type, software, flags, levels, level_count, sdk, swap_desc, swap, device, level, context)
   };
   bool const made{SUCCEEDED(hr) and device and *device};
-  log_create("D3D11CreateDeviceAndSwapChain", hr, device != nullptr, made, depth.reentrant());
-  if(made and not depth.reentrant())
+  log_create("D3D11CreateDeviceAndSwapChain", hr, device != nullptr, made, depth.reentrant(), by);
+  if(made and not depth.reentrant() and by.kind != creator_e::foreign)
     edworld::attach_to_device(*device);
   return hr;
   }

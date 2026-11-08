@@ -1,5 +1,6 @@
 # The smoke test's programs (tools/test.sh runs them under wine): test_app.exe per build (the test's shaders
-# compiled by fxc), and fake_next.dll, a next element that calls d3d11.dll by name.
+# compiled by fxc), fake_next.dll, a next element that calls d3d11.dll by name, and test_foreign.dll, an overlay
+# making a device of its own from another folder.
 set(test_gen "${CMAKE_BINARY_DIR}/test")
 file(MAKE_DIRECTORY "${test_gen}")
 set(test_shaders "")
@@ -30,6 +31,15 @@ target_compile_definitions(fake_next PRIVATE WIN32_LEAN_AND_MEAN)
 target_compile_options(fake_next PRIVATE /W4)
 target_link_options(fake_next PRIVATE /EXPORT:D3D11CreateDevice=fake_D3D11CreateDevice)
 set_target_properties(fake_next PROPERTIES
+  PREFIX ""
+  RUNTIME_OUTPUT_DIRECTORY "${test_gen}"
+  ARCHIVE_OUTPUT_DIRECTORY "${test_gen}/lib")
+
+add_library(test_foreign SHARED test_foreign.cc)
+target_compile_definitions(test_foreign PRIVATE WIN32_LEAN_AND_MEAN)
+target_compile_options(test_foreign PRIVATE /W4)
+target_link_libraries(test_foreign PRIVATE d3d11)
+set_target_properties(test_foreign PROPERTIES
   PREFIX ""
   RUNTIME_OUTPUT_DIRECTORY "${test_gen}"
   ARCHIVE_OUTPUT_DIRECTORY "${test_gen}/lib")

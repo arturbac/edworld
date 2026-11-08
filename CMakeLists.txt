@@ -103,12 +103,12 @@ target_compile_options(edworld_thunks PRIVATE /nologo)
 add_dependencies(edworld_thunks edworld_generated)
 
 set(edworld_sources src/proxy.cc src/hooks.cc src/settings_log.cc src/game_state.cc src/panel_patch.cc
-                    src/shader_catalog.cc)
+                    src/shader_catalog.cc src/diagnostics.cc)
 
 foreach(variant edworld edworld_eht)
   add_library(${variant} SHARED ${edworld_sources} "${gen}/edvr_d3d11.def")
   target_link_libraries(${variant} PRIVATE edworld_imgui edworld_thunks
-                        kernel32 user32 dxguid winhttp shell32 ole32)
+                        kernel32 user32 advapi32 dxgi dxguid winhttp shell32 ole32)
   target_compile_definitions(${variant} PRIVATE UNICODE _UNICODE $<$<STREQUAL:${variant},edworld_eht>:EDWORLD_EHT>)
   target_compile_options(${variant} PRIVATE /W4 "/FI${gen}/edworld_version.h")
   target_link_options(${variant} PRIVATE /DEBUG:FULL $<$<NOT:$<CONFIG:Debug>>:/OPT:REF /OPT:ICF>)

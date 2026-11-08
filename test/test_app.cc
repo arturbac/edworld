@@ -1361,6 +1361,13 @@ int main()
   if(FAILED(hr))
     return 2;
 
+  // an overlay makes a device of its own after the game's (overlay\test_foreign.dll, beside by tools/test.sh): edworld
+  // must stay with the game's device, the panels below are drawn on it
+  using foreign_fn = HRESULT (*)();
+  HMODULE const foreign{LoadLibraryW(L"overlay\\test_foreign.dll")};
+  auto const make_foreign{foreign ? reinterpret_cast<foreign_fn>(GetProcAddress(foreign, "foreign_make_device")) : nullptr};
+  check(make_foreign and SUCCEEDED(make_foreign()), "an overlay's own device made through edworld");
+
   ID3D11VertexShader * panel_vs{};
   ID3D11VertexShader * other_vs{};
   ID3D11PixelShader * ps{};
@@ -1644,6 +1651,9 @@ int main()
       log_text.append(buf, got);
     std::fclose(lf);
     }
+  check(log_text.find("asked by test_foreign.dll from outside the game's folder: not followed") != std::string::npos,
+        "an overlay's device from another folder is not followed");
+  check(log_text.find("asked by test_app.exe") != std::string::npos, "the game's device is asked by the exe");
   check(log_text.find("probe: a jump charges") != std::string::npos, "probe armed by a charge without panel draws");
   check(log_text.find("PS t2 3072x660") != std::string::npos, "probe names the draw sampling a panel-sized surface");
   check(log_text.find("probe: done, 2 draw(s) seen, 2 with a panel-sized surface") != std::string::npos, "probe closes after its window");
@@ -1752,7 +1762,8 @@ int main()
     {
     using calls_fn = LONG (*)();
     auto const calls{reinterpret_cast<calls_fn>(GetProcAddress(fake, "fake_next_calls"))};
-    check(calls and calls() == 1, "chained proxy called once, its by-name call routed to the system copy");
+    // once for the game's device, once for the overlay's
+    check(calls and calls() == 2, "chained proxy called once a device, its by-name call routed to the system copy");
     }
   if constexpr(not with_eht)
     {
