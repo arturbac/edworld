@@ -21,6 +21,9 @@
   from a planet, where the game changes the planet's detail, while still drawn. `clouds_debug = 2` paints the game's
   fade (green at 1, red at 0), `clouds_game_fade = 0` keeps the clouds from following it; both read again while the
   game runs. Not yet looked at in the game.
+- **(test) The planet's size on the screen whichever way the ship looks:** it was worked out from one number of the
+  view's matrix, which also held the view's turn, so the clouds came in up to a few times later than set, and suddenly
+  as the ship turned (2026-11-08: at 71 pixels instead of 20). The edge's thresholds count true pixels now too.
 
 ## 1.2.0-beta.5
 

@@ -187,7 +187,10 @@ float4 ps_main(ps_in input) : SV_TARGET
     discard;
 
   // a planet of a few dozen pixels across shows no clouds, only lumps standing out of its edge: none until it is larger
-  float across = 2.f * planet / max(length(centre), planet) * abs(frame_rows[270].x) * cloud_view_width * 0.5f;
+  // rows 270..272 take a place in the world's axes: the screen's x of one metre is the length of their x, whichever way
+  // the ship looks. Their x alone also held the turn of the view and the size followed the ship's heading (2026-11-08)
+  float x_scale = length(float3(frame_rows[270].x, frame_rows[271].x, frame_rows[272].x));
+  float across = 2.f * planet / max(length(centre), planet) * x_scale * cloud_view_width * 0.5f;
   float shown = smoothstep(cloud_hide_px, cloud_full_px, across);
   // out of the edge the layer stands as thin as its height on the screen, a pixel or two of the half size picture whose
   // lumps flickered as the ship moved, while the disc's middle stayed still (2026-11-08): none there while it is that thin,
