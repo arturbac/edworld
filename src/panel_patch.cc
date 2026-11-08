@@ -1383,9 +1383,11 @@ namespace edworld
       cs.device = device;
       }
 
-    ///\brief the surface of the given size this draw samples (PS t2, else t1), AddRef'd; none when it is another
-    auto surface_sampled(ID3D11DeviceContext * ctx, std::uint32_t width, std::uint32_t height, D3D11_TEXTURE2D_DESC & d)
-      -> ID3D11Texture2D *
+    ///\brief the surface of the given size this draw samples (PS t2, else t1), AddRef'd; none when it is another. The
+    /// size is the one at 2160 rows; a surface the game drew smaller or larger for another height (surface_scale) is
+    /// taken too, its scale in `scale`
+    auto surface_sampled(ID3D11DeviceContext * ctx, std::uint32_t width, std::uint32_t height, D3D11_TEXTURE2D_DESC & d,
+                         float * scale = nullptr) -> ID3D11Texture2D *
       {
       for(UINT const slot: {2u, 1u})
         {
@@ -1407,11 +1409,31 @@ namespace edworld
         if(not t)
           continue;
         t->GetDesc(&d);
-        if(d.Width == width and d.Height == height)
+        if(auto const k{surface_scale(width, height, d.Width, d.Height)}; k)
+          {
+          if(scale)
+            *scale = *k;
           return t;
+          }
         t->Release();
         }
       return nullptr;
+      }
+
+    ///\brief the draw data made in the pixels of a surface's size at 2160 rows, laid on the surface drawn at k times it
+    auto scale_draw_data(float k) -> void
+      {
+      ImDrawData * const dd{ImGui::GetDrawData()};
+      if(not dd or k == 1.f)
+        return;
+      for(ImDrawList * const l: dd->CmdLists)
+        for(ImDrawVert & v: l->VtxBuffer)
+          {
+          v.pos.x *= k;
+          v.pos.y *= k;
+          }
+      dd->ScaleClipRects(ImVec2{k, k});
+      dd->DisplaySize = ImVec2{dd->DisplaySize.x * k, dd->DisplaySize.y * k};
       }
 
     auto compass_mask_for(D3D11_TEXTURE2D_DESC const & surface) -> ID3D11ShaderResourceView *
@@ -2504,7 +2526,8 @@ namespace edworld
     if(s.compass == 0 or frame == cs.drawn_frame)
       return;
     D3D11_TEXTURE2D_DESC d{};
-    ID3D11Texture2D * const tex{surface_sampled(ctx, s.compass_surface_width, s.compass_surface_height, d)};
+    float k{1.f};
+    ID3D11Texture2D * const tex{surface_sampled(ctx, s.compass_surface_width, s.compass_surface_height, d, &k)};
     if(not tex)
       return;
     if(not create(device, ctx) or not r.font)
@@ -2516,12 +2539,14 @@ namespace edworld
       compass_reset(device);
     cs.drawn_frame = frame;
 
-    // the disc's square: read the copy made earlier, then copy this frame's (before edworld draws anything)
-    auto const half{static_cast<std::int32_t>(std::ceil(s.compass_radius * 1.4f))};
-    std::int32_t const left{std::max(0, static_cast<std::int32_t>(s.compass_x) - half)};
-    std::int32_t const top{std::max(0, static_cast<std::int32_t>(s.compass_y) - half)};
-    std::int32_t const right{std::min(static_cast<std::int32_t>(d.Width), static_cast<std::int32_t>(s.compass_x) + half)};
-    std::int32_t const bottom{std::min(static_cast<std::int32_t>(d.Height), static_cast<std::int32_t>(s.compass_y) + half)};
+    // the disc's square: read the copy made earlier, then copy this frame's (before edworld draws anything). On the surface
+    // in its pixels (k times the settings'); the reading goes back to the settings' pixels, and all after it stays there
+    float const disc_x{s.compass_x * k}, disc_y{s.compass_y * k}, disc_radius{s.compass_radius * k};
+    auto const half{static_cast<std::int32_t>(std::ceil(disc_radius * 1.4f))};
+    std::int32_t const left{std::max(0, static_cast<std::int32_t>(disc_x) - half)};
+    std::int32_t const top{std::max(0, static_cast<std::int32_t>(disc_y) - half)};
+    std::int32_t const right{std::min(static_cast<std::int32_t>(d.Width), static_cast<std::int32_t>(disc_x) + half)};
+    std::int32_t const bottom{std::min(static_cast<std::int32_t>(d.Height), static_cast<std::int32_t>(disc_y) + half)};
     if(right <= left or bottom <= top)
       {
       tex->Release();
@@ -2561,9 +2586,11 @@ namespace edworld
           double const now_s{seconds_now()};
           bool const fresh{compass_fresh(cs.have_shown, now_s - cs.shown_at, s.compass_stale_s)};
           // a flash is told by the hue of the dot shown, while it holds: a stale one (another theme since) tells nothing
-          cs.reading = read_compass(static_cast<std::uint8_t const *>(m.pData), m.RowPitch, static_cast<std::int32_t>(cw),
-                                    static_cast<std::int32_t>(ch), s.compass_x - static_cast<float>(left),
-                                    s.compass_y - static_cast<float>(top), s.compass_radius * 1.25f, fresh ? cs.dot_hue : -1.f);
+          cs.reading = compass_reading_at_base(
+            read_compass(static_cast<std::uint8_t const *>(m.pData), m.RowPitch, static_cast<std::int32_t>(cw), static_cast<std::int32_t>(ch),
+                         disc_x - static_cast<float>(left), disc_y - static_cast<float>(top), disc_radius * 1.25f, fresh ? cs.dot_hue : -1.f),
+            k
+          );
           cs.have_reading = true;
           // the gate: no further from the reading shown than the ship can turn since; open once that one went stale
           bool gated{};
@@ -2629,7 +2656,7 @@ namespace edworld
       tex->Release();
       return;
       }
-    auto const gx{static_cast<UINT>(s.compass_x + s.compass_radius)}, gy{static_cast<UINT>(s.compass_y)};
+    auto const gx{static_cast<UINT>(disc_x + disc_radius)}, gy{static_cast<UINT>(disc_y)};
     if(gx + 1u < d.Width and gy + 1u < d.Height)
       {
       D3D11_BOX const g{gx, gy, 0, gx + 1u, gy + 1u, 1};
@@ -2664,7 +2691,8 @@ namespace edworld
     compass_reading_t const & c{cs.shown};
     compass_angles_t const a{compass_angles(c.x, c.y, s.compass_radius, c.filled)};
 
-    float const sw{static_cast<float>(d.Width)}, sh{static_cast<float>(d.Height)};
+    // drawn in the settings' pixels (the surface's at 2160 rows), laid on the surface by scale_draw_data
+    float const sw{static_cast<float>(d.Width) / k}, sh{static_cast<float>(d.Height) / k};
     ImGui::SetCurrentContext(r.imgui);
     ImGuiIO & io{ImGui::GetIO()};
     io.DisplaySize = ImVec2{sw, sh};
@@ -2689,8 +2717,8 @@ namespace edworld
           }
       // where the reading looks: the disc's rim and the square copied
       dl->AddCircle(ImVec2{s.compass_x, s.compass_y}, s.compass_radius, IM_COL32(255, 128, 0, 255), 64, 1.f);
-      dl->AddRect(ImVec2{static_cast<float>(left), static_cast<float>(top)}, ImVec2{static_cast<float>(right), static_cast<float>(bottom)},
-                  IM_COL32(255, 128, 0, 255));
+      dl->AddRect(ImVec2{static_cast<float>(left) / k, static_cast<float>(top) / k},
+                  ImVec2{static_cast<float>(right) / k, static_cast<float>(bottom) / k}, IM_COL32(255, 128, 0, 255));
       }
     // the angles: DN/UP below or above the wings' plane, LT/RT left or right of the nose; BEHIND under them, orange
     float y{s.compass_text_y};
@@ -2742,6 +2770,7 @@ namespace edworld
       yi += ground_text(dl, x0, yi, size, info, line);
       }
     ImGui::Render();
+    scale_draw_data(k);
 
     backup_t b;
     save(ctx, b);
@@ -2756,7 +2785,8 @@ namespace edworld
     if(not cs.told)
       {
       cs.told = true;
-      log_line("compass: first drawn (mode %u, surface %ux%u, disc %.0f,%.0f r %.0f, text at %.0f,%.0f)", s.compass, d.Width, d.Height,
+      log_line("compass: first drawn (mode %u, surface %ux%u = %.3f of its size at 2160 rows, disc %.0f,%.0f r %.0f, text at %.0f,%.0f; "
+               "in the settings' pixels)", s.compass, d.Width, d.Height, static_cast<double>(k),
                static_cast<double>(s.compass_x), static_cast<double>(s.compass_y), static_cast<double>(s.compass_radius),
                static_cast<double>(s.compass_text_x), static_cast<double>(s.compass_text_y));
       }
@@ -3196,6 +3226,7 @@ namespace edworld
       std::uint32_t given_pad{};       ///< the pad last taken from the notice and its grant (unix ms)
       std::int64_t given_ms{};
       ULONGLONG compare_from_ms{};     ///< edworld_eht: since then the taken pad waits for the data source's, 0 = none
+      bool told_scaled{};              ///< the HUD surface at another size than 2200x1800 told
       };
 
     pad_text_state_t pts;
@@ -3284,9 +3315,22 @@ namespace edworld
     if(frame == pts.copied_frame or (not pts.copied and frame % pad_text_every != 0))
       return;
     D3D11_TEXTURE2D_DESC d{};
-    ID3D11Texture2D * const tex{surface_sampled(ctx, 2200u, 1800u, d)};
+    float k{1.f};
+    ID3D11Texture2D * const tex{surface_sampled(ctx, 2200u, 1800u, d, &k)};
     if(not tex)
       return;
+    if(k != 1.f)
+      {
+      // the tower's box and its digits are known at 2160 rows only: at another size nothing is read
+      if(not pts.told_scaled)
+        {
+        pts.told_scaled = true;
+        log_line("pad text: the HUD surface is %ux%u (%.3f of its size at 2160 rows); the pad's number is read at 2200x1800 only",
+                 d.Width, d.Height, static_cast<double>(k));
+        }
+      tex->Release();
+      return;
+      }
     if(pts.device != device or (pts.copy and pts.copy_format != d.Format))
       {
       release(pts.copy);

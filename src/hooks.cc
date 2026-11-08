@@ -9,6 +9,7 @@
 //    and map it frames later with DO_NOT_WAIT;
 //  - GetType before GetDesc; a fault in edworld's code disables edworld, never the game call.
 #include "blue_noise.h"
+#include "compass_math.h"
 #include "edworld_share.h"
 #include "gpu_timing.h"
 #include "game_state.h"
@@ -1810,10 +1811,13 @@ namespace edworld
       return 0;
       }
 
-    // the sizes of the panels' interface surfaces seen so far (measured in the game, 2026-10-04)
+    // the sizes of the panels' interface surfaces seen so far (measured in the game at 2160 rows, 2026-10-04), and the
+    // same drawn smaller or larger for another height (surface_scale); 2048x1280 only as it is: at another scale its
+    // shape is any 16:10 target's
     auto panel_sized(std::uint32_t w, std::uint32_t h) noexcept -> bool
       {
-      return (w == 3072 and h == 660) or (w == 2048 and h == 1280) or (w == 2200 and h == 1800) or (w == 1024 and h == 1534);
+      return (w == 2048 and h == 1280) or surface_scale(3072u, 660u, w, h) or surface_scale(2200u, 1800u, w, h)
+             or surface_scale(1024u, 1534u, w, h);
       }
 
     auto panel_surface_at(ID3D11DeviceContext * ctx, std::uint32_t & slot, std::uint32_t & w, std::uint32_t & h) noexcept -> bool

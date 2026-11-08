@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <numbers>
+#include <optional>
 
 namespace edworld
   {
@@ -183,6 +184,41 @@ namespace edworld
     {
     return r.found and not r.flash
            and (r.filled ? r.pixels >= l.filled_min and r.pixels <= l.filled_max : r.pixels >= l.hollow_min and r.pixels <= l.hollow_max);
+    }
+
+  ///\brief the game draws its HUD's surfaces at a size that follows the picture's height (measured 2026-11-08 in a
+  /// window: 2200x1800 at 2160 rows, 1466x1200 at 1440, 1100x900 at 1080; the width rounded down; the jump panel's
+  /// 3072x660 as 2048x440 and 1536x330): the scale of a surface of the given size against its size at 2160 rows,
+  /// none when it is another surface
+  [[nodiscard]]
+  constexpr auto surface_scale(std::uint32_t base_width, std::uint32_t base_height, std::uint32_t width, std::uint32_t height) noexcept
+    -> std::optional<float>
+    {
+    if(base_width == 0u or base_height == 0u)
+      return std::nullopt;
+    if(width == base_width and height == base_height)
+      return 1.f;
+    float const k{static_cast<float>(height) / static_cast<float>(base_height)};
+    if(k < 0.25f or k > 2.f)
+      return std::nullopt;
+    float const off{static_cast<float>(width) - static_cast<float>(base_width) * k};
+    if(off < -1.5f or off > 1.f)
+      return std::nullopt;
+    return k;
+    }
+
+  ///\brief a reading off a surface drawn at k times its size at 2160 rows, in that size's pixels: the settings (the
+  /// disc's radius, the dot's pixels) and all that follows the reading stay as they were measured
+  [[nodiscard]]
+  inline auto compass_reading_at_base(compass_reading_t r, float k) noexcept -> compass_reading_t
+    {
+    if(k > 0.f and k != 1.f)
+      {
+      r.x /= k;
+      r.y /= k;
+      r.pixels = static_cast<std::uint32_t>(std::lround(static_cast<float>(r.pixels) / (k * k)));
+      }
+    return r;
     }
 
   ///\brief the reading shown still holds: one came less than stale_s seconds ago (0: for ever, as before 2026-10-20)
