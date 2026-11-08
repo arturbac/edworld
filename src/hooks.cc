@@ -9,6 +9,7 @@
 //    and map it frames later with DO_NOT_WAIT;
 //  - GetType before GetDesc; a fault in edworld's code disables edworld, never the game call.
 #include "blue_noise.h"
+#include "compass_math.h"
 #include "edworld_share.h"
 #include "gpu_timing.h"
 #include "game_state.h"
@@ -20,6 +21,7 @@
 #include "shader_catalog.h"
 
 #include <d3d11_1.h>
+#include <d3d11_4.h>
 #include <malloc.h>
 
 #include <algorithm>
@@ -306,6 +308,225 @@ namespace edworld
       VirtualProtect(&table[slot], sizeof(void *), old, &old);
       FlushInstructionCache(GetCurrentProcess(), &table[slot], sizeof(void *));
       return true;
+      }
+
+    // ---- the game's context on a table of edworld's own (EDVR's LiveCopy, src/common/vtable_hook.h) ----
+    // Windows' d3d11 rewrites the entries of its own context table when it switches between its variants of the
+    // methods (the multithread protection; EDVR measured it 2026-08-18). A hook written into that table loses to it:
+    // a player's log (2026-11-08, Windows, the system d3d11 alone) had every draw slot back to d3d11.dll 30 s after
+    // the start and no draw seen. Here the context object points at a table of edworld's own instead: edworld's hooks
+    // in their slots, and in every slot a stub that jumps through the runtime's entry as it is at the call, so nothing
+    // is frozen and a rewrite of the runtime's table is followed. Only for a context whose methods are the system
+    // d3d11's: a wrapper's object (3Dmigoto, ReShade) keeps its table, patched in place as before.
+    constexpr std::size_t own_table_max{256};
+    constexpr std::size_t own_table_header{2};  // before entry 0: the C++ ABIs' type information, copied as it is
+    constexpr std::size_t own_stub_bytes{12};   // mov rax, &runtime[i]; jmp [rax]
+    constexpr std::size_t own_sample{96};
+
+    enum struct context_hook_e : std::uint8_t
+      {
+      in_place,
+      own_table
+      };
+
+    struct own_table_t
+      {
+      void ** runtime{};  ///< the table the context came with
+      void ** entries{};  ///< edworld's; the context points here
+      std::size_t count{};
+      };
+
+    own_table_t own_table{};
+    context_hook_e context_hook{context_hook_e::in_place};
+    ///\brief the runtime's entries of edworld's context slots when the context moved to the own table
+    struct own_watch_t
+      {
+      int slot;
+      void * at_start;
+      };
+
+    own_watch_t own_watch[9]{};
+    std::size_t own_watched{};
+    std::atomic<ID3D11Multithread *> multithread{};
+    bool multithread_at_start{};
+
+    [[nodiscard]]
+    auto readable(void const * p) noexcept -> bool
+      {
+      MEMORY_BASIC_INFORMATION m{};
+      return VirtualQuery(p, &m, sizeof m) == sizeof m and m.State == MEM_COMMIT
+             and not(m.Protect & (PAGE_GUARD | PAGE_NOACCESS));
+      }
+
+    [[nodiscard]]
+    auto executable(void const * p) noexcept -> bool
+      {
+      MEMORY_BASIC_INFORMATION m{};
+      return VirtualQuery(p, &m, sizeof m) == sizeof m and m.State == MEM_COMMIT
+             and (m.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY));
+      }
+
+    ///\brief the table's entries up to the first that is not code
+    [[nodiscard]]
+    auto table_length(void ** table) noexcept -> std::size_t
+      {
+      std::size_t n{};
+      while(n != own_table_max and readable(&table[n]) and executable(table[n]))
+        ++n;
+      return n;
+      }
+
+    [[nodiscard]]
+    auto entries_in(void ** table, std::size_t count, HMODULE module) noexcept -> std::size_t
+      {
+      std::size_t in{};
+      for(std::size_t i{}; i != count; ++i)
+        {
+        HMODULE m{};
+        if(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                              static_cast<LPCWSTR>(table[i]), &m)
+           and m == module)
+          ++in;
+        }
+      return in;
+      }
+
+    ///\brief a table of `count` stubs, each jumping through the runtime's entry of its slot at the call; null when the
+    /// memory could not be had (nothing changed then)
+    [[nodiscard]]
+    auto make_own_table(void ** runtime, std::size_t count) noexcept -> void **
+      {
+      auto * const words{static_cast<void **>(
+        VirtualAlloc(nullptr, (own_table_header + count) * sizeof(void *), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE)
+      )};
+      auto * const stubs{static_cast<std::uint8_t *>(
+        VirtualAlloc(nullptr, count * own_stub_bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE)
+      )};
+      if(not words or not stubs)
+        {
+        if(words)
+          VirtualFree(words, 0, MEM_RELEASE);
+        if(stubs)
+          VirtualFree(stubs, 0, MEM_RELEASE);
+        return nullptr;
+        }
+      for(std::size_t h{}; h != own_table_header; ++h)
+        if(void ** const at{runtime - own_table_header + h}; readable(at))
+          words[h] = *at;
+      void ** const entries{words + own_table_header};
+      for(std::size_t i{}; i != count; ++i)
+        {
+        std::uint8_t * const stub{stubs + i * own_stub_bytes};
+        void ** const slot{runtime + i};
+        stub[0] = 0x48;  // mov rax, imm64
+        stub[1] = 0xB8;
+        std::memcpy(stub + 2, &slot, sizeof slot);
+        stub[10] = 0xFF;  // jmp qword ptr [rax]
+        stub[11] = 0x20;
+        entries[i] = stub;
+        }
+      DWORD old{};
+      if(not VirtualProtect(stubs, count * own_stub_bytes, PAGE_EXECUTE_READ, &old))
+        {
+        VirtualFree(words, 0, MEM_RELEASE);
+        VirtualFree(stubs, 0, MEM_RELEASE);
+        return nullptr;
+        }
+      FlushInstructionCache(GetCurrentProcess(), stubs, count * own_stub_bytes);
+      return entries;
+      }
+
+    ///\brief the way the context is watched, said in the log: settings().context_hook, else by whose code its methods
+    /// are (EDVR's threshold: three quarters of the first 96 in the system d3d11 is the runtime's own object)
+    [[nodiscard]]
+    auto pick_context_hook(ID3D11DeviceContext * ctx) noexcept -> context_hook_e
+      {
+      void ** const table{*reinterpret_cast<void ***>(ctx)};
+      if(own_table.entries and table == own_table.entries)
+        return context_hook_e::own_table;
+      std::size_t const count{table_length(table)};
+      std::size_t const sample{std::min(count, own_sample)};
+      std::size_t const in_system{system_d3d11() ? entries_in(table, sample, system_d3d11()) : 0u};
+      std::uint32_t const asked{settings().context_hook};
+      bool const runtime_own{sample != 0 and in_system * 4 >= sample * 3};
+      bool const long_enough{count > static_cast<std::size_t>(slot_execute_command_list)};
+      bool const own{long_enough and (asked == 2 or (asked == 0 and runtime_own))};
+      char const * why{""};
+      if(not long_enough)
+        why = "; too short for a table of edworld's own";
+      else if(asked == 1)
+        why = "; context_hook = 1";
+      else if(asked == 2)
+        why = "; context_hook = 2";
+      log_line(
+        "context: %s (%zu of its first %zu methods are the system d3d11.dll's, %zu in its table%s)",
+        own ? "a table of edworld's own, each call through the runtime's entry as it is then" : "its own table patched in place",
+        in_system,
+        sample,
+        count,
+        why
+      );
+      return own ? context_hook_e::own_table : context_hook_e::in_place;
+      }
+
+    ///\brief one slot of the context: on edworld's table, or in place
+    [[nodiscard]]
+    auto hook_context(ID3D11DeviceContext * ctx, int slot, void * hook, void ** original) noexcept -> bool
+      {
+      if(context_hook != context_hook_e::own_table)
+        return patch_slot(ctx, slot, hook, original);
+      if(own_table.entries[slot] == hook)
+        return true;  // a second device on the same table: already ours, keep the first original
+      *original = own_table.entries[slot];  // the stub: whatever the runtime's table holds at the call
+      own_table.entries[slot] = hook;
+      if(own_watched != std::size(own_watch))
+        own_watch[own_watched++] = own_watch_t{slot, own_table.runtime[slot]};
+      return true;
+      }
+
+    ///\brief before the context's slots are hooked: the table of edworld's own made (or kept) for this context's table;
+    /// false = in place after all
+    [[nodiscard]]
+    auto prepare_own_table(ID3D11DeviceContext * ctx) noexcept -> bool
+      {
+      void ** const table{*reinterpret_cast<void ***>(ctx)};
+      if(own_table.entries and (table == own_table.entries or table == own_table.runtime))
+        return true;
+      std::size_t const count{table_length(table)};
+      void ** const entries{make_own_table(table, count)};
+      if(not entries)
+        {
+        log_line("context: the memory for a table of edworld's own could not be had (error %lu); patched in place",
+                 GetLastError());
+        return false;
+        }
+      if(own_table.entries)
+        log_line("context: another context table (%p after %p): a new table of edworld's own, the latest device wins",
+                 static_cast<void *>(table), static_cast<void *>(own_table.runtime));
+      own_table = own_table_t{table, entries, count};
+      own_watched = 0;
+      return true;
+      }
+
+    ///\brief the multithread protection decides which of the runtime's variants of the context's methods run; asked
+    /// at the start and in the census, never set
+    auto note_multithread(ID3D11Device * dev, ID3D11DeviceContext * ctx) noexcept -> void
+      {
+      if(multithread.load())
+        return;
+      ID3D11Multithread * mt{};
+      if(FAILED(ctx->QueryInterface(__uuidof(ID3D11Multithread), reinterpret_cast<void **>(&mt))))
+        mt = nullptr;
+      if(not mt and FAILED(dev->QueryInterface(__uuidof(ID3D11Multithread), reinterpret_cast<void **>(&mt))))
+        mt = nullptr;
+      if(not mt)
+        {
+        log_line("context: the multithread protection cannot be asked (no ID3D11Multithread)");
+        return;
+        }
+      multithread_at_start = mt->GetMultithreadProtected() != FALSE;
+      multithread.store(mt);  // kept for the process lifetime
+      log_line("context: the multithread protection is %s at the start", multithread_at_start ? "on" : "off");
       }
 
     // ---- the published record (edworld_eht) ----
@@ -1590,10 +1811,13 @@ namespace edworld
       return 0;
       }
 
-    // the sizes of the panels' interface surfaces seen so far (measured in the game, 2026-10-04)
+    // the sizes of the panels' interface surfaces seen so far (measured in the game at 2160 rows, 2026-10-04), and the
+    // same drawn smaller or larger for another height (surface_scale); 2048x1280 only as it is: at another scale its
+    // shape is any 16:10 target's
     auto panel_sized(std::uint32_t w, std::uint32_t h) noexcept -> bool
       {
-      return (w == 3072 and h == 660) or (w == 2048 and h == 1280) or (w == 2200 and h == 1800) or (w == 1024 and h == 1534);
+      return (w == 2048 and h == 1280) or surface_scale(3072u, 660u, w, h) or surface_scale(2200u, 1800u, w, h)
+             or surface_scale(1024u, 1534u, w, h);
       }
 
     auto panel_surface_at(ID3D11DeviceContext * ctx, std::uint32_t & slot, std::uint32_t & w, std::uint32_t & h) noexcept -> bool
@@ -4114,6 +4338,21 @@ namespace edworld
           census_hooks(ctx, hooks, sizeof hooks);
           log_line("census %s: device %u's draw hooks %s", when, i + 1, hooks);
           }
+      if(ID3D11Multithread * const mt{multithread.load()})
+        {
+        bool const now{mt->GetMultithreadProtected() != FALSE};
+        log_line("census %s: the multithread protection is %s%s", when, now ? "on" : "off",
+                 now != multithread_at_start ? " (it changed since the start)" : " (as at the start)");
+        }
+      if(context_hook == context_hook_e::own_table)
+        {
+        std::size_t moved{};
+        for(std::size_t i{}; i != own_watched; ++i)
+          if(own_table.runtime[own_watch[i].slot] != own_watch[i].at_start)
+            ++moved;
+        log_line("census %s: the runtime re-pointed %zu of edworld's %zu context slots in its own table since the start%s",
+                 when, moved, own_watched, moved ? "; followed through edworld's table" : "");
+        }
       }
 
     DWORD WINAPI census_thread(void *)
@@ -4156,16 +4395,22 @@ namespace edworld
     QueryPerformanceFrequency(&f);
     qpc_frequency = f.QuadPart ? f.QuadPart : 1;
     }
+    note_multithread(dev, ctx);
+    context_hook = pick_context_hook(ctx);
+    if(context_hook == context_hook_e::own_table and not prepare_own_table(ctx))
+      context_hook = context_hook_e::in_place;
     bool ok{true};
     ok = ok and patch_slot(dev, slot_create_vertex_shader, reinterpret_cast<void *>(&hook_create_vs), reinterpret_cast<void **>(&orig_create_vs));
-    ok = ok and patch_slot(ctx, slot_vs_set_shader, reinterpret_cast<void *>(&hook_vs_set_shader), reinterpret_cast<void **>(&orig_vs_set_shader));
-    ok = ok and patch_slot(ctx, slot_draw_indexed, reinterpret_cast<void *>(&hook_draw_indexed), reinterpret_cast<void **>(&orig_draw_indexed));
-    ok = ok and patch_slot(ctx, slot_draw, reinterpret_cast<void *>(&hook_draw), reinterpret_cast<void **>(&orig_draw));
-    ok = ok and patch_slot(ctx, slot_draw_indexed_instanced, reinterpret_cast<void *>(&hook_draw_indexed_instanced), reinterpret_cast<void **>(&orig_draw_indexed_instanced));
-    ok = ok and patch_slot(ctx, slot_draw_instanced, reinterpret_cast<void *>(&hook_draw_instanced), reinterpret_cast<void **>(&orig_draw_instanced));
-    ok = ok and patch_slot(ctx, slot_draw_indexed_instanced_indirect, reinterpret_cast<void *>(&hook_draw_indexed_instanced_indirect), reinterpret_cast<void **>(&orig_draw_indexed_instanced_indirect));
-    ok = ok and patch_slot(ctx, slot_draw_instanced_indirect, reinterpret_cast<void *>(&hook_draw_instanced_indirect), reinterpret_cast<void **>(&orig_draw_instanced_indirect));
-    ok = ok and patch_slot(ctx, slot_execute_command_list, reinterpret_cast<void *>(&hook_execute_command_list), reinterpret_cast<void **>(&orig_execute_command_list));
+    ok = ok and hook_context(ctx, slot_vs_set_shader, reinterpret_cast<void *>(&hook_vs_set_shader), reinterpret_cast<void **>(&orig_vs_set_shader));
+    ok = ok and hook_context(ctx, slot_draw_indexed, reinterpret_cast<void *>(&hook_draw_indexed), reinterpret_cast<void **>(&orig_draw_indexed));
+    ok = ok and hook_context(ctx, slot_draw, reinterpret_cast<void *>(&hook_draw), reinterpret_cast<void **>(&orig_draw));
+    ok = ok and hook_context(ctx, slot_draw_indexed_instanced, reinterpret_cast<void *>(&hook_draw_indexed_instanced), reinterpret_cast<void **>(&orig_draw_indexed_instanced));
+    ok = ok and hook_context(ctx, slot_draw_instanced, reinterpret_cast<void *>(&hook_draw_instanced), reinterpret_cast<void **>(&orig_draw_instanced));
+    ok = ok and hook_context(ctx, slot_draw_indexed_instanced_indirect, reinterpret_cast<void *>(&hook_draw_indexed_instanced_indirect), reinterpret_cast<void **>(&orig_draw_indexed_instanced_indirect));
+    ok = ok and hook_context(ctx, slot_draw_instanced_indirect, reinterpret_cast<void *>(&hook_draw_instanced_indirect), reinterpret_cast<void **>(&orig_draw_instanced_indirect));
+    ok = ok and hook_context(ctx, slot_execute_command_list, reinterpret_cast<void *>(&hook_execute_command_list), reinterpret_cast<void **>(&orig_execute_command_list));
+    if(ok and context_hook == context_hook_e::own_table and *reinterpret_cast<void ***>(ctx) != own_table.entries)
+      *reinterpret_cast<void ***>(ctx) = own_table.entries;  // from here every call of this context goes through edworld's table
     if(not ok)
       {
       log_line("attach: could not patch the device/context tables; observing nothing");

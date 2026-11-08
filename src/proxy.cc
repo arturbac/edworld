@@ -247,6 +247,8 @@ namespace
     }
   }  // namespace
 
+auto edworld::system_d3d11() noexcept -> HMODULE { return system_module; }
+
 extern "C" HRESULT WINAPI edvr_impl_D3D11CreateDevice(
   IDXGIAdapter * adapter,
   D3D_DRIVER_TYPE driver_type,

@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iterator>
+#include <optional>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -606,6 +607,37 @@ namespace
             "pad text: the game's samples read sure, as the data source named the pad");
       }
     }
+
+  // Windows' d3d11 rewrites its own context table's entries when it switches its variants of the methods (the
+  // multithread protection): stand-ins put into the runtime's table count the calls and call on
+  using relaid_draw_indexed_fn = void(STDMETHODCALLTYPE *)(ID3D11DeviceContext *, UINT, UINT, INT);
+  using relaid_draw_indexed_instanced_fn = void(STDMETHODCALLTYPE *)(ID3D11DeviceContext *, UINT, UINT, UINT, INT, UINT);
+  relaid_draw_indexed_fn runtime_draw_indexed{};
+  relaid_draw_indexed_instanced_fn runtime_draw_indexed_instanced{};
+  LONG relaid_calls{};
+
+  void STDMETHODCALLTYPE relaid_draw_indexed(ID3D11DeviceContext * c, UINT n, UINT s, INT b)
+    {
+    InterlockedIncrement(&relaid_calls);
+    runtime_draw_indexed(c, n, s, b);
+    }
+
+  void STDMETHODCALLTYPE relaid_draw_indexed_instanced(ID3D11DeviceContext * c, UINT n, UINT i, UINT s, INT b, UINT f)
+    {
+    InterlockedIncrement(&relaid_calls);
+    runtime_draw_indexed_instanced(c, n, i, s, b, f);
+    }
+
+  auto relay_slot(void ** table, int slot, void * stand_in, void ** was) -> bool
+    {
+    DWORD old{};
+    if(not VirtualProtect(&table[slot], sizeof(void *), PAGE_READWRITE, &old))
+      return false;
+    *was = table[slot];
+    table[slot] = stand_in;
+    VirtualProtect(&table[slot], sizeof(void *), old, &old);
+    return true;
+    }
   }  // namespace
 
 int main()
@@ -812,6 +844,40 @@ int main()
   paint(130, 255, 255, cx + 3.f, cy + 23.f, 7.f, 4.4f);
   auto const ring{edworld::read_compass(area.data(), w * 4u, w, h, cx, cy, radius * 1.25f)};
   check(ring.found and not ring.filled and edworld::compass_plausible(ring), "compass: a cyan ring on the orange disc, hollow and plausible");
+  // the HUD's surfaces follow the picture's height (measured in the game 2026-11-08): the scale, and a reading off the
+  // smaller surface back in the pixels the settings and limits were measured in
+  {
+  using edworld::surface_scale;
+  auto const near_k = [](std::optional<float> k, float want) { return k and std::fabs(*k - want) < 1e-3f; };
+  check(near_k(surface_scale(2200u, 1800u, 2200u, 1800u), 1.f) and near_k(surface_scale(2200u, 1800u, 1466u, 1200u), 2.f / 3.f)
+          and near_k(surface_scale(2200u, 1800u, 1100u, 900u), 0.5f) and near_k(surface_scale(3072u, 660u, 2048u, 440u), 2.f / 3.f)
+          and near_k(surface_scale(3072u, 660u, 1536u, 330u), 0.5f) and near_k(surface_scale(1024u, 1534u, 682u, 1022u), 0.666f),
+        "surface scale: the HUD's surfaces at 1440 and 1080 rows, as the game drew them");
+  check(not surface_scale(2200u, 1800u, 1920u, 1080u) and not surface_scale(2200u, 1800u, 1100u, 1100u)
+          and not surface_scale(3072u, 660u, 2200u, 1800u) and not surface_scale(2200u, 1800u, 200u, 164u),
+        "surface scale: another shape, or far smaller, is another surface");
+  // a filled dot drawn at half the size reads, at the base size, as the full-size one
+  constexpr std::int32_t hw{48}, hh{48};
+  std::vector<std::uint8_t> half(static_cast<std::size_t>(hw * hh * 4), 0);
+  float const hcx{24.f}, hcy{24.f}, hr{radius / 2.f};
+  for(std::int32_t y{}; y != hh; ++y)
+    for(std::int32_t x{}; x != hw; ++x)
+      {
+      float const dx{static_cast<float>(x) - hcx}, dy{static_cast<float>(y) - hcy};
+      std::uint8_t * const q{half.data() + static_cast<std::size_t>(y * hw + x) * 4u};
+      float const dd{std::sqrt(dx * dx + dy * dy)};
+      if(dd <= hr and dd >= hr - 1.5f)
+        q[0] = 255, q[1] = 140, q[2] = 0, q[3] = 255;  // the orange rim
+      float const ex{static_cast<float>(x) - (hcx + 5.f)}, ey{static_cast<float>(y) - (hcy + 10.f)};
+      if(ex * ex + ey * ey <= 3.6f * 3.6f)
+        q[0] = 130, q[1] = 255, q[2] = 255, q[3] = 255;  // the dot, 10 px below and 5 right at half size
+      }
+  auto const halved{edworld::read_compass(half.data(), hw * 4u, hw, hh, hcx, hcy, hr * 1.25f)};
+  auto const at_base{edworld::compass_reading_at_base(halved, 0.5f)};
+  check(halved.found and std::fabs(at_base.x - 10.f) < 0.6f and std::fabs(at_base.y - 20.f) < 0.6f and at_base.pixels > halved.pixels * 3u
+          and edworld::compass_plausible(at_base),
+        "compass: a dot read off the half-size surface is the full-size one in the settings' pixels");
+  }
   std::fill(area.begin(), area.end(), std::uint8_t{0});
   paint(130, 255, 255, cx, cy, radius + 2.f, radius - 3.f);  // the compass flashing in the dot's colour
   paint(130, 255, 255, cx + 1.f, cy + 21.f, 8.f, 0.f);
@@ -1368,6 +1434,29 @@ int main()
   auto const make_foreign{foreign ? reinterpret_cast<foreign_fn>(GetProcAddress(foreign, "foreign_make_device")) : nullptr};
   check(make_foreign and SUCCEEDED(make_foreign()), "an overlay's own device made through edworld");
 
+  // the runtime's own context table, from a device made past edworld (the system copy by its path); the game's context
+  // must be on a table of edworld's own, and the panels below are drawn after the runtime re-points two draw slots:
+  // edworld must still see them, and the draws must reach the runtime's new entries
+  {
+  wchar_t sys[MAX_PATH]{};
+  GetSystemDirectoryW(sys, MAX_PATH);
+  HMODULE const system_d3d11{LoadLibraryW((std::wstring{sys} + L"\\d3d11.dll").c_str())};
+  auto const system_create{
+    system_d3d11 ? reinterpret_cast<decltype(&D3D11CreateDevice)>(GetProcAddress(system_d3d11, "D3D11CreateDevice")) : nullptr
+  };
+  ID3D11Device * bare_dev{};
+  ID3D11DeviceContext * bare_ctx{};
+  if(system_create)
+    system_create(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &bare_dev, nullptr, &bare_ctx);
+  void ** const runtime_table{bare_ctx ? *reinterpret_cast<void ***>(bare_ctx) : nullptr};
+  check(runtime_table and *reinterpret_cast<void ***>(ctx) != runtime_table, "the game's context is on a table of edworld's own");
+  check(runtime_table
+          and relay_slot(runtime_table, 12, reinterpret_cast<void *>(&relaid_draw_indexed), reinterpret_cast<void **>(&runtime_draw_indexed))
+          and relay_slot(runtime_table, 20, reinterpret_cast<void *>(&relaid_draw_indexed_instanced),
+                         reinterpret_cast<void **>(&runtime_draw_indexed_instanced)),
+        "the runtime's table re-pointed (DrawIndexed, DrawIndexedInstanced)");
+  }
+
   ID3D11VertexShader * panel_vs{};
   ID3D11VertexShader * other_vs{};
   ID3D11PixelShader * ps{};
@@ -1651,6 +1740,8 @@ int main()
       log_text.append(buf, got);
     std::fclose(lf);
     }
+  check(relaid_calls > 0, "the game's draws reached the runtime's re-pointed entries");
+  check(log_text.find("context: a table of edworld's own") != std::string::npos, "the log says the context is on edworld's table");
   check(log_text.find("asked by test_foreign.dll from outside the game's folder: not followed") != std::string::npos,
         "an overlay's device from another folder is not followed");
   check(log_text.find("asked by test_app.exe") != std::string::npos, "the game's device is asked by the exe");
