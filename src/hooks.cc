@@ -1110,6 +1110,301 @@ namespace edworld
                static_cast<unsigned long long>(from), bd.ByteWidth, bd.StructureByteStride, bd.BindFlags, bd.MiscFlags);
       }
 
+#if defined(EDWORLD_EHT)
+    // ---- the atmosphere's fingerprint (PoC, 2026-11-09): what the game's shell of the atmosphere reads, to be put beside
+    // EHT's scans of the same planets afterwards (the planet's radius, VS cb1 row 126 x, is the journal's Radius) and to
+    // learn whether it tells the atmosphere's kind. At most every atmo_record_s seconds while the shell is drawn into the
+    // picture: its PS t0 (a table of the light through the atmosphere, 256x512 R11G11B10 at LQ-F b31-7 A 5) and its VS and
+    // PS constant buffers 0..3, copied on the GPU, read back a few frames later. Kept once a session per planet and octave
+    // of the camera's distance over the radius, to edworld_atmo beside the log: <stamp>.atmo (the constants) and
+    // t0_<hash>_....raw (each table once, as whether it changes with the view is not known)
+    struct atmo_pending_t
+      {
+      ID3D11Texture2D * t0;
+      ID3D11Buffer * cbs[8];  ///< VS b0..b3, PS b0..b3, each from its first constant
+      std::uint32_t bytes[8];
+      std::uint32_t width, height, format;
+      LONGLONG qpc;
+      char stamp[32];
+      };
+    constexpr std::uint32_t atmo_max_cb_bytes{8192};
+    constexpr std::uint32_t atmo_max_seen{1024};
+    constexpr std::uint32_t atmo_furthest_band{7};  ///< the camera further than 2^8 radii: the planet a few pixels
+    atmo_pending_t atmo_pending{};
+    bool atmo_busy{};
+    LONGLONG atmo_last{};
+    std::uint64_t atmo_seen[atmo_max_seen]{};  ///< the radius in metres << 8 | the band
+    std::uint32_t atmo_seen_count{};
+    alignas(16) std::byte atmo_record[64 + 8 * (4 + atmo_max_cb_bytes)];
+
+    auto atmo_release(atmo_pending_t & p) noexcept -> void
+      {
+      if(p.t0)
+        p.t0->Release();
+      for(ID3D11Buffer * cb: p.cbs)
+        if(cb)
+          cb->Release();
+      p = atmo_pending_t{};
+      atmo_busy = false;
+      }
+
+    ///\brief a staging copy of a bound constant buffer from its first constant; null when there is none
+    auto atmo_copy_cb(ID3D11DeviceContext * ctx, ID3D11Buffer * source, UINT first, UINT count, std::uint32_t & bytes) noexcept
+      -> ID3D11Buffer *
+      {
+      bytes = 0;
+      if(not source)
+        return nullptr;
+      D3D11_BUFFER_DESC bd{};
+      source->GetDesc(&bd);
+      std::uint32_t const from{first * 16u};
+      if(from >= bd.ByteWidth)
+        return nullptr;
+      std::uint32_t const whole{count ? std::min(count * 16u, bd.ByteWidth - from) : bd.ByteWidth - from};
+      bytes = std::min(whole, atmo_max_cb_bytes);
+      D3D11_BUFFER_DESC sd{};
+      sd.ByteWidth = (bytes + 15u) & ~15u;
+      sd.Usage = D3D11_USAGE_STAGING;
+      sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+      ID3D11Buffer * staging{};
+      if(FAILED(device->CreateBuffer(&sd, nullptr, &staging)) or not staging)
+        {
+        bytes = 0;
+        return nullptr;
+        }
+      D3D11_BOX const box{from, 0, 0, from + bytes, 1, 1};
+      ctx->CopySubresourceRegion(staging, 0, 0, 0, 0, source, 0, &box);
+      return staging;
+      }
+
+    ///\brief at the shell's draw: the copies of its table and constants, when it is time for the next
+    auto atmo_queue(ID3D11DeviceContext * ctx) noexcept -> void
+      {
+      if(atmo_busy or atmo_seen_count == atmo_max_seen)
+        return;
+      LONGLONG const now{qpc_now()};
+      if((now - atmo_last) * 1000 / qpc_frequency < static_cast<LONGLONG>(settings().atmo_record_s) * 1000)
+        return;
+      D3D11_VIEWPORT port{};
+      UINT ports{1u};
+      ctx->RSGetViewports(&ports, &port);
+      if(port.Width < 1024.f)  // the shell drawn into a small target too, for the reflections
+        return;
+      atmo_last = now;
+
+      ID3D11ShaderResourceView * srv{};
+      ctx->PSGetShaderResources(0, 1, &srv);
+      if(not srv)
+        return;
+      ID3D11Resource * res{};
+      srv->GetResource(&res);
+      srv->Release();
+      ID3D11Texture2D * tex{};
+      if(res)
+        {
+        res->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void **>(&tex));
+        res->Release();
+        }
+      if(not tex)
+        return;
+      D3D11_TEXTURE2D_DESC d{};
+      tex->GetDesc(&d);
+      if(d.SampleDesc.Count != 1 or d.ArraySize != 1)
+        {
+        tex->Release();
+        return;
+        }
+      D3D11_TEXTURE2D_DESC sd{d};
+      sd.Usage = D3D11_USAGE_STAGING;
+      sd.BindFlags = 0;
+      sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+      sd.MiscFlags = 0;
+      atmo_pending_t & p{atmo_pending};
+      if(FAILED(device->CreateTexture2D(&sd, nullptr, &p.t0)) or not p.t0)
+        {
+        tex->Release();
+        p.t0 = nullptr;
+        return;
+        }
+      ctx->CopyResource(p.t0, tex);
+      tex->Release();
+      p.width = d.Width;
+      p.height = d.Height;
+      p.format = static_cast<std::uint32_t>(d.Format);
+
+      ID3D11Buffer * cbs[8]{};
+      UINT firsts[8]{}, counts[8]{};
+      if(immediate1)
+        {
+        immediate1->VSGetConstantBuffers1(0, 4, cbs, firsts, counts);
+        immediate1->PSGetConstantBuffers1(0, 4, cbs + 4, firsts + 4, counts + 4);
+        }
+      else
+        {
+        ctx->VSGetConstantBuffers(0, 4, cbs);
+        ctx->PSGetConstantBuffers(0, 4, cbs + 4);
+        }
+      for(std::uint32_t c{}; c != 8; ++c)
+        {
+        p.cbs[c] = atmo_copy_cb(ctx, cbs[c], firsts[c], counts[c], p.bytes[c]);
+        if(cbs[c])
+          cbs[c]->Release();
+        }
+      p.qpc = now;
+      SYSTEMTIME t;
+      GetSystemTime(&t);
+      std::snprintf(p.stamp, sizeof p.stamp, "%04u%02u%02uT%02u%02u%02u_%03uZ", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute,
+                    t.wSecond, t.wMilliseconds);
+      atmo_busy = true;
+      }
+
+    auto atmo_float(atmo_pending_t const & p, void const * const * data, std::uint32_t slot, std::uint32_t row, std::uint32_t lane)
+      noexcept -> float
+      {
+      std::uint32_t const at{row * 16u + lane * 4u};
+      if(not data[slot] or at + 4u > p.bytes[slot])
+        return 0.f;
+      float v;
+      std::memcpy(&v, static_cast<std::byte const *>(data[slot]) + at, sizeof v);
+      return v;
+      }
+
+    ///\brief once a frame: the copies read back once the GPU has made them, kept when the planet and band are new
+    auto atmo_drain(LONGLONG now) noexcept -> void
+      {
+      if(not atmo_busy)
+        return;
+      atmo_pending_t & p{atmo_pending};
+      // the copies are made in order: the last one done, all are
+      ID3D11Resource * last{p.t0};
+      for(ID3D11Buffer * cb: p.cbs)
+        if(cb)
+          last = cb;
+      ID3D11DeviceContext * ctx{immediate.load()};
+      D3D11_MAPPED_SUBRESOURCE probe{};
+      HRESULT const hr{ctx->Map(last, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &probe)};
+      if(hr == DXGI_ERROR_WAS_STILL_DRAWING and (now - p.qpc) * 1000 / qpc_frequency < 2000)
+        return;
+      if(FAILED(hr))
+        {
+        log_line("atmo: %s lost (hr 0x%08lX)", p.stamp, static_cast<unsigned long>(hr));
+        atmo_release(p);
+        return;
+        }
+      ctx->Unmap(last, 0);
+
+      D3D11_MAPPED_SUBRESOURCE maps[8]{};
+      void const * data[8]{};
+      for(std::uint32_t c{}; c != 8; ++c)
+        if(p.cbs[c] and SUCCEEDED(ctx->Map(p.cbs[c], 0, D3D11_MAP_READ, 0, &maps[c])))
+          data[c] = maps[c].pData;
+      auto const unmap_cbs{[&]() noexcept
+                             {
+                               for(std::uint32_t c{}; c != 8; ++c)
+                                 if(data[c])
+                                   ctx->Unmap(p.cbs[c], 0);
+                             }};
+
+      // VS b1 row 126 x the planet's radius, VS b0 rows 9..11 w its centre from the camera, both in metres
+      float const radius{atmo_float(p, data, 1, 126, 0)};
+      float const x{atmo_float(p, data, 0, 9, 3)}, y{atmo_float(p, data, 0, 10, 3)}, z{atmo_float(p, data, 0, 11, 3)};
+      float const distance{std::sqrt(x * x + y * y + z * z)};
+      float const over{radius > 1000.f ? distance / radius : 0.f};
+      if(over < 0.9f or over >= float(2u << atmo_furthest_band))  // below 0.9: the radius not the planet's
+        {
+        unmap_cbs();
+        atmo_release(p);
+        return;
+        }
+      std::uint32_t const band{over < 1.f ? 0u : static_cast<std::uint32_t>(std::floor(std::log2(over)))};
+      std::uint64_t const key{(static_cast<std::uint64_t>(std::llround(radius)) << 8) | band};
+      for(std::uint32_t i{}; i != atmo_seen_count; ++i)
+        if(atmo_seen[i] == key)
+          {
+          unmap_cbs();
+          atmo_release(p);
+          return;
+          }
+      atmo_seen[atmo_seen_count++] = key;
+
+      std::wstring const folder{settings().dir + L"\\edworld_atmo"};
+      CreateDirectoryW(folder.c_str(), nullptr);
+      std::uint64_t hash{0xcbf29ce484222325ull};
+      std::uint32_t pitch{};
+      bool new_table{};
+      D3D11_MAPPED_SUBRESOURCE m{};
+      if(SUCCEEDED(ctx->Map(p.t0, 0, D3D11_MAP_READ, 0, &m)) and m.pData)
+        {
+        pitch = m.RowPitch;
+        std::uint32_t const rows{mapped_rows(p.format, p.height)};
+        auto const * bytes{static_cast<std::uint8_t const *>(m.pData)};
+        for(std::uint64_t i{}, n{static_cast<std::uint64_t>(pitch) * rows}; i != n; ++i)
+          hash = (hash ^ bytes[i]) * 0x100000001b3ull;
+        wchar_t name[MAX_PATH];
+        std::swprintf(name, MAX_PATH, L"%ls\\t0_%016llx_%ux%u_f%u_pitch%u.raw", folder.c_str(),
+                      static_cast<unsigned long long>(hash), p.width, p.height, p.format, pitch);
+        if(GetFileAttributesW(name) == INVALID_FILE_ATTRIBUTES)
+          new_table = queue_write(name, m.pData, pitch * rows);
+        ctx->Unmap(p.t0, 0);
+        }
+
+      // EDWATMO1, then u32 width height format pitch, u64 the table's hash (0: not read), f32 radius distance, then
+      // for each of VS b0..b3, PS b0..b3: u32 bytes and the bytes
+      std::byte * at{atmo_record};
+      auto const put{[&](void const * v, std::size_t n) noexcept
+                       {
+                         std::memcpy(at, v, n);
+                         at += n;
+                       }};
+      put("EDWATMO1", 8);
+      std::uint32_t const head[4]{p.width, p.height, p.format, pitch};
+      put(head, sizeof head);
+      std::uint64_t const table{pitch ? hash : 0ull};
+      put(&table, sizeof table);
+      float const where[2]{radius, distance};
+      put(where, sizeof where);
+      for(std::uint32_t c{}; c != 8; ++c)
+        {
+        std::uint32_t const n{data[c] ? p.bytes[c] : 0u};
+        put(&n, sizeof n);
+        if(n)
+          put(data[c], n);
+        }
+      unmap_cbs();
+      wchar_t name[MAX_PATH];
+      std::swprintf(name, MAX_PATH, L"%ls\\%hs.atmo", folder.c_str(), p.stamp);
+      queue_write(name, atmo_record, static_cast<std::uint32_t>(at - atmo_record));
+      log_line("atmo: %s radius %.0f m, distance %.0f km (band %u), t0 %016llx %ux%u f%u%s", p.stamp, double(radius),
+               double(distance) / 1000.0, band, static_cast<unsigned long long>(table), p.width, p.height, p.format,
+               new_table ? " (new table)" : "");
+      atmo_release(p);
+      }
+
+    auto guarded_atmo(ID3D11DeviceContext * ctx) noexcept -> void
+      {
+      __try
+        {
+        atmo_queue(ctx);
+        }
+      __except(EXCEPTION_EXECUTE_HANDLER)
+        {
+        note_fault();
+        }
+      }
+
+    auto guarded_atmo_drain(LONGLONG now) noexcept -> void
+      {
+      __try
+        {
+        atmo_drain(now);
+        }
+      __except(EXCEPTION_EXECUTE_HANDLER)
+        {
+        note_fault();
+        }
+      }
+#endif
+
     // ---- the whole frame (discovery, full_dump_request): every draw of one frame on the immediate context, one log
     // line each (its kind, the vertex shader's hash, counts, viewport, render target) and the first full_cb_bytes of
     // its VS constant buffers 0..3 as edworld_dumps/<stamp>_a<draw>_cb<slot>.bin; the surfaces of that frame too.
@@ -1336,6 +1631,9 @@ namespace edworld
         write_dumps(now);
       if(pending_buffer_count)
         write_buffers(now);
+#if defined(EDWORLD_EHT)
+      guarded_atmo_drain(now);
+#endif
       check_trigger(now);
       check_full(now);
       if(full_done_waiting and not full_armed and pending_count == 0 and pending_buffer_count == 0)
@@ -4203,6 +4501,11 @@ namespace edworld
           guarded_probe(self, index_count, instance_count);
         }
       orig_draw_indexed_instanced(self, index_count, instance_count, start_index, base_vertex, start_instance);
+#if defined(EDWORLD_EHT)
+      if(current_shell and settings().atmo_record_s and not disabled.load(std::memory_order_relaxed)
+         and self == immediate.load(std::memory_order_relaxed))
+        guarded_atmo(self);
+#endif
       if(current_shell and settings().clouds and not disabled.load(std::memory_order_relaxed)
          and self == immediate.load(std::memory_order_relaxed))
         guarded_clouds(self, index_count, instance_count, start_index, base_vertex, start_instance);

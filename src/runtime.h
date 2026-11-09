@@ -36,6 +36,10 @@ namespace edworld
     ///\brief the catalog of the game's shaders (PoC, 2026-10-23): each shader of every stage and each input layout
     /// the game creates, once per build of the game, to edworld_shaders beside the log; 0 = none
     std::uint32_t shader_catalog{1};
+    ///\brief (PoC, 2026-11-09) the atmosphere's fingerprint: what the game's shell of the atmosphere reads (its table of
+    /// the light and its constants), at most this often in seconds, once a session per planet and octave of distance, to
+    /// edworld_atmo beside the log; to learn against EHT's scans whether it tells the atmosphere's kind. 0 = never
+    std::uint32_t atmo_record_s{10};
 #endif
     ///\brief a summary line of the frame's panels at most this often; 0 = never
     std::uint32_t log_interval_ms{1000};
