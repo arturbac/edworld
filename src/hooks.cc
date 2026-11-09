@@ -3759,7 +3759,7 @@ namespace edworld
       ID3D11DepthStencilState * volume_depth_state{};
       ID3D11Buffer * volume_params{};
       // the volume's parameters, the wind's seconds among them, written again for each draw
-      float volume_values[32]{};
+      float volume_values[36]{};
       ULONGLONG wind_start{};
       ID3D11Texture2D * depth_copy{};
       ID3D11ShaderResourceView * depth_view{};
@@ -4013,15 +4013,15 @@ namespace edworld
         ok = false;
         }
 
-      // 19..31 (the game's fade, near and far, the debug colour, the planet's size on the screen, the steps' most, the
-      // edge) are written again for each draw, as they change while the game runs
-      float const values[32]{
+      // 19..32 (the game's fade, near and far, the debug colour, the planet's size on the screen, the steps' most, the
+      // edge, the haze) are written again for each draw, as they change while the game runs; 33..35 fill the buffer to 16 bytes
+      float const values[36]{
         settings().clouds_bottom, settings().clouds_top, settings().clouds_cover, settings().clouds_light,
         settings().clouds_steps, settings().clouds_density, settings().clouds_opacity, settings().clouds_top_gain,
         settings().clouds_min_light, settings().clouds_under_gain, settings().clouds_detail, settings().clouds_detail_size,
         settings().clouds_detail_range, settings().clouds_detail_edge, settings().clouds_detail_gap, 0.f,
         settings().clouds_wind_low / 3.6f, settings().clouds_wind_high / 3.6f, 1.f, 0.f,
-        0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f
+        0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f
       };
       std::memcpy(clouds.volume_values, values, sizeof values);
       clouds.wind_start = GetTickCount64();
@@ -4220,6 +4220,7 @@ namespace edworld
       clouds.volume_values[29] = settings().clouds_edge_hide_px;
       clouds.volume_values[30] = std::max(settings().clouds_edge_full_px, settings().clouds_edge_hide_px + 0.01f);
       clouds.volume_values[31] = std::max(settings().clouds_edge_band_px, 0.01f);
+      clouds.volume_values[32] = std::max(settings().clouds_haze, 0.f);
       ctx->UpdateSubresource(clouds.volume_params, 0, nullptr, clouds.volume_values, 0, 0);
       if(half)
         {

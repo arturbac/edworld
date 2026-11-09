@@ -122,6 +122,7 @@ zip is the same start, by hand.
 | `clouds_hide_below_px`, `clouds_full_from_px` | `20`, `80` | no clouds with depth while the planet is narrower on the screen than the first many pixels, all of them from the second, a blend between; pixels of the picture the game draws, before its upscaling |
 | `clouds_max_steps` | `64` | (test) the most steps through the clouds with depth: the steps follow the way's length through them, many at the planet's edge |
 | `clouds_edge_hide_px`, `clouds_edge_full_px`, `clouds_edge_band_px` | `2`, `8`, `16` | no clouds with depth out of the planet's edge while their layer is thinner on the screen than the first many pixels, all from the second; on the disc the same within the third many pixels of the edge |
+| `clouds_haze` | `0.05` | from under the clouds with depth and in them, a cloud this far away covers e times less, so they fade into the haze at the horizon instead of ending in a sharp line; a part of the planet's radius, `0` = never less; from orbit they stay as they are |
 | `list_top`, `list_x` | `500`, `1540` | where the list starts under the panel (pixels of the panel's surface) |
 | `list_rows` | `7` | factions listed at most |
 | `edsm` | `1` | `0` = never ask EDSM (no list then without EHT) |
