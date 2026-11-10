@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 
+#include "../src/atmosphere_kind.h"
 #include "../src/compass_math.h"
 #include "../src/edworld_share.h"
 #include "../src/faction_list.h"
@@ -638,10 +639,53 @@ namespace
     VirtualProtect(&table[slot], sizeof(void *), old, &old);
     return true;
     }
+
+  // the atmosphere's kind from the hue of the game's table (atmosphere_kind.h)
+  auto atmosphere_tests() -> void
+    {
+    using namespace edworld;
+    bool apart{true};
+    for(std::size_t i{}; i != atmosphere_prints.size(); ++i)
+      for(std::size_t j{i + 1u}; j != atmosphere_prints.size(); ++j)
+        {
+        auto const & a{atmosphere_prints[i]};
+        auto const & b{atmosphere_prints[j]};
+        apart = apart and std::max(std::fabs(a.r_g - b.r_g), std::fabs(a.b_g - b.b_g)) > 2.f * atmosphere_tolerance;
+        }
+    check(apart, "atmosphere: the kinds stand further apart than twice the tolerance");
+    bool itself{true};
+    for(auto const & k: atmosphere_prints)
+      {
+      auto const * found{atmosphere_kind_of({true, k.r_g + 0.003f, k.b_g - 0.003f})};
+      itself = itself and found == &k and not atmosphere_kind_of({true, k.r_g, k.b_g + 0.005f});
+      }
+    check(itself, "atmosphere: a hue near a kind's is that kind, one past the tolerance none");
+    auto const * argon{atmosphere_kind_of({true, 0.3980f, 2.5000f})};
+    check(argon and argon->name == "Argon" and not atmosphere_kind_of({}), "atmosphere: Argon at an M7 star; no hue, no kind");
+    check(small_float(960u, 6u) == 1.f and small_float(896u, 6u) == 0.5f and small_float(512u, 5u) == 2.f and small_float(0u, 6u) == 0.f,
+          "atmosphere: the table's small floats");
+    // 4x4, a pitch of 32 bytes: the upper half bright (r 0.5, g 1, b 2) beside dim texels of another hue (r 1, g 0.25,
+    // b 0.25); the lower half brighter still, outside the upper half the hue is read from
+    auto const texel{[](std::uint32_t r, std::uint32_t g, std::uint32_t b) { return r | g << 11 | b << 22; }};
+    std::uint32_t table[4][8]{};
+    for(std::uint32_t x{}; x != 4u; ++x)
+      {
+      table[0][x] = x == 3u ? texel(960u, 832u, 416u) : texel(896u, 960u, 512u);
+      table[1][x] = x == 0u ? texel(960u, 832u, 416u) : texel(896u, 960u, 512u);
+      table[2][x] = table[3][x] = texel(960u, 1088u, 512u);
+      }
+    float sr[8], sb[8];
+    auto const hue{atmosphere_hue(reinterpret_cast<std::uint8_t const *>(table), 4u, 4u, 32u, sr, sb, 8u)};
+    check(hue.ok and hue.r_g == 0.5f and hue.b_g == 2.f, "atmosphere: the hue of the upper half's bright texels");
+    check(not atmosphere_hue(reinterpret_cast<std::uint8_t const *>(table), 4u, 4u, 32u, sr, sb, 7u).ok
+            and not atmosphere_hue(reinterpret_cast<std::uint8_t const *>(table), 4u, 4u, 8u, sr, sb, 8u).ok,
+          "atmosphere: no hue past the scratch or with a pitch under a row");
+    }
   }  // namespace
 
 int main()
   {
+  atmosphere_tests();
   sample_context_tests();
   pad_text_tests();
   shader_shape_tests();

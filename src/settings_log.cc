@@ -160,6 +160,7 @@ namespace edworld
 #if defined(EDWORLD_EHT)
       {"shm_dir", &settings_t::shm_dir, "The folder shared with EHT, as the game sees it"},
       {"shader_catalog", &settings_t::shader_catalog},
+      {"atmo_record_s", &settings_t::atmo_record_s, "(test) the atmosphere's fingerprint to edworld_atmo beside the log at most this often, in seconds: 0 = never"},
 #endif
       {"patch", &settings_t::patch, "The rest, all in doc/users.md"},
       {"patch_x", &settings_t::patch_x},

@@ -378,6 +378,23 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   the game's `PlanetShaders\*.csa` archives (the planets' generator) and names them by archive and block, and
   `tools/shader_catalog.py diff` tells what an update changed: the same bytes, the same shape under other bytes, new,
   gone - the watched shaders (panels, holograms, the HUD's composition) first.
+- (edworld_eht only, `atmo_record_s`) The atmosphere's fingerprint (PoC, 2026-11-09): at the draw of the game's shell
+  of the atmosphere (VS FFB551B5E7E79CEA, drawn into the picture, viewport 1024 wide or more), at most every
+  `atmo_record_s` seconds, its PS t0 (a table of the light through the atmosphere; 256x512, format 26, at the one planet
+  read so far) and its VS and PS constant buffers 0..3 from their first constants (8 KB each at most) are copied on the
+  GPU and read back a few frames later. Kept once a session per planet (the radius, VS b1 row 126 x, in metres) and
+  octave of the camera's distance from its centre (VS b0 rows 9..11 w) over the radius, 0 to 7; further than 256 radii
+  nothing. Written to `edworld_atmo\` beside the log: `<UTC stamp>.atmo` (`EDWATMO1`, u32 width, height, format, pitch,
+  u64 the table's FNV-1a hash, f32 radius and distance, then for each of VS b0..b3, PS b0..b3 a u32 byte count and the
+  bytes) and the table as `t0_<hash>_<w>x<h>_f<fmt>_pitch<n>.raw`, once per content. Logged: `atmo: <stamp> radius ...,
+  kind <kind> (r/g .. b/g ..)`.
+  Made to put beside the journal's scans of the same planets (the radius and the time). The table itself differs per
+  planet (its hash is no key), but its hue tells the atmosphere's kind (`src/atmosphere_kind.h`, PoC 2026-11-10): over
+  the table's upper half where its green is over half its brightest, the median of red over green and of blue over
+  green. Measured on 24 planets, all 15 kinds the journal names on landable planets: one hue per kind at every star
+  (Argon at K6, G9 and M7 stars alike to 0.001), following the kind the journal names, not the mix of gases; the kinds
+  stand 0.010 or more apart (CarbonDioxide and Methane the nearest). A hue within 0.004 of a kind's in both ratios is
+  that kind (the nearest), otherwise `unknown`. Only logged; nothing drawn depends on it yet.
 - Logs to `<plugin>.log` in the log folder: chain, attach, watched shaders, the patch's first draw and the
   destination's allegiance and factions (how many, from which source), and once a second (`log_interval_ms`) a summary: in edworld_eht the frame's panel draws
   with surface size and anchor in NDC, in edworld the draw and fault totals. A fault in edworld's own work is caught; eight of them switch the observer off, never the game call.
@@ -449,6 +466,8 @@ watch_vs = 81216C77F90DEDD6, 1989E6D3B405FDE0, 925ACEDA0153AA5B
 shm_dir = Z:\dev\shm\eht
 ; (edworld_eht) 0 = no catalog of the game's shaders in edworld_shaders
 shader_catalog = 1
+; (edworld_eht) the atmosphere's fingerprint to edworld_atmo at most this often, seconds; 0 = never
+atmo_record_s = 10
 ; 0 = no per-frame summary
 log_interval_ms = 1000
 frame_gap_us = 2500
