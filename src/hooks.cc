@@ -8,6 +8,7 @@
 //  - never read a mapped dynamic buffer on the CPU (write-combined under DXVK); copy on the GPU into staging
 //    and map it frames later with DO_NOT_WAIT;
 //  - GetType before GetDesc; a fault in edworld's code disables edworld, never the game call.
+#include "atmosphere_kind.h"
 #include "blue_noise.h"
 #include "compass_math.h"
 #include "edworld_share.h"
@@ -1136,6 +1137,8 @@ namespace edworld
     std::uint64_t atmo_seen[atmo_max_seen]{};  ///< the radius in metres << 8 | the band
     std::uint32_t atmo_seen_count{};
     alignas(16) std::byte atmo_record[64 + 8 * (4 + atmo_max_cb_bytes)];
+    constexpr std::size_t atmo_hue_capacity{256u * 256u};  ///< the upper half of a 256x512 table
+    float atmo_hue_r[atmo_hue_capacity], atmo_hue_b[atmo_hue_capacity];
 
     auto atmo_release(atmo_pending_t & p) noexcept -> void
       {
@@ -1332,6 +1335,7 @@ namespace edworld
       std::uint64_t hash{0xcbf29ce484222325ull};
       std::uint32_t pitch{};
       bool new_table{};
+      atmosphere_hue_t hue{};
       D3D11_MAPPED_SUBRESOURCE m{};
       if(SUCCEEDED(ctx->Map(p.t0, 0, D3D11_MAP_READ, 0, &m)) and m.pData)
         {
@@ -1345,6 +1349,8 @@ namespace edworld
                       static_cast<unsigned long long>(hash), p.width, p.height, p.format, pitch);
         if(GetFileAttributesW(name) == INVALID_FILE_ATTRIBUTES)
           new_table = queue_write(name, m.pData, pitch * rows);
+        if(p.format == dxgi_r11g11b10_float)
+          hue = atmosphere_hue(bytes, p.width, p.height, pitch, atmo_hue_r, atmo_hue_b, atmo_hue_capacity);
         ctx->Unmap(p.t0, 0);
         }
 
@@ -1374,9 +1380,11 @@ namespace edworld
       wchar_t name[MAX_PATH];
       std::swprintf(name, MAX_PATH, L"%ls\\%hs.atmo", folder.c_str(), p.stamp);
       queue_write(name, atmo_record, static_cast<std::uint32_t>(at - atmo_record));
-      log_line("atmo: %s radius %.0f m, distance %.0f km (band %u), t0 %016llx %ux%u f%u%s", p.stamp, double(radius),
-               double(distance) / 1000.0, band, static_cast<unsigned long long>(table), p.width, p.height, p.format,
-               new_table ? " (new table)" : "");
+      atmosphere_print_t const * kind{atmosphere_kind_of(hue)};
+      log_line("atmo: %s radius %.0f m, distance %.0f km (band %u), t0 %016llx %ux%u f%u%s, kind %.*s (r/g %.4f b/g %.4f)",
+               p.stamp, double(radius), double(distance) / 1000.0, band, static_cast<unsigned long long>(table), p.width,
+               p.height, p.format, new_table ? " (new table)" : "", kind ? static_cast<int>(kind->name.size()) : 7,
+               kind ? kind->name.data() : "unknown", double(hue.r_g), double(hue.b_g));
       atmo_release(p);
       }
 
