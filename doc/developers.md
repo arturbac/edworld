@@ -415,10 +415,13 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   T and M the kind's typical (`atmosphere_physics_table`); without a day the kind's median R/L times R over its median
   radius. `cyclones_of` lays the storms out from the radius as a seed: under 0.3 none; to 1 one to three of 0.25..0.35
   rad between 15 and 50 degrees and one at each pole; to 4 three to six of 0.12..0.2 rad between 20 and 60; past, six
-  to eight of 0.08; twist 2.5 rad (1.5 for more than three), the planet's way on the half it turns about. Values
-  44..87 of the volume's buffer; `storms()` in `clouds3d.hlsl` turns the ray's middle and each step's direction about
-  each centre by the twist times exp(-(d/size)^2), clears an eye under 0.08..0.18 of the size and adds a ring around
-  it. The storms stand still on the planet (design v1 had them turning once an hour: a turn growing with time winds
+  to eight of 0.08; twist 5 rad (3 for more than three), the planet's way on the half it turns about. Values 44..87
+  of the volume's buffer; `storms()` in `clouds3d.hlsl` (v1.2b, tuned on `research/clouds-20261106/storm_sim.py`, a
+  CPU copy of the shape) turns the ray's middle and each step's direction about each centre as a Rankine vortex: the
+  core out to 0.35 of the size turns as one, past it the turn falls as 1/x^2, so the clouds curve in at a distance
+  instead of being drawn out into the eye. A dense disc of clouds from 0.12..0.2 out to 0.45..0.7 of the size adds
+  0.45 to the shape, a finer texture (fbm at 20 times the planet, 0.6) is wound in with the storm, and the eye clears
+  under 0.10..0.16 of the size, its edge uneven by about 20%. The storms stand still on the planet (design v1 had them turning once an hour: a turn growing with time winds
   the arms up without end, left out).
 - Logs to `<plugin>.log` in the log folder: chain, attach, watched shaders, the patch's first draw and the
   destination's allegiance and factions (how many, from which source), and once a second (`log_interval_ms`) a summary: in edworld_eht the frame's panel draws

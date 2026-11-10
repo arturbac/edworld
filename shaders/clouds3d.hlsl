@@ -166,10 +166,12 @@ float fbm(float3 p, int octaves)
   return sum;
   }
 
-// the storms: d turned about each storm's centre, most at its middle, so the clouds wind into it; the sample turned
-// back the way the storm turns them. eye: how much of the clouds is left at d (a clear eye at each middle), wall: how
-// much a ring around the eye adds to the shape. weight 0 = no storms (another planet)
-float3 storms(float3 d, float weight, inout float eye, inout float wall)
+// the storms (v1.2b, 2026-11-10): d turned about each storm's centre as a Rankine vortex - the core out to 0.35 of the
+// storm's size turns as one, so the clouds are not drawn out there, and the turn falls as 1/x^2 past it, where the
+// clouds come curving in; the sample turned back the way the storm turns them. eye: how much of the clouds is left at
+// d (a small clear eye, its edge uneven), wall: what the dense disc of clouds around the eye adds to the shape, inner:
+// how far into a storm d is, for its finer texture. weight 0 = no storms (another planet)
+float3 storms(float3 d, float weight, inout float eye, inout float wall, inout float inner)
   {
   if(weight <= 0.f)
     return d;
@@ -180,13 +182,20 @@ float3 storms(float3 d, float weight, inout float eye, inout float wall)
     float apart = length(d - c.xyz) / c.w;  // the chord over the size: about the angle's share for a small storm
     if(apart > 2.5f)
       continue;
-    float twist = -cyclone_twist[i >> 2][i & 3] * weight * exp(-apart * apart);
+    float profile = (apart < 0.35f ? 1.f : (0.35f * 0.35f) / (apart * apart)) * saturate((2.5f - apart) * 2.f);
+    float twist = -cyclone_twist[i >> 2][i & 3] * weight * profile;
     float s = sin(twist);
     float co = cos(twist);
     d = d * co + cross(c.xyz, d) * s + c.xyz * dot(c.xyz, d) * (1.f - co);
-    eye = min(eye, lerp(1.f, smoothstep(0.08f, 0.18f, apart), weight));
-    float ring = (apart - 0.3f) / 0.2f;
-    wall = max(wall, 0.12f * weight * exp(-ring * ring));
+    if(apart < 0.25f)
+      {
+      float seen = apart * (1.f + 0.4f * (fbm(d * 40.f + 5.3f, 2) - 0.375f));
+      eye = min(eye, lerp(1.f, smoothstep(0.10f, 0.16f, seen), weight));
+      }
+    float rise = smoothstep(0.12f, 0.2f, apart);
+    float fall = smoothstep(0.45f, 0.7f, apart);
+    wall = max(wall, 0.45f * weight * rise * (1.f - fall));
+    inner = max(inner, weight * exp(-apart * apart));
     }
   return d;
   }
@@ -281,7 +290,8 @@ float4 ps_main(ps_in input) : SV_TARGET
   middle_dir = blown(middle_dir, mean_angle);
   float middle_eye = 1.f;
   float middle_wall = 0.f;
-  middle_dir = storms(middle_dir, kind, middle_eye, middle_wall);
+  float middle_inner = 0.f;
+  middle_dir = storms(middle_dir, kind, middle_eye, middle_wall, middle_inner);
   float3 warp = float3(fbm(middle_dir * 3.f + seed, 4), fbm(middle_dir * 3.f + seed + 11.f, 4), fbm(middle_dir * 3.f + seed + 23.f, 4));
 
   // the steps follow the way's length through the layer: a step no longer than half the smallest lumps (the shape's
@@ -325,7 +335,8 @@ float4 ps_main(ps_in input) : SV_TARGET
     float3 dir = normalize(turned_ray * t - turned_centre);
     float eye = 1.f;
     float wall = 0.f;
-    dir = storms(dir, kind, eye, wall);
+    float inner = 0.f;
+    dir = storms(dir, kind, eye, wall, inner);
     float3 place = blown(dir, wind_angle * lerp(cloud_wind_low, cloud_wind_high, height)) * 7.f + seed + warp * 3.5f + float3(0.f, height * 0.4f, 0.f);
     // the shape above has lumps of tens of km: fine from orbit, one smooth fog from under them. Near the eye lumps of a
     // few km cut it, where the steps are short enough to show them
@@ -335,6 +346,8 @@ float4 ps_main(ps_in input) : SV_TARGET
     if(most + (layer_detail > 0.f && most > -0.2f ? detail_most * near : 0.f) <= 0.f)
       continue;
     float shape = fbm_tail(place, head) - edge + wall;
+    if(inner > 0.01f)  // a storm's finer texture, wound with it
+      shape += (fbm(dir * 20.f + seed, 3) - 0.44f) * 0.6f * inner;
     float sharpness = 2.5f;
     if(layer_detail > 0.f && near > 0.f && shape > -0.2f)
       {

@@ -1234,7 +1234,9 @@ namespace edworld
       v[9] = c.tint[2];
       }
 
-    float atmo_cyclones_logged{};
+    float atmo_cyclones_radius{};
+    std::uint32_t atmo_cyclones_count{~0u};
+    bool atmo_cyclones_day{};
 
     ///\brief the clouds' values 44..87 (clouds3d.hlsl): the storms of the planet whose kind is known (design v1), each
     /// its centre and size, then their twists, then their count; none when clouds_cyclones or clouds_by_kind is 0
@@ -1260,9 +1262,11 @@ namespace edworld
         v[32u + i] = set.at[i].twist;
         }
       v[40] = static_cast<float>(set.count);
-      if(atmo_cyclones_logged != radius + day)
+      if(atmo_cyclones_radius != radius or atmo_cyclones_count != set.count or atmo_cyclones_day != (day > 0.f))
         {
-        atmo_cyclones_logged = radius + day;
+        atmo_cyclones_radius = radius;
+        atmo_cyclones_count = set.count;
+        atmo_cyclones_day = day > 0.f;
         log_line("clouds: %u storm(s) on the planet of radius %.0f m, R/L %.2f (day %s%.2f h)", set.count, double(radius),
                  double(rossby), day > 0.f ? "" : "not known, the kind's median, ", double(day) / 3600.);
         }

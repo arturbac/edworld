@@ -300,17 +300,17 @@ namespace edworld
     if(rossby < 1.f)
       {
       n = 1u + static_cast<std::uint32_t>(next() * 2.999f);
-      low = 15.f, high = 50.f, size_from = 0.25f, size_to = 0.35f, twist = 2.5f;
+      low = 15.f, high = 50.f, size_from = 0.25f, size_to = 0.35f, twist = 5.f;
       }
     else if(rossby < 4.f)
       {
       n = 3u + static_cast<std::uint32_t>(next() * 3.999f);
-      low = 20.f, high = 60.f, size_from = 0.12f, size_to = 0.2f, twist = n <= 3u ? 2.5f : 1.5f;
+      low = 20.f, high = 60.f, size_from = 0.12f, size_to = 0.2f, twist = n <= 3u ? 5.f : 3.f;
       }
     else
       {
       n = 6u + static_cast<std::uint32_t>(next() * 2.999f);
-      low = 20.f, high = 60.f, size_from = 0.08f, size_to = 0.08f, twist = 1.5f;
+      low = 20.f, high = 60.f, size_from = 0.08f, size_to = 0.08f, twist = 3.f;
       }
     for(std::uint32_t i{}; i != n; ++i)
       {
@@ -319,8 +319,8 @@ namespace edworld
       }
     if(rossby < 1.f)
       {
-      add(1.5707963f, 0.f, 0.15f, 2.5f);
-      add(-1.5707963f, 0.f, 0.15f, 2.5f);
+      add(1.5707963f, 0.f, 0.15f, 5.f);
+      add(-1.5707963f, 0.f, 0.15f, 5.f);
       }
     return set;
     }
