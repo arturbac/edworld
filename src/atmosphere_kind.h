@@ -138,6 +138,49 @@ namespace edworld
     return {true, median_of(scratch_r, n), median_of(scratch_b, n)};
     }
 
+  ///\brief the clouds of a kind (design v1.1, 2026-11-10): the layer's floor and top over the surface as parts of the
+  /// radius, from the scale height R T / (M g) of the kind's typical planet pressed into 0.006..0.04; how much of
+  /// clouds_opacity they get, from the kind's typical pressure (at least 0.3); the cover, 0.55 where the main gas
+  /// condenses at the kind's typical temperature, 0.45 a haze where it does not, 0.35 for Helium, which never does; the
+  /// fine shape's strength; the tint the star's light is multiplied by
+  struct atmosphere_clouds_t
+    {
+    float bottom, top, opacity, cover, detail;
+    float tint[3];
+    };
+
+  ///\brief in the order of atmosphere_kind_e from ammonia (unknown has none)
+  inline constexpr std::array<atmosphere_clouds_t, 15> atmosphere_clouds_table{{
+    {0.0100f, 0.0400f, 0.30f, 0.55f, 1.0f, {0xf3 / 255.f, 0xe9 / 255.f, 0xd2 / 255.f}},  // Ammonia
+    {0.0030f, 0.0120f, 0.39f, 0.55f, 1.0f, {0xf2 / 255.f, 0xf2 / 255.f, 0xf5 / 255.f}},  // Argon
+    {0.0026f, 0.0104f, 0.78f, 0.55f, 1.0f, {0xf2 / 255.f, 0xf2 / 255.f, 0xf5 / 255.f}},  // ArgonRich
+    {0.0091f, 0.0366f, 0.63f, 0.55f, 1.0f, {0xf0 / 255.f, 0xf4 / 255.f, 0xfa / 255.f}},  // CarbonDioxide
+    {0.0031f, 0.0124f, 0.92f, 0.45f, 0.5f, {1.f, 1.f, 1.f}},                             // CarbonDioxideRich
+    {0.0015f, 0.0060f, 0.30f, 0.35f, 0.5f, {0xdd / 255.f, 0xe3 / 255.f, 0xea / 255.f}},  // Helium
+    {0.0100f, 0.0400f, 0.89f, 0.55f, 1.0f, {0xf5 / 255.f, 0xf0 / 255.f, 0xe6 / 255.f}},  // Methane
+    {0.0026f, 0.0103f, 0.72f, 0.45f, 0.5f, {0xf5 / 255.f, 0xe6 / 255.f, 0xd0 / 255.f}},  // MethaneRich
+    {0.0015f, 0.0060f, 0.30f, 0.45f, 0.5f, {0xe8 / 255.f, 0xec / 255.f, 0xf0 / 255.f}},  // Neon
+    {0.0017f, 0.0067f, 0.58f, 0.55f, 1.0f, {1.f, 1.f, 1.f}},                             // NeonRich
+    {0.0027f, 0.0109f, 0.50f, 0.55f, 1.0f, {1.f, 1.f, 1.f}},                             // Nitrogen
+    {0.0035f, 0.0140f, 0.79f, 0.45f, 0.5f, {1.f, 1.f, 1.f}},                             // Oxygen
+    {0.0038f, 0.0152f, 0.81f, 0.55f, 1.0f, {0xb8 / 255.f, 0xb2 / 255.f, 0xaa / 255.f}},  // SilicateVapour
+    {0.0032f, 0.0126f, 0.30f, 0.45f, 0.5f, {0xed / 255.f, 0xe3 / 255.f, 0xa8 / 255.f}},  // SulphurDioxide
+    {0.0100f, 0.0400f, 0.98f, 0.45f, 0.5f, {1.f, 1.f, 1.f}},                             // Water
+  }};
+
+  ///\brief a kind's clouds, its share of the opacity times intensity (clouds_physics_intensity, 1 = as the physics
+  /// gives, 0 = none), at most all of it
+  [[nodiscard]]
+  constexpr auto atmosphere_clouds(atmosphere_kind_e kind, float intensity) noexcept -> atmosphere_clouds_t
+    {
+    if(kind == atmosphere_kind_e::unknown)
+      return {};
+    atmosphere_clouds_t c{atmosphere_clouds_table[static_cast<std::size_t>(kind) - 1u]};
+    float const i{intensity > 0.f ? intensity : 0.f};
+    c.opacity = c.opacity * i < 1.f ? c.opacity * i : 1.f;
+    return c;
+    }
+
   ///\brief the kind whose hue is nearest, when within the tolerance in both ratios; unknown otherwise
   [[nodiscard]]
   constexpr auto atmosphere_kind_of(atmosphere_hue_t const & hue, float tolerance = atmosphere_tolerance) noexcept

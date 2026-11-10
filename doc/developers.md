@@ -394,7 +394,18 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   green. Measured on 24 planets, all 15 kinds the journal names on landable planets: one hue per kind at every star
   (Argon at K6, G9 and M7 stars alike to 0.001), following the kind the journal names, not the mix of gases; the kinds
   stand 0.010 or more apart (CarbonDioxide and Methane the nearest). A hue within 0.004 of a kind's in both ratios is
-  that kind (the nearest), otherwise `unknown`. Only logged; nothing drawn depends on it yet.
+  that kind (the nearest), otherwise `unknown`. The kind is read on every read-back (not only for a record) and the
+  clouds with depth take it (below).
+- (edworld_eht only, `clouds_by_kind`, PoC 2026-11-10) The clouds with depth by the atmosphere's kind:
+  `atmosphere_clouds_table` (design v1.1) gives each kind the layer's floor and top (from the scale height R T / (M g)
+  of the kind's typical landable planet, scanned medians, pressed into 0.006..0.04 of the radius as
+  `0.012 sqrt((H/R) / 0.0025)`, floor a quarter of the top), its share of `clouds_opacity` (from the typical pressure,
+  `log10(p / 0.001) / 2`, at least 0.3), the cover (0.55 where the main gas condenses at the typical temperature,
+  0.45 where not, 0.35 for Helium), the fine shape's strength and a tint. The "Rich" kinds by their main gas in the
+  scans: NeonRich, ArgonRich and MethaneRich mostly nitrogen, CarbonDioxideRich mostly oxygen. The kind last told and
+  its planet's radius go to the volume's buffer (values 33..42); `clouds3d.hlsl` takes them only for the planet of
+  that radius (within 4 m), coming in over 2 s; any other planet keeps the ini's clouds. The opacity share times
+  `clouds_physics_intensity`, at most 1.
 - Logs to `<plugin>.log` in the log folder: chain, attach, watched shaders, the patch's first draw and the
   destination's allegiance and factions (how many, from which source), and once a second (`log_interval_ms`) a summary: in edworld_eht the frame's panel draws
   with surface size and anchor in NDC, in edworld the draw and fault totals. A fault in edworld's own work is caught; eight of them switch the observer off, never the game call.

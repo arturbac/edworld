@@ -680,6 +680,24 @@ namespace
     check(not atmosphere_hue(reinterpret_cast<std::uint8_t const *>(table), 4u, 4u, 32u, sr, sb, 7u).ok
             and not atmosphere_hue(reinterpret_cast<std::uint8_t const *>(table), 4u, 4u, 8u, sr, sb, 8u).ok,
           "atmosphere: no hue past the scratch or with a pitch under a row");
+    // the kinds' clouds (design v1.1)
+    bool sane{true};
+    for(auto const & k: atmosphere_prints)
+      {
+      auto const c{atmosphere_clouds(k.kind, 1.f)};
+      sane = sane and c.top >= 0.006f and c.top <= 0.04f and std::fabs(c.bottom * 4.f - c.top) < 0.0005f and c.opacity >= 0.3f
+             and c.opacity <= 1.f and (c.cover == 0.35f or c.cover == 0.45f or c.cover == 0.55f) and c.tint[0] > 0.5f;
+      }
+    check(sane, "atmosphere: each kind's clouds within the design's bounds");
+    auto const neon{atmosphere_clouds(atmosphere_kind_e::neon, 1.f)};
+    auto const helium{atmosphere_clouds(atmosphere_kind_e::helium, 1.f)};
+    auto const methane{atmosphere_clouds(atmosphere_kind_e::methane, 1.f)};
+    check(neon.cover == 0.45f and helium.cover == 0.35f and methane.cover == 0.55f and methane.top > 6.f * neon.top,
+          "atmosphere: a haze where the gas does not condense, Helium least; small warm worlds a deep layer, large cold ones a thin");
+    check(atmosphere_clouds(atmosphere_kind_e::neon, 2.f).opacity == 0.6f and atmosphere_clouds(atmosphere_kind_e::methane, 2.f).opacity == 1.f
+            and atmosphere_clouds(atmosphere_kind_e::neon, 0.f).opacity == 0.f and atmosphere_clouds(atmosphere_kind_e::neon, -1.f).opacity == 0.f
+            and atmosphere_clouds(atmosphere_kind_e::unknown, 1.f).top == 0.f,
+          "atmosphere: the intensity scales the opacity, at most all of it; an unknown kind has no clouds of its own");
     }
   }  // namespace
 

@@ -162,6 +162,8 @@ namespace edworld
       {"shm_dir", &settings_t::shm_dir, "The folder shared with EHT, as the game sees it"},
       {"shader_catalog", &settings_t::shader_catalog},
       {"atmo_record_s", &settings_t::atmo_record_s, "(test) the atmosphere's fingerprint to edworld_atmo beside the log at most this often, in seconds: 0 = never"},
+      {"clouds_by_kind", &settings_t::clouds_by_kind, "(test) 1 = the clouds with depth by the atmosphere's kind its fingerprint tells (needs atmo_record_s), 0 = the same on every planet"},
+      {"clouds_physics_intensity", &settings_t::clouds_physics_intensity, "how strongly the kinds' clouds show: 1 = as the physics gives, 2 = twice as strong (at most clouds_opacity), 0 = none"},
 #endif
       {"patch", &settings_t::patch, "The rest, all in doc/users.md"},
       {"patch_x", &settings_t::patch_x},
@@ -466,6 +468,12 @@ namespace edworld
       current.clouds_edge_band_px = read.clouds_edge_band_px;
       current.clouds_game_fade = read.clouds_game_fade;
       current.clouds_haze = read.clouds_haze;
+#if defined(EDWORLD_EHT)
+      current.clouds_by_kind = read.clouds_by_kind;
+      current.clouds_physics_intensity = read.clouds_physics_intensity;
+      log_line("settings: read again: clouds_by_kind %u, clouds_physics_intensity %g", current.clouds_by_kind,
+               static_cast<double>(current.clouds_physics_intensity));
+#endif
       log_line("settings: read again: clouds_mode %u, clouds_far_steps %g, clouds_near_from %g, clouds_near_to %g, clouds_debug %u, "
                "clouds_hide_below_px %g, clouds_full_from_px %g, clouds_max_steps %g, clouds_edge_hide_px %g, "
                "clouds_edge_full_px %g, clouds_edge_band_px %g, clouds_game_fade %u, clouds_haze %g",

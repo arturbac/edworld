@@ -1139,6 +1139,51 @@ namespace edworld
     alignas(16) std::byte atmo_record[64 + 8 * (4 + atmo_max_cb_bytes)];
     constexpr std::size_t atmo_hue_capacity{256u * 256u};  ///< the upper half of a 256x512 table
     float atmo_hue_r[atmo_hue_capacity], atmo_hue_b[atmo_hue_capacity];
+    // the kind last told and the planet it is of (its radius in metres), since when (GetTickCount64): the clouds take
+    // it in over atmo_kind_fade_ms. Written when the copies are read back, read at the clouds' draw
+    std::atomic<float> atmo_kind_radius{};
+    std::atomic<std::uint8_t> atmo_kind{};
+    std::atomic<ULONGLONG> atmo_kind_since{};
+    constexpr float atmo_kind_fade_ms{2000.f};
+
+    ///\brief the kind just read for the planet of this radius: a new planet or another kind starts again from the
+    /// clouds above; logged when it changes
+    auto atmo_note_kind(float radius, atmosphere_hue_t const & hue) noexcept -> void
+      {
+      atmosphere_print_t const * found{atmosphere_kind_of(hue)};
+      atmosphere_kind_e const kind{found ? found->kind : atmosphere_kind_e::unknown};
+      if(std::fabs(radius - atmo_kind_radius.load(std::memory_order_relaxed)) < 4.f
+         and kind == static_cast<atmosphere_kind_e>(atmo_kind.load(std::memory_order_relaxed)))
+        return;
+      atmo_kind_since.store(GetTickCount64(), std::memory_order_relaxed);
+      atmo_kind.store(static_cast<std::uint8_t>(kind), std::memory_order_relaxed);
+      atmo_kind_radius.store(radius, std::memory_order_relaxed);
+      log_line("clouds: the planet of radius %.0f m is %.*s (r/g %.4f b/g %.4f)", double(radius),
+               found ? static_cast<int>(found->name.size()) : 7, found ? found->name.data() : "unknown", double(hue.r_g),
+               double(hue.b_g));
+      }
+
+    ///\brief the clouds' values 33..43 (clouds3d.hlsl): the planet whose kind is known and its clouds, none when
+    /// clouds_by_kind is 0 or the kind unknown
+    auto atmo_kind_values(float * v) noexcept -> void
+      {
+      std::fill(v, v + 11, 0.f);
+      auto const kind{static_cast<atmosphere_kind_e>(atmo_kind.load(std::memory_order_relaxed))};
+      if(not settings().clouds_by_kind or kind == atmosphere_kind_e::unknown)
+        return;
+      atmosphere_clouds_t const c{atmosphere_clouds(kind, settings().clouds_physics_intensity)};
+      float const since{static_cast<float>(GetTickCount64() - atmo_kind_since.load(std::memory_order_relaxed))};
+      v[0] = atmo_kind_radius.load(std::memory_order_relaxed);
+      v[1] = std::clamp(since / atmo_kind_fade_ms, 0.f, 1.f);
+      v[2] = c.bottom;
+      v[3] = c.top;
+      v[4] = c.cover;
+      v[5] = c.opacity * settings().clouds_opacity;
+      v[6] = c.detail * settings().clouds_detail;
+      v[7] = c.tint[0];
+      v[8] = c.tint[1];
+      v[9] = c.tint[2];
+      }
 
     auto atmo_release(atmo_pending_t & p) noexcept -> void
       {
@@ -1319,6 +1364,17 @@ namespace edworld
         atmo_release(p);
         return;
         }
+      // the kind on every read, for the clouds; the record below once a session per planet and band
+      atmosphere_hue_t hue{};
+      D3D11_MAPPED_SUBRESOURCE tm{};
+      if(p.format == dxgi_r11g11b10_float and SUCCEEDED(ctx->Map(p.t0, 0, D3D11_MAP_READ, 0, &tm)) and tm.pData)
+        {
+        hue = atmosphere_hue(static_cast<std::uint8_t const *>(tm.pData), p.width, p.height, tm.RowPitch, atmo_hue_r,
+                             atmo_hue_b, atmo_hue_capacity);
+        ctx->Unmap(p.t0, 0);
+        }
+      atmo_note_kind(radius, hue);
+
       std::uint32_t const band{over < 1.f ? 0u : static_cast<std::uint32_t>(std::floor(std::log2(over)))};
       std::uint64_t const key{(static_cast<std::uint64_t>(std::llround(radius)) << 8) | band};
       for(std::uint32_t i{}; i != atmo_seen_count; ++i)
@@ -1335,7 +1391,6 @@ namespace edworld
       std::uint64_t hash{0xcbf29ce484222325ull};
       std::uint32_t pitch{};
       bool new_table{};
-      atmosphere_hue_t hue{};
       D3D11_MAPPED_SUBRESOURCE m{};
       if(SUCCEEDED(ctx->Map(p.t0, 0, D3D11_MAP_READ, 0, &m)) and m.pData)
         {
@@ -1349,8 +1404,6 @@ namespace edworld
                       static_cast<unsigned long long>(hash), p.width, p.height, p.format, pitch);
         if(GetFileAttributesW(name) == INVALID_FILE_ATTRIBUTES)
           new_table = queue_write(name, m.pData, pitch * rows);
-        if(p.format == dxgi_r11g11b10_float)
-          hue = atmosphere_hue(bytes, p.width, p.height, pitch, atmo_hue_r, atmo_hue_b, atmo_hue_capacity);
         ctx->Unmap(p.t0, 0);
         }
 
@@ -3767,7 +3820,7 @@ namespace edworld
       ID3D11DepthStencilState * volume_depth_state{};
       ID3D11Buffer * volume_params{};
       // the volume's parameters, the wind's seconds among them, written again for each draw
-      float volume_values[36]{};
+      float volume_values[44]{};
       ULONGLONG wind_start{};
       ID3D11Texture2D * depth_copy{};
       ID3D11ShaderResourceView * depth_view{};
@@ -4022,14 +4075,15 @@ namespace edworld
         }
 
       // 19..32 (the game's fade, near and far, the debug colour, the planet's size on the screen, the steps' most, the
-      // edge, the haze) are written again for each draw, as they change while the game runs; 33..35 fill the buffer to 16 bytes
-      float const values[36]{
+      // edge, the haze) and 33..42 (the atmosphere's kind, edworld_eht) are written again for each draw, as they change
+      // while the game runs; 43 fills the buffer to 16 bytes
+      float const values[44]{
         settings().clouds_bottom, settings().clouds_top, settings().clouds_cover, settings().clouds_light,
         settings().clouds_steps, settings().clouds_density, settings().clouds_opacity, settings().clouds_top_gain,
         settings().clouds_min_light, settings().clouds_under_gain, settings().clouds_detail, settings().clouds_detail_size,
         settings().clouds_detail_range, settings().clouds_detail_edge, settings().clouds_detail_gap, 0.f,
         settings().clouds_wind_low / 3.6f, settings().clouds_wind_high / 3.6f, 1.f, 0.f,
-        0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f
+        0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f
       };
       std::memcpy(clouds.volume_values, values, sizeof values);
       clouds.wind_start = GetTickCount64();
@@ -4229,6 +4283,9 @@ namespace edworld
       clouds.volume_values[30] = std::max(settings().clouds_edge_full_px, settings().clouds_edge_hide_px + 0.01f);
       clouds.volume_values[31] = std::max(settings().clouds_edge_band_px, 0.01f);
       clouds.volume_values[32] = std::max(settings().clouds_haze, 0.f);
+#if defined(EDWORLD_EHT)
+      atmo_kind_values(clouds.volume_values + 33);
+#endif
       ctx->UpdateSubresource(clouds.volume_params, 0, nullptr, clouds.volume_values, 0, 0);
       if(half)
         {

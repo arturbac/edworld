@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- (edworld_eht, test) The clouds with depth by the atmosphere's kind the game's own atmosphere tells: each of the 15
+  kinds on landable planets its layer, cover, opacity and tint (`clouds_by_kind`, `clouds_physics_intensity`).
+
 ## 1.2.0-beta.8
 
 - **Fixed: no navballs below 2160 rows.** The game draws its HUD's surfaces at a size that follows the picture's

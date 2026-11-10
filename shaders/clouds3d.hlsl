@@ -49,6 +49,18 @@ cbuffer clouds : register(b4)
   float cloud_edge_band_px; // on the disc the same within this many pixels of the edge, all further in
   float cloud_haze;         // from under the layer and in it, a cloud this far from the eye covers e times less, as a part
                             // of the planet's radius; 0 = never less
+  // the atmosphere's kind (edworld_eht): the planet whose kind is known, its clouds, how far they have come in
+  float cloud_kind_radius;  // that planet's radius in metres; 0 = none, every planet the clouds above
+  float cloud_kind_weight;  // 0 the clouds above .. 1 the kind's
+  float cloud_kind_bottom;
+  float cloud_kind_top;
+  float cloud_kind_cover;
+  float cloud_kind_opacity;
+  float cloud_kind_detail;
+  float cloud_tint_r;       // the kind's tint, times the star's light
+  float cloud_tint_g;
+  float cloud_tint_b;
+  float cloud_pad;
   };
 
 Texture2D<float> scene_depth : register(t0);
@@ -68,7 +80,7 @@ struct ps_in
 ps_in vs_main(vs_in input)
   {
   ps_in output;
-  float scale = frame_rows[126].x * (1.f + cloud_top) * 1.01f / length(object_rows[9].xyz);
+  float scale = frame_rows[126].x * (1.f + max(cloud_top, cloud_kind_top)) * 1.01f / length(object_rows[9].xyz);
   float4 p = float4(input.pos * scale, 1.f);
   precise float x = dot(object_rows[9], p);
   precise float y = dot(object_rows[10], p);
@@ -156,8 +168,14 @@ float4 ps_main(ps_in input) : SV_TARGET
     discard;
 
   float planet = frame_rows[126].x;
-  float bottom = planet * (1.f + cloud_bottom);
-  float top = planet * (1.f + cloud_top);
+  // this planet's kind known: its clouds, coming in over cloud_kind_weight; any other planet the clouds above
+  float kind = abs(planet - cloud_kind_radius) < 4.f ? cloud_kind_weight : 0.f;
+  float layer_cover = lerp(cloud_cover, cloud_kind_cover, kind);
+  float layer_opacity = lerp(cloud_opacity, cloud_kind_opacity, kind);
+  float layer_detail = lerp(cloud_detail, cloud_kind_detail, kind);
+  float3 tint = lerp(float3(1.f, 1.f, 1.f), float3(cloud_tint_r, cloud_tint_g, cloud_tint_b), kind);
+  float bottom = planet * (1.f + lerp(cloud_bottom, cloud_kind_bottom, kind));
+  float top = planet * (1.f + lerp(cloud_top, cloud_kind_top, kind));
 
   float along = dot(ray, centre);
   float3 aside = centre - ray * along;
@@ -219,7 +237,7 @@ float4 ps_main(ps_in input) : SV_TARGET
   float3 seed = frac(planet / float3(977.f, 1543.f, 2111.f)) * 50.f;
   float inverse_square = 1.f / dot(object_rows[9].xyz, object_rows[9].xyz);
   float3 sun = -frame_rows[291].xyz;
-  float edge = 0.62f - 0.3f * cloud_cover;
+  float edge = 0.62f - 0.3f * layer_cover;
 
   // the swirls of the weather change slowly: worked out once for the ray. Not from the middle of its way through the
   // layer, which jumps at the limb and as the eye enters the layer, and the whole shape with it
@@ -250,7 +268,7 @@ float4 ps_main(ps_in input) : SV_TARGET
   float3 turned_ray = (object_rows[9].xyz * ray.x + object_rows[10].xyz * ray.y + object_rows[11].xyz * ray.z) * inverse_square;
   float3 turned_centre = (object_rows[9].xyz * centre.x + object_rows[10].xyz * centre.y + object_rows[11].xyz * centre.z) * inverse_square;
   // the most the fine shape near the eye can add to a point's shape
-  float detail_most = max(0.f, (0.875f - 0.44f) * cloud_detail - cloud_detail_gap);
+  float detail_most = max(0.f, (0.875f - 0.44f) * layer_detail - cloud_detail_gap);
   // the air between: from under the layer a ray low over the horizon went through clouds 100 km and more away as dense
   // as those overhead, and ended at the outline of the game's hazy far ground in a sharp line (2026-11-09). Far ones
   // cover less, as in the game's own haze; from a layer's height over it up the same as before, and from orbit
@@ -277,14 +295,14 @@ float4 ps_main(ps_in input) : SV_TARGET
     float near = saturate(1.f - t / cloud_detail_range) * saturate(cloud_detail_size * 2.f / step_length) * near_weight;
     float head = fbm_head(place);
     float most = head + 0.21875f - edge;
-    if(most + (cloud_detail > 0.f && most > -0.2f ? detail_most * near : 0.f) <= 0.f)
+    if(most + (layer_detail > 0.f && most > -0.2f ? detail_most * near : 0.f) <= 0.f)
       continue;
     float shape = fbm_tail(place, head) - edge;
     float sharpness = 2.5f;
-    if(cloud_detail > 0.f && near > 0.f && shape > -0.2f)
+    if(layer_detail > 0.f && near > 0.f && shape > -0.2f)
       {
       float3 fine = blown(dir, mean_angle) * (distance_to_centre / cloud_detail_size) + seed;
-      shape += ((fbm(fine, 3) - 0.44f) * cloud_detail - cloud_detail_gap) * near;
+      shape += ((fbm(fine, 3) - 0.44f) * layer_detail - cloud_detail_gap) * near;
       sharpness = lerp(2.5f, cloud_detail_edge, near);
       }
     float profile = saturate(height * 5.f) * saturate((1.f - height) * 2.5f);
@@ -310,7 +328,7 @@ float4 ps_main(ps_in input) : SV_TARGET
   float3 star = frame_rows[293].xyz;
   float strongest = max(max(star.r, star.g), max(star.b, 0.001f));
   star *= max(1.f, cloud_min_light / strongest);
-  float3 colour = light * star * cloud_light * frame_rows[90].y * gain;
-  float weight = game_fade * cloud_opacity * shown;
+  float3 colour = light * star * tint * cloud_light * frame_rows[90].y * gain;
+  float weight = game_fade * layer_opacity * shown;
   return float4(colour * weight, (1.f - clear) * weight);
   }
