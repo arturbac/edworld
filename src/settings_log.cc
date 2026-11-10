@@ -154,6 +154,7 @@ namespace edworld
       {"clouds_edge_hide_px", &settings_t::clouds_edge_hide_px, "no clouds with depth out of the planet's edge while their layer is thinner on the screen than this many pixels, all of them from the next; on the disc the same within clouds_edge_band_px of the edge"},
       {"clouds_edge_full_px", &settings_t::clouds_edge_full_px},
       {"clouds_edge_band_px", &settings_t::clouds_edge_band_px},
+      {"clouds_haze", &settings_t::clouds_haze, "from under the clouds with depth and in them, a cloud this far away covers e times less, so they fade into the haze at the horizon; a part of the planet's radius, 0 = never less"},
       {"compass", &settings_t::compass, "The navballs beside the radar: 0 = none, the game's compass is not read at all"},
       {"edsm", &settings_t::edsm, "The destination's factions under the jump panel: 0 = never ask EDSM"},
       {"list_alpha", &settings_t::list_alpha, "how much the list's box covers what is behind it, 0 to 1"},
@@ -464,14 +465,15 @@ namespace edworld
       current.clouds_edge_full_px = read.clouds_edge_full_px;
       current.clouds_edge_band_px = read.clouds_edge_band_px;
       current.clouds_game_fade = read.clouds_game_fade;
+      current.clouds_haze = read.clouds_haze;
       log_line("settings: read again: clouds_mode %u, clouds_far_steps %g, clouds_near_from %g, clouds_near_to %g, clouds_debug %u, "
                "clouds_hide_below_px %g, clouds_full_from_px %g, clouds_max_steps %g, clouds_edge_hide_px %g, "
-               "clouds_edge_full_px %g, clouds_edge_band_px %g, clouds_game_fade %u",
+               "clouds_edge_full_px %g, clouds_edge_band_px %g, clouds_game_fade %u, clouds_haze %g",
                current.clouds_mode, static_cast<double>(current.clouds_far_steps), static_cast<double>(current.clouds_near_from),
                static_cast<double>(current.clouds_near_to), current.clouds_debug, static_cast<double>(current.clouds_hide_below_px),
                static_cast<double>(current.clouds_full_from_px), static_cast<double>(current.clouds_max_steps),
                static_cast<double>(current.clouds_edge_hide_px), static_cast<double>(current.clouds_edge_full_px),
-               static_cast<double>(current.clouds_edge_band_px), current.clouds_game_fade);
+               static_cast<double>(current.clouds_edge_band_px), current.clouds_game_fade, static_cast<double>(current.clouds_haze));
       }
     catch(std::exception const & e)
       {

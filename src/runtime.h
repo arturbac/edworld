@@ -166,6 +166,11 @@ namespace edworld
     float clouds_edge_hide_px{2.f};
     float clouds_edge_full_px{8.f};
     float clouds_edge_band_px{16.f};
+    ///\brief (PoC) the air between: from under the clouds a ray low over the horizon went through clouds 100 km and more
+    /// away as dense as those overhead, and ended at the outline of the game's hazy far ground in a sharp line
+    /// (2026-11-09). A cloud this far from the eye covers e times less, as a part of the planet's radius, from under the
+    /// layer and in it; from a layer's height over it up as before. 0 = never less
+    float clouds_haze{0.05f};
 
     // ---- the compass (PoC): the HUD compass's dot read off its interface surface, the angles written beside it ----
     ///\brief 0 off, 1 the angles, 2 also everything known for checking them, 3 also a grid of the surface's pixels

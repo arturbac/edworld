@@ -84,6 +84,9 @@
 ;clouds_edge_full_px = 8
 ;clouds_edge_band_px = 16
 
+; from under the clouds with depth and in them, a cloud this far away covers e times less, so they fade into the haze at the horizon; a part of the planet's radius, 0 = never less
+;clouds_haze = 0.05
+
 ; The navballs beside the radar: 0 = none, the game's compass is not read at all
 ;compass = 1
 

@@ -47,6 +47,8 @@ cbuffer clouds : register(b4)
   float cloud_edge_hide_px; // none out of the planet's edge while the layer is thinner on the screen than this, all from the next
   float cloud_edge_full_px;
   float cloud_edge_band_px; // on the disc the same within this many pixels of the edge, all further in
+  float cloud_haze;         // from under the layer and in it, a cloud this far from the eye covers e times less, as a part
+                            // of the planet's radius; 0 = never less
   };
 
 Texture2D<float> scene_depth : register(t0);
@@ -249,6 +251,12 @@ float4 ps_main(ps_in input) : SV_TARGET
   float3 turned_centre = (object_rows[9].xyz * centre.x + object_rows[10].xyz * centre.y + object_rows[11].xyz * centre.z) * inverse_square;
   // the most the fine shape near the eye can add to a point's shape
   float detail_most = max(0.f, (0.875f - 0.44f) * cloud_detail - cloud_detail_gap);
+  // the air between: from under the layer a ray low over the horizon went through clouds 100 km and more away as dense
+  // as those overhead, and ended at the outline of the game's hazy far ground in a sharp line (2026-11-09). Far ones
+  // cover less, as in the game's own haze; from a layer's height over it up the same as before, and from orbit
+  float height_of_eye = (length(centre) - bottom) / (top - bottom);
+  float hazed = cloud_haze > 0.f ? 1.f - saturate(height_of_eye - 1.f) : 0.f;
+  float haze_length = max(cloud_haze, 1e-6f) * planet;
   float t = enter + step_length * start;
   float3 light = 0.f;
   float clear = 1.f;
@@ -285,7 +293,7 @@ float4 ps_main(ps_in input) : SV_TARGET
     if(density > 0.001f)
       {
       float optical = density * cloud_density * through;
-      float taken = 1.f - exp(-optical);
+      float taken = (1.f - exp(-optical)) * lerp(1.f, exp(-t / haze_length), hazed);
       float3 normal = from_centre / distance_to_centre;
       float day = saturate(dot(normal, sun) * 0.85f + 0.15f);
       // the tops catch the sun, the undersides are in the shade of what is above them
@@ -298,7 +306,6 @@ float4 ps_main(ps_in input) : SV_TARGET
     }
 
   // each gain comes in over a layer's height: from the floor up to the top none, above and under it the two
-  float height_of_eye = (length(centre) - bottom) / (top - bottom);
   float gain = lerp(lerp(cloud_under_gain, 1.f, saturate(height_of_eye)), cloud_top_gain, saturate(height_of_eye - 1.f));
   float3 star = frame_rows[293].xyz;
   float strongest = max(max(star.r, star.g), max(star.b, 0.001f));
