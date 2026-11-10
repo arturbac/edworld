@@ -4,6 +4,8 @@
 
 - (edworld_eht, test) The clouds with depth by the atmosphere's kind the game's own atmosphere tells: each of the 15
   kinds on landable planets its layer, cover, opacity and tint (`clouds_by_kind`, `clouds_physics_intensity`).
+- (edworld_eht, test) Storms in those clouds, cyclones with arms and an eye, by the planet's size, its day read off
+  its turn and the kind (`clouds_cyclones`).
 
 ## 1.2.0-beta.8
 

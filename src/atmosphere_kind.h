@@ -169,7 +169,7 @@ namespace edworld
   }};
 
   ///\brief a kind's clouds, its share of the opacity times intensity (clouds_physics_intensity, 1 = as the physics
-  /// gives, 0 = none), at most all of it
+  /// gives, 0 = none), at most all of it; over 1 the cover too comes up to a condensing gas's, all of it at 2
   [[nodiscard]]
   constexpr auto atmosphere_clouds(atmosphere_kind_e kind, float intensity) noexcept -> atmosphere_clouds_t
     {
@@ -178,7 +178,151 @@ namespace edworld
     atmosphere_clouds_t c{atmosphere_clouds_table[static_cast<std::size_t>(kind) - 1u]};
     float const i{intensity > 0.f ? intensity : 0.f};
     c.opacity = c.opacity * i < 1.f ? c.opacity * i : 1.f;
+    if(i > 1.f)
+      c.cover += (0.55f - c.cover) * (i - 1.f < 1.f ? i - 1.f : 1.f);
     return c;
+    }
+
+  ///\brief what the storms of a kind's planet follow: its typical landable planet's surface temperature (K), the main
+  /// gas's molar mass (g/mol), the median radius (km) and the median R/L (below) of the kind, from the scans
+  /// (2026-11-10, both commanders' galaxies)
+  struct atmosphere_physics_t
+    {
+    float kelvin, molar, radius_km, rossby_median;
+    };
+
+  inline constexpr std::array<atmosphere_physics_t, 15> atmosphere_physics_table{{
+    {165.f, 17.f, 1351.f, 0.05f},    // Ammonia
+    {69.f, 40.f, 2953.f, 0.09f},     // Argon
+    {83.f, 31.f, 4143.f, 1.04f},     // ArgonRich
+    {175.f, 44.f, 1115.f, 0.05f},    // CarbonDioxide
+    {230.f, 34.f, 3738.f, 0.88f},    // CarbonDioxideRich
+    {28.f, 4.f, 7711.f, 3.13f},      // Helium
+    {93.f, 16.f, 654.f, 0.02f},      // Methane
+    {140.f, 26.f, 3942.f, 1.46f},    // MethaneRich
+    {31.f, 20.2f, 5435.f, 3.70f},    // Neon
+    {63.f, 25.f, 5529.f, 3.62f},     // NeonRich
+    {79.f, 28.f, 3399.f, 1.61f},     // Nitrogen
+    {181.f, 32.f, 3070.f, 0.24f},    // Oxygen
+    {1808.f, 60.f, 4330.f, 0.41f},   // SilicateVapour
+    {270.f, 64.f, 2937.f, 0.12f},    // SulphurDioxide
+    {445.f, 18.f, 436.f, 0.02f},     // Water
+  }};
+
+  ///\brief how many storms the planet holds across: its radius over the Rossby radius of deformation
+  /// L = sqrt(R* T / M) / f, f = 2 omega sin 45 degrees (gravity cancels out). day_s 0 = not known: the kind's median
+  /// R/L times this radius over the kind's median radius
+  [[nodiscard]]
+  inline auto rossby_ratio(atmosphere_kind_e kind, float radius_m, float day_s) noexcept -> float
+    {
+    if(kind == atmosphere_kind_e::unknown or not(radius_m > 0.f))
+      return 0.f;
+    atmosphere_physics_t const & p{atmosphere_physics_table[static_cast<std::size_t>(kind) - 1u]};
+    if(not(day_s > 0.f))
+      return p.rossby_median * radius_m / (p.radius_km * 1000.f);
+    float const f{2.f * (6.2831853f / day_s) * 0.70710678f};
+    return radius_m * f / std::sqrt(8.314f * p.kelvin / (p.molar / 1000.f));
+    }
+
+  struct planet_turn_t
+    {
+    bool ok;        ///< a small turn about y alone: not across the game's change of its frame
+    double day_s;   ///< the day it gives
+    double about_y; ///< the turn, radians, + about +y
+    };
+
+  ///\brief the planet's turn between two reads of the shell's object matrix (VS b0 rows 9..11, xyz, each row of unit
+  /// length) seconds apart: the old rows' transpose times the new, in the planet's frame; the angle from the parts off
+  /// the diagonal, as one this small is lost in the trace's float
+  [[nodiscard]]
+  inline auto planet_turn(float const (&old_rows)[9], float const (&new_rows)[9], double seconds) noexcept -> planet_turn_t
+    {
+    auto const m{[&](std::uint32_t i, std::uint32_t j) noexcept -> double
+                   {
+                     double v{};
+                     for(std::uint32_t k{}; k != 3u; ++k)
+                       v += static_cast<double>(old_rows[k * 3u + i]) * new_rows[k * 3u + j];
+                     return v;
+                   }};
+    double const about_y{0.5 * (m(0, 2) - m(2, 0))};
+    double const off{std::fabs(m(1, 2) - m(2, 1)) + std::fabs(m(0, 1) - m(1, 0))};
+    double const a{std::fabs(about_y)};
+    if(not(seconds > 0.) or a < 1e-9 or a > 0.05 or off > 0.2 * a + 1e-6)
+      return {false, 0., about_y};
+    return {true, 6.283185307179586 * seconds / a, about_y};
+    }
+
+  ///\brief a storm: its centre on the unit sphere in the planet's frame (y the axis it turns on), its size as an angle
+  /// (radians), how far it twists the clouds at its middle (radians, + the way the planet turns)
+  struct cyclone_t
+    {
+    float x, y, z, size, twist;
+    };
+
+  inline constexpr std::size_t cyclones_most{8u};
+
+  struct cyclone_set_t
+    {
+    std::uint32_t count;
+    std::array<cyclone_t, cyclones_most> at;
+    };
+
+  ///\brief the storms of design v1 (2026-11-10) for this R/L, laid out from the planet's seed (the same planet always
+  /// the same): under 0.3 none; to 1 one to three large ones and one at each pole; to 4 three to six of a medium size
+  /// between 20 and 60 degrees; more, six to eight small ones. A storm turns the way the planet does on the half the
+  /// planet turns about from below (spin +1: about +y), the other way on the other half
+  [[nodiscard]]
+  inline auto cyclones_of(float rossby, std::uint64_t seed, float spin) noexcept -> cyclone_set_t
+    {
+    cyclone_set_t set{};
+    if(not(rossby >= 0.3f))
+      return set;
+    std::uint64_t state{seed * 0x9e3779b97f4a7c15ull + 0x632be59bd9b4e019ull};
+    auto const next{[&state]() noexcept -> float
+                      {
+                        state += 0x9e3779b97f4a7c15ull;
+                        std::uint64_t z{state};
+                        z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ull;
+                        z = (z ^ (z >> 27)) * 0x94d049bb133111ebull;
+                        return static_cast<float>((z ^ (z >> 31)) >> 40) / static_cast<float>(1u << 24);
+                      }};
+    float const sense{spin < 0.f ? -1.f : 1.f};
+    auto const add{[&](float latitude, float longitude, float size, float twist) noexcept
+                     {
+                       if(set.count == cyclones_most)
+                         return;
+                       float const c{std::cos(latitude)};
+                       set.at[set.count++] = cyclone_t{c * std::cos(longitude), std::sin(latitude), c * std::sin(longitude), size,
+                                                       (latitude < 0.f ? -twist : twist) * sense};
+                     }};
+    std::uint32_t n{};
+    float low{}, high{}, size_from{}, size_to{}, twist{};
+    if(rossby < 1.f)
+      {
+      n = 1u + static_cast<std::uint32_t>(next() * 2.999f);
+      low = 15.f, high = 50.f, size_from = 0.25f, size_to = 0.35f, twist = 2.5f;
+      }
+    else if(rossby < 4.f)
+      {
+      n = 3u + static_cast<std::uint32_t>(next() * 3.999f);
+      low = 20.f, high = 60.f, size_from = 0.12f, size_to = 0.2f, twist = n <= 3u ? 2.5f : 1.5f;
+      }
+    else
+      {
+      n = 6u + static_cast<std::uint32_t>(next() * 2.999f);
+      low = 20.f, high = 60.f, size_from = 0.08f, size_to = 0.08f, twist = 1.5f;
+      }
+    for(std::uint32_t i{}; i != n; ++i)
+      {
+      float const latitude{(low + (high - low) * next()) * 0.017453293f * (next() < 0.5f ? -1.f : 1.f)};
+      add(latitude, next() * 6.2831853f, size_from + (size_to - size_from) * next(), twist);
+      }
+    if(rossby < 1.f)
+      {
+      add(1.5707963f, 0.f, 0.15f, 2.5f);
+      add(-1.5707963f, 0.f, 0.15f, 2.5f);
+      }
+    return set;
     }
 
   ///\brief the kind whose hue is nearest, when within the tolerance in both ratios; unknown otherwise

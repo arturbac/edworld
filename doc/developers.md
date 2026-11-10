@@ -405,7 +405,21 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   scans: NeonRich, ArgonRich and MethaneRich mostly nitrogen, CarbonDioxideRich mostly oxygen. The kind last told and
   its planet's radius go to the volume's buffer (values 33..42); `clouds3d.hlsl` takes them only for the planet of
   that radius (within 4 m), coming in over 2 s; any other planet keeps the ini's clouds. The opacity share times
-  `clouds_physics_intensity`, at most 1.
+  `clouds_physics_intensity`, at most 1; over 1 the cover also comes up toward 0.55, all of it at 2.
+- (edworld_eht only, `clouds_cyclones`, PoC 2026-11-10) Storms. The planet's day is read off the shell's object
+  matrix (VS b0 rows 9..11), which turns about the model's y with the planet: `planet_turn` takes two reads (the
+  fingerprint's, `atmo_record_s` apart), the angle from the off-diagonal parts of old rows' transpose times new; a
+  turn over 0.05 rad or about another axis (the game changing its frame) is none, and the day counts once two in a
+  row agree to 1%. On 74 recorded pairs 72 gave the scan's day within 1% (the other two a day of 4446 h, 1.5% off).
+  The spin's sign too (19 of 20 planets about -y). `rossby_ratio`: R over L = sqrt(R* T / M) / (2 omega sin 45),
+  T and M the kind's typical (`atmosphere_physics_table`); without a day the kind's median R/L times R over its median
+  radius. `cyclones_of` lays the storms out from the radius as a seed: under 0.3 none; to 1 one to three of 0.25..0.35
+  rad between 15 and 50 degrees and one at each pole; to 4 three to six of 0.12..0.2 rad between 20 and 60; past, six
+  to eight of 0.08; twist 2.5 rad (1.5 for more than three), the planet's way on the half it turns about. Values
+  44..87 of the volume's buffer; `storms()` in `clouds3d.hlsl` turns the ray's middle and each step's direction about
+  each centre by the twist times exp(-(d/size)^2), clears an eye under 0.08..0.18 of the size and adds a ring around
+  it. The storms stand still on the planet (design v1 had them turning once an hour: a turn growing with time winds
+  the arms up without end, left out).
 - Logs to `<plugin>.log` in the log folder: chain, attach, watched shaders, the patch's first draw and the
   destination's allegiance and factions (how many, from which source), and once a second (`log_interval_ms`) a summary: in edworld_eht the frame's panel draws
   with surface size and anchor in NDC, in edworld the draw and fault totals. A fault in edworld's own work is caught; eight of them switch the observer off, never the game call.
