@@ -4377,6 +4377,13 @@ namespace edworld
 #if defined(EDWORLD_EHT)
       atmo_kind_values(clouds.volume_values + 33);
       atmo_cyclone_values(clouds.volume_values + 44);
+      if(clouds.volume_values[84] > 0.f)
+        {
+        // the storms tower to twice the layer's height (v1.4s): the kind's top raised, the tower told to the shader
+        float const floor_at{clouds.volume_values[35]};
+        clouds.volume_values[36] = floor_at + (clouds.volume_values[36] - floor_at) * 2.f;
+        clouds.volume_values[85] = 2.f;
+        }
 #endif
       ctx->UpdateSubresource(clouds.volume_params, 0, nullptr, clouds.volume_values, 0, 0);
       if(half)

@@ -421,7 +421,13 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   core out to 0.35 of the size turns as one, past it the turn falls as 1/x^2, so the clouds curve in at a distance
   instead of being drawn out into the eye. A dense disc of clouds from 0.12..0.2 out to 0.45..0.7 of the size adds
   0.45 to the shape, a finer texture (fbm at 20 times the planet, 0.6) is wound in with the storm, and the eye clears
-  under 0.10..0.16 of the size, its edge uneven by about 20%. The storms stand still on the planet (design v1 had them turning once an hour: a turn growing with time winds
+  under 0.10..0.16 of the size, its edge uneven by about 20%. v1.5 (2026-11-11, `storm_sim.py --v1.5`): the eye a
+  funnel, clear under 0.06..0.10 of the size at the layer's middle, half that at its floor and 1.4 times at its top,
+  with a dense eyewall (+0.35) at its edge; on a planet with storms the layer twice as high (the kind's top raised on
+  the CPU, `cyclone_tower` 2), the clouds out of storms keeping its lower half with their opacity as before, a storm
+  using all of it; the eyewall lit by how it faces the sun; and in a storm the clouds' own shadow, two looks toward
+  the sun (a quarter and 0.8 of the layer's height) at the large shape alone (`storm_density`, two octaves), at half
+  the sheet's strength. The storms stand still on the planet (design v1 had them turning once an hour: a turn growing with time winds
   the arms up without end, left out).
 - Logs to `<plugin>.log` in the log folder: chain, attach, watched shaders, the patch's first draw and the
   destination's allegiance and factions (how many, from which source), and once a second (`log_interval_ms`) a summary: in edworld_eht the frame's panel draws
