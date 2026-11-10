@@ -49,6 +49,25 @@ cbuffer clouds : register(b4)
   float cloud_edge_band_px; // on the disc the same within this many pixels of the edge, all further in
   float cloud_haze;         // from under the layer and in it, a cloud this far from the eye covers e times less, as a part
                             // of the planet's radius; 0 = never less
+  // the atmosphere's kind (edworld_eht): the planet whose kind is known, its clouds, how far they have come in
+  float cloud_kind_radius;  // that planet's radius in metres; 0 = none, every planet the clouds above
+  float cloud_kind_weight;  // 0 the clouds above .. 1 the kind's
+  float cloud_kind_bottom;
+  float cloud_kind_top;
+  float cloud_kind_cover;
+  float cloud_kind_opacity;
+  float cloud_kind_detail;
+  float cloud_tint_r;       // the kind's tint, times the star's light
+  float cloud_tint_g;
+  float cloud_tint_b;
+  float cloud_pad;
+  // the storms (edworld_eht) of that planet: each its centre on the unit sphere in the planet's frame and its size (an
+  // angle), then the twists at their middles (radians), four to a row, then how many
+  float4 cyclone_at[8];
+  float4 cyclone_twist[2];
+  float cyclone_count;
+  float cyclone_tower;      // how many times the layer's height the storms reach, the rest keeping its lower part
+  float2 cyclone_pad;
   };
 
 Texture2D<float> scene_depth : register(t0);
@@ -68,7 +87,7 @@ struct ps_in
 ps_in vs_main(vs_in input)
   {
   ps_in output;
-  float scale = frame_rows[126].x * (1.f + cloud_top) * 1.01f / length(object_rows[9].xyz);
+  float scale = frame_rows[126].x * (1.f + max(cloud_top, cloud_kind_top)) * 1.01f / length(object_rows[9].xyz);
   float4 p = float4(input.pos * scale, 1.f);
   precise float x = dot(object_rows[9], p);
   precise float y = dot(object_rows[10], p);
@@ -148,6 +167,75 @@ float fbm(float3 p, int octaves)
   return sum;
   }
 
+// the storms (v1.2b, 2026-11-10): d turned about each storm's centre as a Rankine vortex - the core out to 0.35 of the
+// storm's size turns as one, so the clouds are not drawn out there, and the turn falls as 1/x^2 past it, where the
+// clouds come curving in; the sample turned back the way the storm turns them. eye: how much of the clouds is left at
+// d (a small clear eye, its edge uneven), wall: what the dense disc of clouds around the eye adds to the shape, inner:
+// how far into a storm d is, for its finer texture. v1.4s/v1.5 (2026-11-11): the eye a funnel, half as wide at the
+// layer's floor as at its middle and 1.4 times at its top (height 0..1), with a dense eyewall at its edge all the way
+// down; wallness: how much d is in that wall, inward: the way to the eye's middle there (both for its light)
+float3 storms(float3 d, float weight, float height, inout float eye, inout float wall, inout float inner,
+              inout float wallness, inout float3 inward)
+  {
+  if(weight <= 0.f)
+    return d;
+  [loop]
+  for(int i = 0; i < (int)cyclone_count; ++i)
+    {
+    float4 c = cyclone_at[i];
+    float apart = length(d - c.xyz) / c.w;  // the chord over the size: about the angle's share for a small storm
+    if(apart > 2.5f)
+      continue;
+    float profile = (apart < 0.35f ? 1.f : (0.35f * 0.35f) / (apart * apart)) * saturate((2.5f - apart) * 2.f);
+    float twist = -cyclone_twist[i >> 2][i & 3] * weight * profile;
+    float s = sin(twist);
+    float co = cos(twist);
+    d = d * co + cross(c.xyz, d) * s + c.xyz * dot(c.xyz, d) * (1.f - co);
+    if(apart < 0.4f)
+      {
+      float grow = 0.5f + 0.9f * height;
+      float seen = apart * (1.f + 0.4f * (fbm(d * 40.f + 5.3f, 2) - 0.375f));
+      eye = min(eye, lerp(1.f, smoothstep(0.06f * grow, 0.10f * grow, seen), weight));
+      float ring = (seen - 0.115f * grow) / 0.07f;
+      float in_wall = weight * exp(-ring * ring);
+      wall = max(wall, 0.35f * in_wall);
+      if(in_wall > wallness)
+        {
+        wallness = in_wall;
+        inward = normalize(c.xyz - d * dot(d, c.xyz) + 1e-6f);
+        }
+      }
+    float rise = smoothstep(0.12f, 0.2f, apart);
+    float fall = smoothstep(0.45f, 0.7f, apart);
+    wall = max(wall, 0.45f * weight * rise * (1.f - fall));
+    inner = max(inner, weight * exp(-apart * apart));
+    }
+  return d;
+  }
+
+// a storm's cloud at p (from the planet's centre, the world's axes) by its large shape alone, for the shadow it casts:
+// what the step's density is, in two octaves instead of five
+float storm_density(float3 p, float bottom, float top, float kind, float tower, float3 seed, float3 warp, float edge,
+                    float wind_angle)
+  {
+  float distance_to_centre = length(p);
+  if(distance_to_centre < bottom || distance_to_centre > top)
+    return 0.f;
+  float height = (distance_to_centre - bottom) / (top - bottom);
+  float3 d = normalize(object_rows[9].xyz * p.x + object_rows[10].xyz * p.y + object_rows[11].xyz * p.z);
+  float eye = 1.f, wall = 0.f, inner = 0.f, wallness = 0.f;
+  float3 inward = 0.f;
+  d = storms(d, kind, height, eye, wall, inner, wallness, inward);
+  float3 place = blown(d, wind_angle * lerp(cloud_wind_low, cloud_wind_high, height)) * 7.f + seed + warp * 3.5f + float3(0.f, height * 0.4f, 0.f);
+  float shape = fbm_head(place) + 0.11f - edge + wall;  // the last three octaves' mean
+  float low = min(height * tower, 1.f);
+  float h = lerp(low, height, saturate(inner * 1.5f));
+  if(height * tower >= 1.f && inner < 0.3f)
+    return 0.f;
+  float density = saturate(shape * 2.5f);
+  return density * density * saturate(h * 5.f) * saturate((1.f - h) * 2.5f) * eye;
+  }
+
 float4 ps_main(ps_in input) : SV_TARGET
   {
   float3 ray = normalize(input.view);
@@ -156,8 +244,14 @@ float4 ps_main(ps_in input) : SV_TARGET
     discard;
 
   float planet = frame_rows[126].x;
-  float bottom = planet * (1.f + cloud_bottom);
-  float top = planet * (1.f + cloud_top);
+  // this planet's kind known: its clouds, coming in over cloud_kind_weight; any other planet the clouds above
+  float kind = abs(planet - cloud_kind_radius) < 4.f ? cloud_kind_weight : 0.f;
+  float layer_cover = lerp(cloud_cover, cloud_kind_cover, kind);
+  float layer_opacity = lerp(cloud_opacity, cloud_kind_opacity, kind);
+  float layer_detail = lerp(cloud_detail, cloud_kind_detail, kind);
+  float3 tint = lerp(float3(1.f, 1.f, 1.f), float3(cloud_tint_r, cloud_tint_g, cloud_tint_b), kind);
+  float bottom = planet * (1.f + lerp(cloud_bottom, cloud_kind_bottom, kind));
+  float top = planet * (1.f + lerp(cloud_top, cloud_kind_top, kind));
 
   float along = dot(ray, centre);
   float3 aside = centre - ray * along;
@@ -219,7 +313,7 @@ float4 ps_main(ps_in input) : SV_TARGET
   float3 seed = frac(planet / float3(977.f, 1543.f, 2111.f)) * 50.f;
   float inverse_square = 1.f / dot(object_rows[9].xyz, object_rows[9].xyz);
   float3 sun = -frame_rows[291].xyz;
-  float edge = 0.62f - 0.3f * cloud_cover;
+  float edge = 0.62f - 0.3f * layer_cover;
 
   // the swirls of the weather change slowly: worked out once for the ray. Not from the middle of its way through the
   // layer, which jumps at the limb and as the eye enters the layer, and the whole shape with it
@@ -230,6 +324,15 @@ float4 ps_main(ps_in input) : SV_TARGET
   float wind_angle = (seed.x > 25.f ? 1.f : -1.f) * cloud_wind_seconds / planet;
   float mean_angle = wind_angle * (cloud_wind_low + cloud_wind_high) * 0.5f;
   middle_dir = blown(middle_dir, mean_angle);
+  float middle_eye = 1.f;
+  float middle_wall = 0.f;
+  float middle_inner = 0.f;
+  float middle_wallness = 0.f;
+  float3 middle_inward = 0.f;
+  middle_dir = storms(middle_dir, kind, 0.5f, middle_eye, middle_wall, middle_inner, middle_wallness, middle_inward);
+  // the storms' tower and the sun in the planet's frame, for the eyewall's light
+  float tower = cyclone_count > 0.5f && kind > 0.f ? max(cyclone_tower, 1.f) : 1.f;
+  float3 sun_model = normalize(object_rows[9].xyz * sun.x + object_rows[10].xyz * sun.y + object_rows[11].xyz * sun.z);
   float3 warp = float3(fbm(middle_dir * 3.f + seed, 4), fbm(middle_dir * 3.f + seed + 11.f, 4), fbm(middle_dir * 3.f + seed + 23.f, 4));
 
   // the steps follow the way's length through the layer: a step no longer than half the smallest lumps (the shape's
@@ -250,7 +353,7 @@ float4 ps_main(ps_in input) : SV_TARGET
   float3 turned_ray = (object_rows[9].xyz * ray.x + object_rows[10].xyz * ray.y + object_rows[11].xyz * ray.z) * inverse_square;
   float3 turned_centre = (object_rows[9].xyz * centre.x + object_rows[10].xyz * centre.y + object_rows[11].xyz * centre.z) * inverse_square;
   // the most the fine shape near the eye can add to a point's shape
-  float detail_most = max(0.f, (0.875f - 0.44f) * cloud_detail - cloud_detail_gap);
+  float detail_most = max(0.f, (0.875f - 0.44f) * layer_detail - cloud_detail_gap);
   // the air between: from under the layer a ray low over the horizon went through clouds 100 km and more away as dense
   // as those overhead, and ended at the outline of the game's hazy far ground in a sharp line (2026-11-09). Far ones
   // cover less, as in the game's own haze; from a layer's height over it up the same as before, and from orbit
@@ -271,34 +374,60 @@ float4 ps_main(ps_in input) : SV_TARGET
     float distance_to_centre = length(from_centre);
     float height = saturate((distance_to_centre - bottom) / (top - bottom));
     float3 dir = normalize(turned_ray * t - turned_centre);
+    float eye = 1.f;
+    float wall = 0.f;
+    float inner = 0.f;
+    float wallness = 0.f;
+    float3 inward = 0.f;
+    dir = storms(dir, kind, height, eye, wall, inner, wallness, inward);
     float3 place = blown(dir, wind_angle * lerp(cloud_wind_low, cloud_wind_high, height)) * 7.f + seed + warp * 3.5f + float3(0.f, height * 0.4f, 0.f);
     // the shape above has lumps of tens of km: fine from orbit, one smooth fog from under them. Near the eye lumps of a
     // few km cut it, where the steps are short enough to show them
     float near = saturate(1.f - t / cloud_detail_range) * saturate(cloud_detail_size * 2.f / step_length) * near_weight;
     float head = fbm_head(place);
-    float most = head + 0.21875f - edge;
-    if(most + (cloud_detail > 0.f && most > -0.2f ? detail_most * near : 0.f) <= 0.f)
+    float most = head + 0.21875f - edge + wall;
+    if(most + (layer_detail > 0.f && most > -0.2f ? detail_most * near : 0.f) <= 0.f)
       continue;
-    float shape = fbm_tail(place, head) - edge;
+    float shape = fbm_tail(place, head) - edge + wall;
+    if(inner > 0.01f)  // a storm's finer texture, wound with it
+      shape += (fbm(dir * 20.f + seed, 3) - 0.44f) * 0.6f * inner;
     float sharpness = 2.5f;
-    if(cloud_detail > 0.f && near > 0.f && shape > -0.2f)
+    if(layer_detail > 0.f && near > 0.f && shape > -0.2f)
       {
       float3 fine = blown(dir, mean_angle) * (distance_to_centre / cloud_detail_size) + seed;
-      shape += ((fbm(fine, 3) - 0.44f) * cloud_detail - cloud_detail_gap) * near;
+      shape += ((fbm(fine, 3) - 0.44f) * layer_detail - cloud_detail_gap) * near;
       sharpness = lerp(2.5f, cloud_detail_edge, near);
       }
-    float profile = saturate(height * 5.f) * saturate((1.f - height) * 2.5f);
+    // a storm towers through the layer, the clouds out of storms keep its lower part as before (tower 1: all of it)
+    float low = min(height * tower, 1.f);
+    float stormy = saturate(inner * 1.5f);
+    float profile_height = lerp(low, height, stormy);
+    float profile = saturate(profile_height * 5.f) * saturate((1.f - profile_height) * 2.5f);
+    if(tower > 1.f && height * tower >= 1.f && inner < 0.3f)
+      profile = 0.f;
     float density = saturate(shape * sharpness);
-    density *= density * profile;
+    density *= density * profile * eye;
     if(density > 0.001f)
       {
-      float optical = density * cloud_density * through;
+      float optical = density * cloud_density * through * lerp(tower, 1.f, stormy);
       float taken = (1.f - exp(-optical)) * lerp(1.f, exp(-t / haze_length), hazed);
       float3 normal = from_centre / distance_to_centre;
       float day = saturate(dot(normal, sun) * 0.85f + 0.15f);
+      // the eyewall by the way it faces the sun: the far side of the eye bright, the near one shaded
+      if(wallness > 0.001f)
+        day *= 1.f - 0.5f * wallness + 0.8f * wallness * saturate(-dot(inward, sun_model) * 0.5f + 0.5f);
+      // in a storm the clouds' own shadow: what lies toward the sun, a quarter and most of the layer's height along it
+      float own = 1.f;
+      if(inner > 0.05f)
+        {
+        float span = top - bottom;
+        float towards = storm_density(from_centre + sun * span * 0.25f, bottom, top, kind, tower, seed, warp, edge, wind_angle) * 0.25f
+                        + storm_density(from_centre + sun * span * 0.8f, bottom, top, kind, tower, seed, warp, edge, wind_angle) * 0.55f;
+        own = lerp(1.f, exp(-towards * 2.4f), saturate(inner * 4.f));
+        }
       // the tops catch the sun, the undersides are in the shade of what is above them
       float shade = lerp(0.35f, 1.f, height);
-      light += clear * taken * day * shade;
+      light += clear * taken * day * shade * own;
       clear *= 1.f - taken;
       if(clear < 0.01f)
         break;
@@ -310,7 +439,7 @@ float4 ps_main(ps_in input) : SV_TARGET
   float3 star = frame_rows[293].xyz;
   float strongest = max(max(star.r, star.g), max(star.b, 0.001f));
   star *= max(1.f, cloud_min_light / strongest);
-  float3 colour = light * star * cloud_light * frame_rows[90].y * gain;
-  float weight = game_fade * cloud_opacity * shown;
+  float3 colour = light * star * tint * cloud_light * frame_rows[90].y * gain;
+  float weight = game_fade * layer_opacity * shown;
   return float4(colour * weight, (1.f - clear) * weight);
   }

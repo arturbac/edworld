@@ -394,7 +394,41 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   green. Measured on 24 planets, all 15 kinds the journal names on landable planets: one hue per kind at every star
   (Argon at K6, G9 and M7 stars alike to 0.001), following the kind the journal names, not the mix of gases; the kinds
   stand 0.010 or more apart (CarbonDioxide and Methane the nearest). A hue within 0.004 of a kind's in both ratios is
-  that kind (the nearest), otherwise `unknown`. Only logged; nothing drawn depends on it yet.
+  that kind (the nearest), otherwise `unknown`. The kind is read on every read-back (not only for a record) and the
+  clouds with depth take it (below).
+- (edworld_eht only, `clouds_by_kind`, PoC 2026-11-10) The clouds with depth by the atmosphere's kind:
+  `atmosphere_clouds_table` (design v1.1) gives each kind the layer's floor and top (from the scale height R T / (M g)
+  of the kind's typical landable planet, scanned medians, pressed into 0.006..0.04 of the radius as
+  `0.012 sqrt((H/R) / 0.0025)`, floor a quarter of the top), its share of `clouds_opacity` (from the typical pressure,
+  `log10(p / 0.001) / 2`, at least 0.3), the cover (0.55 where the main gas condenses at the typical temperature,
+  0.45 where not, 0.35 for Helium), the fine shape's strength and a tint. The "Rich" kinds by their main gas in the
+  scans: NeonRich, ArgonRich and MethaneRich mostly nitrogen, CarbonDioxideRich mostly oxygen. The kind last told and
+  its planet's radius go to the volume's buffer (values 33..42); `clouds3d.hlsl` takes them only for the planet of
+  that radius (within 4 m), coming in over 2 s; any other planet keeps the ini's clouds. The opacity share times
+  `clouds_physics_intensity`, at most 1; over 1 the cover also comes up toward 0.55, all of it at 2.
+- (edworld_eht only, `clouds_cyclones`, PoC 2026-11-10) Storms. The planet's day is read off the shell's object
+  matrix (VS b0 rows 9..11), which turns about the model's y with the planet: `planet_turn` takes two reads (the
+  fingerprint's, `atmo_record_s` apart), the angle from the off-diagonal parts of old rows' transpose times new; a
+  turn over 0.05 rad or about another axis (the game changing its frame) is none, and the day counts once two in a
+  row agree to 1%. On 74 recorded pairs 72 gave the scan's day within 1% (the other two a day of 4446 h, 1.5% off).
+  The spin's sign too (19 of 20 planets about -y). `rossby_ratio`: R over L = sqrt(R* T / M) / (2 omega sin 45),
+  T and M the kind's typical (`atmosphere_physics_table`); without a day the kind's median R/L times R over its median
+  radius. `cyclones_of` lays the storms out from the radius as a seed: under 0.3 none; to 1 one to three of 0.25..0.35
+  rad between 15 and 50 degrees and one at each pole; to 4 three to six of 0.12..0.2 rad between 20 and 60; past, six
+  to eight of 0.08; twist 5 rad (3 for more than three), the planet's way on the half it turns about. Values 44..87
+  of the volume's buffer; `storms()` in `clouds3d.hlsl` (v1.2b, tuned on `research/clouds-20261106/storm_sim.py`, a
+  CPU copy of the shape) turns the ray's middle and each step's direction about each centre as a Rankine vortex: the
+  core out to 0.35 of the size turns as one, past it the turn falls as 1/x^2, so the clouds curve in at a distance
+  instead of being drawn out into the eye. A dense disc of clouds from 0.12..0.2 out to 0.45..0.7 of the size adds
+  0.45 to the shape, a finer texture (fbm at 20 times the planet, 0.6) is wound in with the storm, and the eye clears
+  under 0.10..0.16 of the size, its edge uneven by about 20%. v1.5 (2026-11-11, `storm_sim.py --v1.5`): the eye a
+  funnel, clear under 0.06..0.10 of the size at the layer's middle, half that at its floor and 1.4 times at its top,
+  with a dense eyewall (+0.35) at its edge; on a planet with storms the layer twice as high (the kind's top raised on
+  the CPU, `cyclone_tower` 2), the clouds out of storms keeping its lower half with their opacity as before, a storm
+  using all of it; the eyewall lit by how it faces the sun; and in a storm the clouds' own shadow, two looks toward
+  the sun (a quarter and 0.8 of the layer's height) at the large shape alone (`storm_density`, two octaves), at half
+  the sheet's strength. The storms stand still on the planet (design v1 had them turning once an hour: a turn growing with time winds
+  the arms up without end, left out).
 - Logs to `<plugin>.log` in the log folder: chain, attach, watched shaders, the patch's first draw and the
   destination's allegiance and factions (how many, from which source), and once a second (`log_interval_ms`) a summary: in edworld_eht the frame's panel draws
   with surface size and anchor in NDC, in edworld the draw and fault totals. A fault in edworld's own work is caught; eight of them switch the observer off, never the game call.

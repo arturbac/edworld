@@ -1139,6 +1139,138 @@ namespace edworld
     alignas(16) std::byte atmo_record[64 + 8 * (4 + atmo_max_cb_bytes)];
     constexpr std::size_t atmo_hue_capacity{256u * 256u};  ///< the upper half of a 256x512 table
     float atmo_hue_r[atmo_hue_capacity], atmo_hue_b[atmo_hue_capacity];
+    // the kind last told and the planet it is of (its radius in metres), since when (GetTickCount64): the clouds take
+    // it in over atmo_kind_fade_ms. Written when the copies are read back, read at the clouds' draw
+    std::atomic<float> atmo_kind_radius{};
+    std::atomic<std::uint8_t> atmo_kind{};
+    std::atomic<ULONGLONG> atmo_kind_since{};
+    constexpr float atmo_kind_fade_ms{2000.f};
+
+    ///\brief the kind just read for the planet of this radius: a new planet or another kind starts again from the
+    /// clouds above; logged when it changes
+    auto atmo_note_kind(float radius, atmosphere_hue_t const & hue) noexcept -> void
+      {
+      atmosphere_print_t const * found{atmosphere_kind_of(hue)};
+      atmosphere_kind_e const kind{found ? found->kind : atmosphere_kind_e::unknown};
+      if(std::fabs(radius - atmo_kind_radius.load(std::memory_order_relaxed)) < 4.f
+         and kind == static_cast<atmosphere_kind_e>(atmo_kind.load(std::memory_order_relaxed)))
+        return;
+      atmo_kind_since.store(GetTickCount64(), std::memory_order_relaxed);
+      atmo_kind.store(static_cast<std::uint8_t>(kind), std::memory_order_relaxed);
+      atmo_kind_radius.store(radius, std::memory_order_relaxed);
+      log_line("clouds: the planet of radius %.0f m is %.*s (r/g %.4f b/g %.4f)", double(radius),
+               found ? static_cast<int>(found->name.size()) : 7, found ? found->name.data() : "unknown", double(hue.r_g),
+               double(hue.b_g));
+      }
+
+    // the planet's day from its turn between two reads (the shell's object matrix, VS b0 rows 9..11, turns about the
+    // model's y with the planet: 2026-11-10, the day of 20 planets as the scans give it to 0.1%). Known once two reads
+    // in a row agree to 1%; a read across the game's change of its frame (a turn of 30 to 180 degrees) agrees with
+    // nothing. spin: +1 the planet turns about +y, -1 about -y
+    std::atomic<float> atmo_day_s{};
+    std::atomic<float> atmo_spin{};
+    float atmo_turn_radius{};
+    float atmo_turn_rows[9]{};
+    LONGLONG atmo_turn_qpc{};
+    double atmo_turn_day{};
+
+    auto atmo_note_turn(float radius, float const (&rows)[9], LONGLONG qpc) noexcept -> void
+      {
+      float unit[9];
+      for(std::uint32_t r{}; r != 3u; ++r)
+        {
+        float const n{std::sqrt(rows[r * 3] * rows[r * 3] + rows[r * 3 + 1] * rows[r * 3 + 1] + rows[r * 3 + 2] * rows[r * 3 + 2])};
+        for(std::uint32_t c{}; c != 3u; ++c)
+          unit[r * 3 + c] = n > 0.f ? rows[r * 3 + c] / n : 0.f;
+        }
+      bool const same{std::fabs(radius - atmo_turn_radius) < 4.f};
+      double const seconds{static_cast<double>(qpc - atmo_turn_qpc) / static_cast<double>(qpc_frequency)};
+      if(not same)
+        {
+        atmo_day_s.store(0.f, std::memory_order_relaxed);
+        atmo_turn_day = 0.;
+        }
+      else if(seconds > 1. and seconds < 120.)
+        {
+        planet_turn_t const t{planet_turn(atmo_turn_rows, unit, seconds)};
+        double const day{t.day_s};
+        double const about_y{t.about_y};
+        bool const turn{t.ok};
+        if(turn and atmo_turn_day > 0. and std::fabs(day - atmo_turn_day) < 0.01 * atmo_turn_day)
+          {
+          bool const news{atmo_day_s.load(std::memory_order_relaxed) == 0.f};
+          atmo_day_s.store(static_cast<float>(day), std::memory_order_relaxed);
+          atmo_spin.store(about_y > 0. ? 1.f : -1.f, std::memory_order_relaxed);
+          if(news)
+            log_line("clouds: the planet of radius %.0f m turns in %.2f h (about %sy)", double(radius), day / 3600.,
+                     about_y > 0. ? "+" : "-");
+          }
+        atmo_turn_day = turn ? day : 0.;
+        }
+      atmo_turn_radius = radius;
+      std::memcpy(atmo_turn_rows, unit, sizeof unit);
+      atmo_turn_qpc = qpc;
+      }
+
+    ///\brief the clouds' values 33..43 (clouds3d.hlsl): the planet whose kind is known and its clouds, none when
+    /// clouds_by_kind is 0 or the kind unknown
+    auto atmo_kind_values(float * v) noexcept -> void
+      {
+      std::fill(v, v + 11, 0.f);
+      auto const kind{static_cast<atmosphere_kind_e>(atmo_kind.load(std::memory_order_relaxed))};
+      if(not settings().clouds_by_kind or kind == atmosphere_kind_e::unknown)
+        return;
+      atmosphere_clouds_t const c{atmosphere_clouds(kind, settings().clouds_physics_intensity)};
+      float const since{static_cast<float>(GetTickCount64() - atmo_kind_since.load(std::memory_order_relaxed))};
+      v[0] = atmo_kind_radius.load(std::memory_order_relaxed);
+      v[1] = std::clamp(since / atmo_kind_fade_ms, 0.f, 1.f);
+      v[2] = c.bottom;
+      v[3] = c.top;
+      v[4] = c.cover;
+      v[5] = c.opacity * settings().clouds_opacity;
+      v[6] = c.detail * settings().clouds_detail;
+      v[7] = c.tint[0];
+      v[8] = c.tint[1];
+      v[9] = c.tint[2];
+      }
+
+    float atmo_cyclones_radius{};
+    std::uint32_t atmo_cyclones_count{~0u};
+    bool atmo_cyclones_day{};
+
+    ///\brief the clouds' values 44..87 (clouds3d.hlsl): the storms of the planet whose kind is known (design v1), each
+    /// its centre and size, then their twists, then their count; none when clouds_cyclones or clouds_by_kind is 0
+    auto atmo_cyclone_values(float * v) noexcept -> void
+      {
+      std::fill(v, v + 44, 0.f);
+      auto const kind{static_cast<atmosphere_kind_e>(atmo_kind.load(std::memory_order_relaxed))};
+      if(not settings().clouds_cyclones or not settings().clouds_by_kind or kind == atmosphere_kind_e::unknown)
+        return;
+      float const radius{atmo_kind_radius.load(std::memory_order_relaxed)};
+      bool const turned{std::fabs(radius - atmo_turn_radius) < 4.f};
+      float const day{turned ? atmo_day_s.load(std::memory_order_relaxed) : 0.f};
+      // the spin unknown: about -y, as 19 of the 20 planets measured
+      float const spin{day > 0.f ? atmo_spin.load(std::memory_order_relaxed) : -1.f};
+      float const rossby{rossby_ratio(kind, radius, day)};
+      cyclone_set_t const set{cyclones_of(rossby, static_cast<std::uint64_t>(std::llround(radius)), spin)};
+      for(std::uint32_t i{}; i != set.count; ++i)
+        {
+        v[i * 4u] = set.at[i].x;
+        v[i * 4u + 1u] = set.at[i].y;
+        v[i * 4u + 2u] = set.at[i].z;
+        v[i * 4u + 3u] = set.at[i].size;
+        v[32u + i] = set.at[i].twist;
+        }
+      v[40] = static_cast<float>(set.count);
+      if(atmo_cyclones_radius != radius or atmo_cyclones_count != set.count or atmo_cyclones_day != (day > 0.f))
+        {
+        atmo_cyclones_radius = radius;
+        atmo_cyclones_count = set.count;
+        atmo_cyclones_day = day > 0.f;
+        log_line("clouds: %u storm(s) on the planet of radius %.0f m, R/L %.2f (day %s%.2f h)", set.count, double(radius),
+                 double(rossby), day > 0.f ? "" : "not known, the kind's median, ", double(day) / 3600.);
+        }
+      }
 
     auto atmo_release(atmo_pending_t & p) noexcept -> void
       {
@@ -1319,6 +1451,21 @@ namespace edworld
         atmo_release(p);
         return;
         }
+      // the kind on every read, for the clouds; the record below once a session per planet and band
+      atmosphere_hue_t hue{};
+      D3D11_MAPPED_SUBRESOURCE tm{};
+      if(p.format == dxgi_r11g11b10_float and SUCCEEDED(ctx->Map(p.t0, 0, D3D11_MAP_READ, 0, &tm)) and tm.pData)
+        {
+        hue = atmosphere_hue(static_cast<std::uint8_t const *>(tm.pData), p.width, p.height, tm.RowPitch, atmo_hue_r,
+                             atmo_hue_b, atmo_hue_capacity);
+        ctx->Unmap(p.t0, 0);
+        }
+      atmo_note_kind(radius, hue);
+      float const turn_rows[9]{atmo_float(p, data, 0, 9, 0),  atmo_float(p, data, 0, 9, 1),  atmo_float(p, data, 0, 9, 2),
+                               atmo_float(p, data, 0, 10, 0), atmo_float(p, data, 0, 10, 1), atmo_float(p, data, 0, 10, 2),
+                               atmo_float(p, data, 0, 11, 0), atmo_float(p, data, 0, 11, 1), atmo_float(p, data, 0, 11, 2)};
+      atmo_note_turn(radius, turn_rows, p.qpc);
+
       std::uint32_t const band{over < 1.f ? 0u : static_cast<std::uint32_t>(std::floor(std::log2(over)))};
       std::uint64_t const key{(static_cast<std::uint64_t>(std::llround(radius)) << 8) | band};
       for(std::uint32_t i{}; i != atmo_seen_count; ++i)
@@ -1335,7 +1482,6 @@ namespace edworld
       std::uint64_t hash{0xcbf29ce484222325ull};
       std::uint32_t pitch{};
       bool new_table{};
-      atmosphere_hue_t hue{};
       D3D11_MAPPED_SUBRESOURCE m{};
       if(SUCCEEDED(ctx->Map(p.t0, 0, D3D11_MAP_READ, 0, &m)) and m.pData)
         {
@@ -1349,8 +1495,6 @@ namespace edworld
                       static_cast<unsigned long long>(hash), p.width, p.height, p.format, pitch);
         if(GetFileAttributesW(name) == INVALID_FILE_ATTRIBUTES)
           new_table = queue_write(name, m.pData, pitch * rows);
-        if(p.format == dxgi_r11g11b10_float)
-          hue = atmosphere_hue(bytes, p.width, p.height, pitch, atmo_hue_r, atmo_hue_b, atmo_hue_capacity);
         ctx->Unmap(p.t0, 0);
         }
 
@@ -3767,7 +3911,7 @@ namespace edworld
       ID3D11DepthStencilState * volume_depth_state{};
       ID3D11Buffer * volume_params{};
       // the volume's parameters, the wind's seconds among them, written again for each draw
-      float volume_values[36]{};
+      float volume_values[88]{};
       ULONGLONG wind_start{};
       ID3D11Texture2D * depth_copy{};
       ID3D11ShaderResourceView * depth_view{};
@@ -4022,15 +4166,16 @@ namespace edworld
         }
 
       // 19..32 (the game's fade, near and far, the debug colour, the planet's size on the screen, the steps' most, the
-      // edge, the haze) are written again for each draw, as they change while the game runs; 33..35 fill the buffer to 16 bytes
-      float const values[36]{
+      // edge, the haze) and 33..42 (the atmosphere's kind, edworld_eht) are written again for each draw, as they change
+      // while the game runs, 44..87 the storms (edworld_eht); 43 fills to 16 bytes
+      float const values[88]{
         settings().clouds_bottom, settings().clouds_top, settings().clouds_cover, settings().clouds_light,
         settings().clouds_steps, settings().clouds_density, settings().clouds_opacity, settings().clouds_top_gain,
         settings().clouds_min_light, settings().clouds_under_gain, settings().clouds_detail, settings().clouds_detail_size,
         settings().clouds_detail_range, settings().clouds_detail_edge, settings().clouds_detail_gap, 0.f,
         settings().clouds_wind_low / 3.6f, settings().clouds_wind_high / 3.6f, 1.f, 0.f,
-        0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f
-      };
+        0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f
+      };  // the rest, 44..87, zero
       std::memcpy(clouds.volume_values, values, sizeof values);
       clouds.wind_start = GetTickCount64();
       D3D11_BUFFER_DESC desc{};
@@ -4229,6 +4374,17 @@ namespace edworld
       clouds.volume_values[30] = std::max(settings().clouds_edge_full_px, settings().clouds_edge_hide_px + 0.01f);
       clouds.volume_values[31] = std::max(settings().clouds_edge_band_px, 0.01f);
       clouds.volume_values[32] = std::max(settings().clouds_haze, 0.f);
+#if defined(EDWORLD_EHT)
+      atmo_kind_values(clouds.volume_values + 33);
+      atmo_cyclone_values(clouds.volume_values + 44);
+      if(clouds.volume_values[84] > 0.f)
+        {
+        // the storms tower to twice the layer's height (v1.4s): the kind's top raised, the tower told to the shader
+        float const floor_at{clouds.volume_values[35]};
+        clouds.volume_values[36] = floor_at + (clouds.volume_values[36] - floor_at) * 2.f;
+        clouds.volume_values[85] = 2.f;
+        }
+#endif
       ctx->UpdateSubresource(clouds.volume_params, 0, nullptr, clouds.volume_values, 0, 0);
       if(half)
         {

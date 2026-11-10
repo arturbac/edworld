@@ -40,6 +40,16 @@ namespace edworld
     /// the light and its constants), at most this often in seconds, once a session per planet and octave of distance, to
     /// edworld_atmo beside the log; to learn against EHT's scans whether it tells the atmosphere's kind. 0 = never
     std::uint32_t atmo_record_s{10};
+    ///\brief (PoC, 2026-11-10) the clouds with depth by the atmosphere's kind told by its fingerprint (atmosphere_kind.h):
+    /// each kind its layer's height, cover, opacity and tint; 0 = the same clouds on every planet, as before. Needs
+    /// atmo_record_s, which reads the kind
+    std::uint32_t clouds_by_kind{1};
+    ///\brief how strongly the kinds' clouds show: their opacity as the physics gives it times this, at most clouds_opacity;
+    /// 0 = none, 2 = twice as strong
+    float clouds_physics_intensity{1.f};
+    ///\brief (PoC, 2026-11-10) storms in the kinds' clouds: how many and how large from the planet's size, its day
+    /// (read off its turn) and the kind (design of the cyclones v1), each with its arms and a clear eye; 0 = none
+    std::uint32_t clouds_cyclones{1};
 #endif
     ///\brief a summary line of the frame's panels at most this often; 0 = never
     std::uint32_t log_interval_ms{1000};

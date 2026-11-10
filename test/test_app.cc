@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "../src/atmosphere_kind.h"
@@ -680,6 +681,71 @@ namespace
     check(not atmosphere_hue(reinterpret_cast<std::uint8_t const *>(table), 4u, 4u, 32u, sr, sb, 7u).ok
             and not atmosphere_hue(reinterpret_cast<std::uint8_t const *>(table), 4u, 4u, 8u, sr, sb, 8u).ok,
           "atmosphere: no hue past the scratch or with a pitch under a row");
+    // the kinds' clouds (design v1.1)
+    bool sane{true};
+    for(auto const & k: atmosphere_prints)
+      {
+      auto const c{atmosphere_clouds(k.kind, 1.f)};
+      sane = sane and c.top >= 0.006f and c.top <= 0.04f and std::fabs(c.bottom * 4.f - c.top) < 0.0005f and c.opacity >= 0.3f
+             and c.opacity <= 1.f and (c.cover == 0.35f or c.cover == 0.45f or c.cover == 0.55f) and c.tint[0] > 0.5f;
+      }
+    check(sane, "atmosphere: each kind's clouds within the design's bounds");
+    auto const neon{atmosphere_clouds(atmosphere_kind_e::neon, 1.f)};
+    auto const helium{atmosphere_clouds(atmosphere_kind_e::helium, 1.f)};
+    auto const methane{atmosphere_clouds(atmosphere_kind_e::methane, 1.f)};
+    check(neon.cover == 0.45f and helium.cover == 0.35f and methane.cover == 0.55f and methane.top > 6.f * neon.top,
+          "atmosphere: a haze where the gas does not condense, Helium least; small warm worlds a deep layer, large cold ones a thin");
+    check(atmosphere_clouds(atmosphere_kind_e::neon, 2.f).opacity == 0.6f and atmosphere_clouds(atmosphere_kind_e::methane, 2.f).opacity == 1.f
+            and atmosphere_clouds(atmosphere_kind_e::neon, 0.f).opacity == 0.f and atmosphere_clouds(atmosphere_kind_e::neon, -1.f).opacity == 0.f
+            and atmosphere_clouds(atmosphere_kind_e::unknown, 1.f).top == 0.f,
+          "atmosphere: the intensity scales the opacity, at most all of it; an unknown kind has no clouds of its own");
+    check(atmosphere_clouds(atmosphere_kind_e::neon, 2.f).cover == 0.55f and std::fabs(atmosphere_clouds(atmosphere_kind_e::neon, 1.5f).cover - 0.5f) < 1e-6f
+            and atmosphere_clouds(atmosphere_kind_e::helium, 3.f).cover == 0.55f and atmosphere_clouds(atmosphere_kind_e::methane, 2.f).cover == 0.55f
+            and atmosphere_clouds(atmosphere_kind_e::neon, 0.5f).cover == 0.45f,
+          "atmosphere: over 1 the intensity brings a haze's cover up to clouds', all of it at 2");
+
+    // the storms (design of the cyclones v1)
+    float const boelts{rossby_ratio(atmosphere_kind_e::nitrogen, 3478e3f, 25.1f * 3600.f)};
+    float const unknown_day{rossby_ratio(atmosphere_kind_e::nitrogen, 3478e3f, 0.f)};
+    check(std::fabs(boelts - 2.23f) < 0.03f and std::fabs(unknown_day - 1.61f * 3478.f / 3399.f) < 1e-3f
+            and rossby_ratio(atmosphere_kind_e::unknown, 3478e3f, 1.f) == 0.f,
+          "storms: R/L of a nitrogen world of 3478 km turning in 25.1 h; the kind's median without a day");
+    auto const none{cyclones_of(0.25f, 7u, 1.f)};
+    auto const few{cyclones_of(0.6f, 7u, 1.f)};
+    auto const some{cyclones_of(2.f, 7u, 1.f)};
+    auto const many{cyclones_of(6.f, 7u, -1.f)};
+    check(none.count == 0u and few.count >= 3u and few.count <= 5u and some.count >= 3u and some.count <= 6u
+            and many.count >= 6u and many.count <= cyclones_most,
+          "storms: none under R/L 0.3, one to three large and two polar to 1, three to six to 4, six to eight past");
+    bool unit{true}, sense{true};
+    for(auto const & [set, spin]: {std::pair{few, 1.f}, std::pair{some, 1.f}, std::pair{many, -1.f}})
+      for(std::uint32_t i{}; i != set.count; ++i)
+        {
+        auto const & c{set.at[i]};
+        unit = unit and std::fabs(c.x * c.x + c.y * c.y + c.z * c.z - 1.f) < 1e-4f and c.size > 0.f;
+        sense = sense and (c.y > 0.f) == (c.twist * spin > 0.f);
+        }
+    auto const again{cyclones_of(2.f, 7u, 1.f)};
+    check(unit and sense and std::memcmp(&again, &some, sizeof some) == 0,
+          "storms: centres on the sphere; each turns the planet's way on the half it turns about, the other way on the other; the same planet the same storms");
+
+    // the planet's turn off the shell's matrix: rows of the model's axes in the world, turned about y
+    auto const turned{[](float angle, float (&rows)[9])
+                        {
+                          float const c{std::cos(angle)}, s{std::sin(angle)};
+                          float const r[9]{c, 0.f, s, 0.f, 1.f, 0.f, -s, 0.f, c};
+                          std::memcpy(rows, r, sizeof r);
+                        }};
+    float r0[9], r1[9], jump[9];
+    turned(0.3f, r0);
+    turned(0.3f + 0.0025f, r1);
+    turned(1.3f, jump);
+    auto const day{planet_turn(r0, r1, 10.)};
+    float const about_x[9]{1.f, 0.f, 0.f, 0.f, std::cos(0.0025f), -std::sin(0.0025f), 0.f, std::sin(0.0025f), std::cos(0.0025f)};
+    float const level[9]{1.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 1.f};
+    check(day.ok and std::fabs(day.day_s - 6.2831853 * 10. / 0.0025) < 0.002 * day.day_s and day.about_y > 0.
+            and not planet_turn(r0, jump, 10.).ok and not planet_turn(level, about_x, 10.).ok,
+          "storms: the day from a small turn about y; a jump of the game's frame or a turn about another axis is none");
     }
   }  // namespace
 
