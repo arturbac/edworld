@@ -49,7 +49,8 @@ Version 1.1.0 adds the pad's plane: after the tower gives a pad, the right spher
 as a disc coloured by the ship's tilt to it, with the pad's mark at orbital outposts, flat on a planet, and each pad
 by its number at carriers.
 
-The spheres held their places in the Kestrel, the Anaconda, the Panther Clipper Mk II, the Mandalay and the Type-8.
+The spheres held their places in the Kestrel, the Anaconda, the Panther Clipper Mk II, the Mandalay, the Type-8,
+the Type-11 Prospector and the Federal Corvette.
 I need testers who fly other ships: install
 edworld (`doc/users.md`), then for each ship send me, in an [issue](https://github.com/arturbac/edworld/issues), the
 ship's type, a screenshot with both spheres and edworld's log (`edworld.log` or `edworld_eht.log`). The log records

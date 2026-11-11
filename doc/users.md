@@ -286,8 +286,8 @@ Delete edworld's `d3d11.dll` and its ini; put back the mod's dll you renamed, as
   emblem stays. The pad's number is read off the HUD at 2160 rows only as well.
 - After an on-foot conflict zone edworld once saw no panel for about four minutes; the jump panel kept the game's
   emblem until then.
-- Navballs: the spheres held their places in the Kestrel, the Anaconda, the Panther Clipper Mk II, the Mandalay and
-  the Type-8; in other cockpits they may sit too close to or too far from the radar. Near a planet the lines are checked at one surface port
+- Navballs: the spheres held their places in the Kestrel, the Anaconda, the Panther Clipper Mk II, the Mandalay, the
+  Type-8, the Type-11 Prospector and the Federal Corvette; in other cockpits they may sit too close to or too far from the radar. Near a planet the lines are checked at one surface port
   (two landings); in the two columns they are small, about 10 px tall at 3840×2160. With a settlement or a surface
   port targeted, `NOSE` and `PUSH DOWN` / `PULL UP` still take the planet's centre as the target and are wrong there.
   The game does not draw its compass every frame; a sphere keeps its last reading in between.
