@@ -2,10 +2,12 @@
 
 ## Unreleased
 
-- (edworld_eht, test) The clouds with depth by the atmosphere's kind the game's own atmosphere tells: each of the 15
-  kinds on landable planets its layer, cover, opacity and tint (`clouds_by_kind`, `clouds_physics_intensity`).
-- (edworld_eht, test) Storms in those clouds, cyclones with arms and an eye, by the planet's size, its day read off
-  its turn and the kind (`clouds_cyclones`).
+- **Clouds by the atmosphere's kind.** edworld reads the kind off how the game draws the atmosphere (not the
+  journal), every `clouds_kind_read_s` seconds: each of the 15 kinds on landable planets gets its own layer, cover,
+  opacity and tint from the physics of its typical planet; a gas that does not condense there gives only a haze
+  (`clouds_by_kind`, `clouds_physics_intensity`).
+- **Storms.** Cyclones with spiral arms, a dense mass of clouds and a clear eye shaped like a funnel, as many and as
+  large as the planet's size, its day (read off its turn in the picture) and its kind allow (`clouds_cyclones`).
 
 ## 1.2.0-beta.8
 

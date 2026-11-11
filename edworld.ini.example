@@ -87,6 +87,18 @@
 ; from under the clouds with depth and in them, a cloud this far away covers e times less, so they fade into the haze at the horizon; a part of the planet's radius, 0 = never less
 ;clouds_haze = 0.05
 
+; how often the game's atmosphere is read for its kind and the planet's day, in seconds: 0 = never, the clouds as before
+;clouds_kind_read_s = 10
+
+; 1 = the clouds with depth by the atmosphere's kind (needs clouds_kind_read_s), 0 = the same on every planet
+;clouds_by_kind = 1
+
+; how strongly the kinds' clouds show: 1 = as the physics gives, 2 = twice as strong (at most clouds_opacity) and the cover of a haze up to clouds', 0 = none
+;clouds_physics_intensity = 1
+
+; 1 = storms in the kinds' clouds, by the planet's size, its day and the kind; 0 = none
+;clouds_cyclones = 1
+
 ; The navballs beside the radar: 0 = none, the game's compass is not read at all
 ;compass = 1
 

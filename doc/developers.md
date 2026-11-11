@@ -395,8 +395,10 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   (Argon at K6, G9 and M7 stars alike to 0.001), following the kind the journal names, not the mix of gases; the kinds
   stand 0.010 or more apart (CarbonDioxide and Methane the nearest). A hue within 0.004 of a kind's in both ratios is
   that kind (the nearest), otherwise `unknown`. The kind is read on every read-back (not only for a record) and the
-  clouds with depth take it (below).
-- (edworld_eht only, `clouds_by_kind`, PoC 2026-11-10) The clouds with depth by the atmosphere's kind:
+  clouds with depth take it (below). Since 1.2.0-beta.9 both builds read the shell, every `clouds_kind_read_s`
+  seconds (`atmo_period_s`: in edworld_eht the shorter of it and `atmo_record_s`), for the kind and the day; only
+  edworld_eht keeps the fingerprint (`atmo_record_s` apart, once a session per planet and band).
+- (both builds, `clouds_by_kind`, 2026-11-10) The clouds with depth by the atmosphere's kind:
   `atmosphere_clouds_table` (design v1.1) gives each kind the layer's floor and top (from the scale height R T / (M g)
   of the kind's typical landable planet, scanned medians, pressed into 0.006..0.04 of the radius as
   `0.012 sqrt((H/R) / 0.0025)`, floor a quarter of the top), its share of `clouds_opacity` (from the typical pressure,
@@ -406,7 +408,7 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   its planet's radius go to the volume's buffer (values 33..42); `clouds3d.hlsl` takes them only for the planet of
   that radius (within 4 m), coming in over 2 s; any other planet keeps the ini's clouds. The opacity share times
   `clouds_physics_intensity`, at most 1; over 1 the cover also comes up toward 0.55, all of it at 2.
-- (edworld_eht only, `clouds_cyclones`, PoC 2026-11-10) Storms. The planet's day is read off the shell's object
+- (both builds, `clouds_cyclones`, 2026-11-10) Storms. The planet's day is read off the shell's object
   matrix (VS b0 rows 9..11), which turns about the model's y with the planet: `planet_turn` takes two reads (the
   fingerprint's, `atmo_record_s` apart), the angle from the off-diagonal parts of old rows' transpose times new; a
   turn over 0.05 rad or about another axis (the game changing its frame) is none, and the day counts once two in a

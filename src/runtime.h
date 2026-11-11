@@ -40,16 +40,6 @@ namespace edworld
     /// the light and its constants), at most this often in seconds, once a session per planet and octave of distance, to
     /// edworld_atmo beside the log; to learn against EHT's scans whether it tells the atmosphere's kind. 0 = never
     std::uint32_t atmo_record_s{10};
-    ///\brief (PoC, 2026-11-10) the clouds with depth by the atmosphere's kind told by its fingerprint (atmosphere_kind.h):
-    /// each kind its layer's height, cover, opacity and tint; 0 = the same clouds on every planet, as before. Needs
-    /// atmo_record_s, which reads the kind
-    std::uint32_t clouds_by_kind{1};
-    ///\brief how strongly the kinds' clouds show: their opacity as the physics gives it times this, at most clouds_opacity;
-    /// 0 = none, 2 = twice as strong
-    float clouds_physics_intensity{1.f};
-    ///\brief (PoC, 2026-11-10) storms in the kinds' clouds: how many and how large from the planet's size, its day
-    /// (read off its turn) and the kind (design of the cyclones v1), each with its arms and a clear eye; 0 = none
-    std::uint32_t clouds_cyclones{1};
 #endif
     ///\brief a summary line of the frame's panels at most this often; 0 = never
     std::uint32_t log_interval_ms{1000};
@@ -181,6 +171,20 @@ namespace edworld
     /// (2026-11-09). A cloud this far from the eye covers e times less, as a part of the planet's radius, from under the
     /// layer and in it; from a layer's height over it up as before. 0 = never less
     float clouds_haze{0.05f};
+    ///\brief how often the game's shell of the atmosphere is read for the kind and the planet's day, seconds; 0 = never
+    /// (the clouds as before 1.2.0-beta.9). The shell's table and constants are copied on the GPU and read back a few
+    /// frames later; nothing is written
+    std::uint32_t clouds_kind_read_s{10};
+    ///\brief (PoC, 2026-11-10) the clouds with depth by the atmosphere's kind told by its fingerprint (atmosphere_kind.h):
+    /// each kind its layer's height, cover, opacity and tint; 0 = the same clouds on every planet, as before. Needs
+    /// clouds_kind_read_s, which reads the kind
+    std::uint32_t clouds_by_kind{1};
+    ///\brief how strongly the kinds' clouds show: their opacity as the physics gives it times this, at most clouds_opacity;
+    /// 0 = none, 2 = twice as strong
+    float clouds_physics_intensity{1.f};
+    ///\brief (PoC, 2026-11-10) storms in the kinds' clouds: how many and how large from the planet's size, its day
+    /// (read off its turn) and the kind (design of the cyclones v1), each with its arms and a clear eye; 0 = none
+    std::uint32_t clouds_cyclones{1};
 
     // ---- the compass (PoC): the HUD compass's dot read off its interface surface, the angles written beside it ----
     ///\brief 0 off, 1 the angles, 2 also everything known for checking them, 3 also a grid of the surface's pixels
