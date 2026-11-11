@@ -60,7 +60,7 @@ oxygen. They get the clouds of their main gas.
 
 A simulation, not the game: the shape of the clouds worked out as the shader does, seen from the ground at midday on
 each kind's typical planet, on the colour of the sky the game's own table gives that kind; the star's light is
-white, and the game's exposure and haze are left out, so the game shows the clouds brighter. It is meant to compare
+white, and the game's exposure and haze are left out, so in the game they may look brighter or fainter. It is meant to compare
 the kinds with one another: the first picture is the clouds every planet had before 1.2.0-beta.9.
 
 The opacity is a share of `clouds_opacity`. `clouds_physics_intensity` multiplies it (at most all of it) and, above
