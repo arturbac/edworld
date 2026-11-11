@@ -226,7 +226,7 @@ get a thin, low layer, small warm ones a deep one. Until the kind is told (a few
 and for a kind not known the clouds are as above; then they change over 2 s. The log has
 `clouds: the planet of radius ... m is <kind>`. `clouds_physics_intensity` shows them stronger (`2` = twice, and a
 haze gets the cover of clouds) or weaker; `clouds_by_kind = 0` gives every planet the same clouds, to compare. Both
-are read again while the game runs. edworld reads the game's atmosphere every `clouds_kind_read_s` seconds (10) while
+are read again while the game runs; what each kind gets and why is in [clouds.md](clouds.md). edworld reads the game's atmosphere every `clouds_kind_read_s` seconds (10) while
 it is drawn; `0` stops that and the clouds are as in 1.2.0-beta.8. Nothing of it is written anywhere.
 
 Storms (`clouds_cyclones`): in the kinds' clouds, cyclones with spiral arms and a clear eye, as many and as large
@@ -234,7 +234,8 @@ as the planet's size, its day and its kind allow. edworld reads the day off the 
 (`clouds: the planet of radius ... m turns in ... h` in the log, after half a minute or so near it); a planet that turns
 slowly or is small has none, a large one turning in a day or two has one to three large ones and one at each pole, a
 fast large one several smaller ones. They turn the planet's way on one half, the other way on the other. The log has
-`clouds: N storm(s) on the planet ...`. `clouds_cyclones = 0` turns them off, read again while the game runs.
+`clouds: N storm(s) on the planet ...`. `clouds_cyclones = 0` turns them off, read again while the game runs. Which
+planets to visit for them: [clouds.md](clouds.md#cyclones).
 
 ## Check that it works
 
