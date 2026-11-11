@@ -50,7 +50,7 @@ as a disc coloured by the ship's tilt to it, with the pad's mark at orbital outp
 by its number at carriers.
 
 The spheres held their places in the Kestrel, the Anaconda, the Panther Clipper Mk II, the Mandalay, the Type-8,
-the Type-11 Prospector and the Federal Corvette.
+the Type-11 Prospector, the Federal Corvette and the Nomad.
 I need testers who fly other ships: install
 edworld (`doc/users.md`), then for each ship send me, in an [issue](https://github.com/arturbac/edworld/issues), the
 ship's type, a screenshot with both spheres and edworld's log (`edworld.log` or `edworld_eht.log`). The log records
