@@ -56,6 +56,13 @@ oxygen. They get the clouds of their main gas.
 | Oxygen | 3070 km, 181 K, 0.037 atm | no | 0.0140 / 0.0035 | 0.79 | 0.45 | white |
 | SilicateVapour | 4330 km, 1808 K, 0.042 atm | yes (1500-2500 K) | 0.0152 / 0.0038 | 0.81 | 0.55 | `#B8B2AA` |
 
+![The sky from the ground under each kind's clouds, beside the clouds before 1.2.0-beta.9](images/clouds-by-kind.jpg)
+
+A simulation, not the game: the shape of the clouds worked out as the shader does, seen from the ground at midday on
+each kind's typical planet, on the colour of the sky the game's own table gives that kind; the star's light is
+white, and the game's exposure and haze are left out, so the game shows the clouds brighter. It is meant to compare
+the kinds with one another: the first picture is the clouds every planet had before 1.2.0-beta.9.
+
 The opacity is a share of `clouds_opacity`. `clouds_physics_intensity` multiplies it (at most all of it) and, above
 1, brings a haze's cover up toward that of clouds, all the way at 2. Until the kind is known, and for a kind not
 known, a planet gets the clouds of the ini; once it is known they change over 2 s.
