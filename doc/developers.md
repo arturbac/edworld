@@ -406,7 +406,12 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   0.45 where not, 0.35 for Helium), the fine shape's strength and a tint (2026-11-11: off white by 5-12% where the
   kind's clouds or haze have a colour of their own, ammonia, methane, sulphur dioxide, silicate vapour; barely, only to
   tell the kinds apart, where its ices are white; water white; `atmosphere_clouds_tinted` scales its distance from
-  white by `clouds_tint`). The "Rich" kinds by their main gas in the
+  white by `clouds_tint`).
+- (both builds, `clouds_size_var`, 2026-11-11, PoC) The shape's scale (`dir * 7`, the coarsest lumps about a 7th of
+  the radius) times `grow = 1 + clouds_size_var * (fbm(middle * 1.5 + seed + 31, 2) - 0.375) / 0.375`, worked out
+  once a ray from its middle like the warp, so it changes only slowly over the planet; the steps get more by
+  `max(grow, 1)` where the lumps are smaller, and the storms' shadow uses the same scale. Value 43 of the volume's
+  buffer (the kind's pad before). The "Rich" kinds by their main gas in the
   scans: NeonRich, ArgonRich and MethaneRich mostly nitrogen, CarbonDioxideRich mostly oxygen. The kind last told and
   its planet's radius go to the volume's buffer (values 33..42); `clouds3d.hlsl` takes them only for the planet of
   that radius (within 4 m), coming in over 2 s; any other planet keeps the ini's clouds. The opacity share times

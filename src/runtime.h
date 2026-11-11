@@ -185,6 +185,9 @@ namespace edworld
     ///\brief how strongly the kinds' clouds take their tint: 1 = the table's (off white only a little, atmosphere_kind.h),
     /// 0 = white on every planet, 2 = twice as far from white
     float clouds_tint{1.f};
+    ///\brief (PoC, 2026-11-11) the lumps' size noised by region: the shape's scale times 1 +- this from a slow noise
+    /// over the planet, so the lumps are not one size everywhere; 0 = one size, as before; at most 0.9
+    float clouds_size_var{0.25f};
     ///\brief (PoC, 2026-11-10) storms in the kinds' clouds: how many and how large from the planet's size, its day
     /// (read off its turn) and the kind (design of the cyclones v1), each with its arms and a clear eye; 0 = none
     std::uint32_t clouds_cyclones{1};

@@ -73,6 +73,9 @@ The opacity is a share of `clouds_opacity`. `clouds_physics_intensity` multiplie
 1, brings a haze's cover up toward that of clouds, all the way at 2. Until the kind is known, and for a kind not
 known, a planet gets the clouds of the ini; once it is known they change over 2 s.
 
+The lumps are not one size over the whole planet: a slow noise makes them larger in some regions and smaller in
+others, by a quarter either way (`clouds_size_var`, `0` = one size).
+
 **Where to expect what.** Methane and water worlds are small and have the densest clouds; carbon dioxide worlds
 are small to medium with clear, cool decks; nitrogen worlds are medium with plain white clouds; neon and helium
 worlds are large and cold and show only a faint haze; sulphur dioxide and ammonia atmospheres are thin, a yellowish
