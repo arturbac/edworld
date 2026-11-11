@@ -142,7 +142,9 @@ namespace edworld
   /// radius, from the scale height R T / (M g) of the kind's typical planet pressed into 0.006..0.04; how much of
   /// clouds_opacity they get, from the kind's typical pressure (at least 0.3); the cover, 0.55 where the main gas
   /// condenses at the kind's typical temperature, 0.45 a haze where it does not, 0.35 for Helium, which never does; the
-  /// fine shape's strength; the tint the star's light is multiplied by
+  /// fine shape's strength; the tint the star's light is multiplied by: off white where the kind's clouds or haze have
+  /// a colour of their own (ammonia's, methane's, sulphur's, dust), barely, only to tell the kinds apart, where its ices
+  /// are white (2026-11-11)
   struct atmosphere_clouds_t
     {
     float bottom, top, opacity, cover, detail;
@@ -151,20 +153,20 @@ namespace edworld
 
   ///\brief in the order of atmosphere_kind_e from ammonia (unknown has none)
   inline constexpr std::array<atmosphere_clouds_t, 15> atmosphere_clouds_table{{
-    {0.0100f, 0.0400f, 0.30f, 0.55f, 1.0f, {0xf3 / 255.f, 0xe9 / 255.f, 0xd2 / 255.f}},  // Ammonia
-    {0.0030f, 0.0120f, 0.39f, 0.55f, 1.0f, {0xf2 / 255.f, 0xf2 / 255.f, 0xf5 / 255.f}},  // Argon
-    {0.0026f, 0.0104f, 0.78f, 0.55f, 1.0f, {0xf2 / 255.f, 0xf2 / 255.f, 0xf5 / 255.f}},  // ArgonRich
-    {0.0091f, 0.0366f, 0.63f, 0.55f, 1.0f, {0xf0 / 255.f, 0xf4 / 255.f, 0xfa / 255.f}},  // CarbonDioxide
-    {0.0031f, 0.0124f, 0.92f, 0.45f, 0.5f, {1.f, 1.f, 1.f}},                             // CarbonDioxideRich
-    {0.0015f, 0.0060f, 0.30f, 0.35f, 0.5f, {0xdd / 255.f, 0xe3 / 255.f, 0xea / 255.f}},  // Helium
-    {0.0100f, 0.0400f, 0.89f, 0.55f, 1.0f, {0xf5 / 255.f, 0xf0 / 255.f, 0xe6 / 255.f}},  // Methane
-    {0.0026f, 0.0103f, 0.72f, 0.45f, 0.5f, {0xf5 / 255.f, 0xe6 / 255.f, 0xd0 / 255.f}},  // MethaneRich
-    {0.0015f, 0.0060f, 0.30f, 0.45f, 0.5f, {0xe8 / 255.f, 0xec / 255.f, 0xf0 / 255.f}},  // Neon
-    {0.0017f, 0.0067f, 0.58f, 0.55f, 1.0f, {1.f, 1.f, 1.f}},                             // NeonRich
-    {0.0027f, 0.0109f, 0.50f, 0.55f, 1.0f, {1.f, 1.f, 1.f}},                             // Nitrogen
-    {0.0035f, 0.0140f, 0.79f, 0.45f, 0.5f, {1.f, 1.f, 1.f}},                             // Oxygen
-    {0.0038f, 0.0152f, 0.81f, 0.55f, 1.0f, {0xb8 / 255.f, 0xb2 / 255.f, 0xaa / 255.f}},  // SilicateVapour
-    {0.0032f, 0.0126f, 0.30f, 0.45f, 0.5f, {0xed / 255.f, 0xe3 / 255.f, 0xa8 / 255.f}},  // SulphurDioxide
+    {0.0100f, 0.0400f, 0.30f, 0.55f, 1.0f, {0xea / 255.f, 0xdb / 255.f, 0xc0 / 255.f}},  // Ammonia
+    {0.0030f, 0.0120f, 0.39f, 0.55f, 1.0f, {0xe4 / 255.f, 0xea / 255.f, 0xf4 / 255.f}},  // Argon
+    {0.0026f, 0.0104f, 0.78f, 0.55f, 1.0f, {0xf0 / 255.f, 0xe8 / 255.f, 0xea / 255.f}},  // ArgonRich
+    {0.0091f, 0.0366f, 0.63f, 0.55f, 1.0f, {0xe6 / 255.f, 0xee / 255.f, 0xf8 / 255.f}},  // CarbonDioxide
+    {0.0031f, 0.0124f, 0.92f, 0.45f, 0.5f, {0xe8 / 255.f, 0xf0 / 255.f, 0xf8 / 255.f}},  // CarbonDioxideRich
+    {0.0015f, 0.0060f, 0.30f, 0.35f, 0.5f, {0xde / 255.f, 0xe6 / 255.f, 0xf0 / 255.f}},  // Helium
+    {0.0100f, 0.0400f, 0.89f, 0.55f, 1.0f, {0xe8 / 255.f, 0xcf / 255.f, 0xb0 / 255.f}},  // Methane
+    {0.0026f, 0.0103f, 0.72f, 0.45f, 0.5f, {0xee / 255.f, 0xdd / 255.f, 0xcb / 255.f}},  // MethaneRich
+    {0.0015f, 0.0060f, 0.30f, 0.45f, 0.5f, {0xec / 255.f, 0xe4 / 255.f, 0xf0 / 255.f}},  // Neon
+    {0.0017f, 0.0067f, 0.58f, 0.55f, 1.0f, {0xf0 / 255.f, 0xe8 / 255.f, 0xea / 255.f}},  // NeonRich
+    {0.0027f, 0.0109f, 0.50f, 0.55f, 1.0f, {0xf0 / 255.f, 0xe8 / 255.f, 0xea / 255.f}},  // Nitrogen
+    {0.0035f, 0.0140f, 0.79f, 0.45f, 0.5f, {0xe8 / 255.f, 0xf0 / 255.f, 0xf8 / 255.f}},  // Oxygen
+    {0.0038f, 0.0152f, 0.81f, 0.55f, 1.0f, {0xb8 / 255.f, 0xa8 / 255.f, 0x98 / 255.f}},  // SilicateVapour
+    {0.0032f, 0.0126f, 0.30f, 0.45f, 0.5f, {0xeb / 255.f, 0xe0 / 255.f, 0xb4 / 255.f}},  // SulphurDioxide
     {0.0100f, 0.0400f, 0.98f, 0.45f, 0.5f, {1.f, 1.f, 1.f}},                             // Water
   }};
 
@@ -180,6 +182,20 @@ namespace edworld
     c.opacity = c.opacity * i < 1.f ? c.opacity * i : 1.f;
     if(i > 1.f)
       c.cover += (0.55f - c.cover) * (i - 1.f < 1.f ? i - 1.f : 1.f);
+    return c;
+    }
+
+  ///\brief the clouds with their tint's distance from white times strength (clouds_tint, 0 = white, 1 = the table's,
+  /// 2 = twice as far), each channel within 0..1
+  [[nodiscard]]
+  constexpr auto atmosphere_clouds_tinted(atmosphere_clouds_t c, float strength) noexcept -> atmosphere_clouds_t
+    {
+    float const s{strength > 0.f ? strength : 0.f};
+    for(float & t: c.tint)
+      {
+      float const v{1.f - (1.f - t) * s};
+      t = v < 0.f ? 0.f : v;
+      }
     return c;
     }
 

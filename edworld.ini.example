@@ -96,6 +96,9 @@
 ; how strongly the kinds' clouds show: 1 = as the physics gives, 2 = twice as strong (at most clouds_opacity) and the cover of a haze up to clouds', 0 = none
 ;clouds_physics_intensity = 1
 
+; how strongly the kinds' clouds take their colour: 1 = a little off white, as the table gives, 0 = white, 2 = twice as far from white
+;clouds_tint = 1
+
 ; 1 = storms in the kinds' clouds, by the planet's size, its day and the kind; 0 = none
 ;clouds_cyclones = 1
 

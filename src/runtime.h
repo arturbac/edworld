@@ -182,6 +182,9 @@ namespace edworld
     ///\brief how strongly the kinds' clouds show: their opacity as the physics gives it times this, at most clouds_opacity;
     /// 0 = none, 2 = twice as strong
     float clouds_physics_intensity{1.f};
+    ///\brief how strongly the kinds' clouds take their tint: 1 = the table's (off white only a little, atmosphere_kind.h),
+    /// 0 = white on every planet, 2 = twice as far from white
+    float clouds_tint{1.f};
     ///\brief (PoC, 2026-11-10) storms in the kinds' clouds: how many and how large from the planet's size, its day
     /// (read off its turn) and the kind (design of the cyclones v1), each with its arms and a clear eye; 0 = none
     std::uint32_t clouds_cyclones{1};

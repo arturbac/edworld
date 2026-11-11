@@ -403,7 +403,10 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   of the kind's typical landable planet, scanned medians, pressed into 0.006..0.04 of the radius as
   `0.012 sqrt((H/R) / 0.0025)`, floor a quarter of the top), its share of `clouds_opacity` (from the typical pressure,
   `log10(p / 0.001) / 2`, at least 0.3), the cover (0.55 where the main gas condenses at the typical temperature,
-  0.45 where not, 0.35 for Helium), the fine shape's strength and a tint. The "Rich" kinds by their main gas in the
+  0.45 where not, 0.35 for Helium), the fine shape's strength and a tint (2026-11-11: off white by 5-12% where the
+  kind's clouds or haze have a colour of their own, ammonia, methane, sulphur dioxide, silicate vapour; barely, only to
+  tell the kinds apart, where its ices are white; water white; `atmosphere_clouds_tinted` scales its distance from
+  white by `clouds_tint`). The "Rich" kinds by their main gas in the
   scans: NeonRich, ArgonRich and MethaneRich mostly nitrogen, CarbonDioxideRich mostly oxygen. The kind last told and
   its planet's radius go to the volume's buffer (values 33..42); `clouds3d.hlsl` takes them only for the planet of
   that radius (within 4 m), coming in over 2 s; any other planet keeps the ini's clouds. The opacity share times

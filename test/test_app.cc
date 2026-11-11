@@ -703,6 +703,14 @@ namespace
             and atmosphere_clouds(atmosphere_kind_e::helium, 3.f).cover == 0.55f and atmosphere_clouds(atmosphere_kind_e::methane, 2.f).cover == 0.55f
             and atmosphere_clouds(atmosphere_kind_e::neon, 0.5f).cover == 0.45f,
           "atmosphere: over 1 the intensity brings a haze's cover up to clouds', all of it at 2");
+    auto const methane_white{atmosphere_clouds_tinted(methane, 0.f)};
+    auto const methane_twice{atmosphere_clouds_tinted(methane, 2.f)};
+    auto const silicate_far{atmosphere_clouds_tinted(atmosphere_clouds(atmosphere_kind_e::silicate_vapour, 1.f), 9.f)};
+    check(methane_white.tint[0] == 1.f and methane_white.tint[2] == 1.f and atmosphere_clouds_tinted(methane, 1.f).tint[2] == methane.tint[2]
+            and std::fabs((1.f - methane_twice.tint[2]) - 2.f * (1.f - methane.tint[2])) < 1e-6f and silicate_far.tint[2] == 0.f
+            and atmosphere_clouds_tinted(methane, -1.f).tint[1] == 1.f
+            and atmosphere_clouds(atmosphere_kind_e::water, 1.f).tint[0] == 1.f and methane.tint[2] < methane.tint[0],
+          "atmosphere: the tint's strength, 0 white, 2 twice as far from it, never under 0; water white, methane warm");
 
     // the storms (design of the cyclones v1)
     float const boelts{rossby_ratio(atmosphere_kind_e::nitrogen, 3478e3f, 25.1f * 3600.f)};

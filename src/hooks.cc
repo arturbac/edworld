@@ -1235,7 +1235,8 @@ namespace edworld
       auto const kind{static_cast<atmosphere_kind_e>(atmo_kind.load(std::memory_order_relaxed))};
       if(not settings().clouds_by_kind or kind == atmosphere_kind_e::unknown)
         return;
-      atmosphere_clouds_t const c{atmosphere_clouds(kind, settings().clouds_physics_intensity)};
+      atmosphere_clouds_t const c{
+        atmosphere_clouds_tinted(atmosphere_clouds(kind, settings().clouds_physics_intensity), settings().clouds_tint)};
       float const since{static_cast<float>(GetTickCount64() - atmo_kind_since.load(std::memory_order_relaxed))};
       v[0] = atmo_kind_radius.load(std::memory_order_relaxed);
       v[1] = std::clamp(since / atmo_kind_fade_ms, 0.f, 1.f);
