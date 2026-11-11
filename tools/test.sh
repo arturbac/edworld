@@ -49,6 +49,15 @@ ini_cases() {  # $1 = edworld | edworld_eht; in the run directory
   ini_check "under edloader an empty next is d3d11.dll" $?
   set -e
 }
+doc_case() {  # doc/settings.md is made by edworld_eht from its table of settings (it has every setting); in the run directory
+  set +e
+  EDWORLD_SETTINGS_DOC=settings.md ini_run
+  cmp -s settings.md "$HERE/doc/settings.md"
+  local same=$?
+  ini_check "doc/settings.md up to date with the table" $same
+  [[ $same -eq 0 ]] || echo "    to bring it up to date: cp $PWD/settings.md $HERE/doc/settings.md"
+  set -e
+}
 run_variant() {  # $1 = edworld | edworld_eht; sets rc on failure
   local V=$1 RUN r
   RUN=$(mktemp -d "$SCR/$V-test.XXXXXX")
@@ -81,6 +90,7 @@ run_variant() {  # $1 = edworld | edworld_eht; sets rc on failure
   echo "--- $V.log"
   head -40 $V.log 2>/dev/null
   ini_cases "$V"
+  [[ $V != edworld_eht ]] || doc_case
   popd >/dev/null
 }
 run_variant edworld

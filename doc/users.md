@@ -89,6 +89,9 @@ setting, take the `;` off its line; a line left as a comment follows edworld's d
 changes it. Where the file cannot be written, edworld says so in its log and runs on. `edworld.ini.example` in the
 zip is the same start, by hand.
 
+[settings.md](settings.md) lists every setting by its topic (clouds, navballs, jump panel, other) with its default,
+the values that make sense, and whether a change shows while the game runs or needs a new start of the game.
+
 | setting | default | what |
 |---|---|---|
 | `next` | empty | the next d3d11 mod (`d3d11_edhm.dll`); empty = the system's own, under edloader the next on its list |
@@ -212,7 +215,8 @@ They have depth and drift with the wind, faster high up: you fly into them and t
 game slows down near a planet, `clouds_volume = 0` in the ini gives the flat layer instead, which has no depth and is
 lighter. They are there only
 where the game draws its shell of the atmosphere, found by that shader, so an update of the game can take them away
-until edworld follows it. Changing a value takes a new start of the game.
+until edworld follows it. Changing a value takes a new start of the game, but for those
+[settings.md](settings.md) lists as read while the game runs.
 
 The clouds with depth are worked out at half the picture's width and height and laid over it by the depth of the
 scene, so they keep to the edge of the ground and the ship. Every 5 s the log has a line `clouds gpu 5s` with how

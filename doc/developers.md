@@ -485,7 +485,7 @@ the log is `git describe` of the tree, taken at each build. `EDWORLD_TESTS` (on)
 | `CMakeLists.txt`, `test/CMakeLists.txt`, `CMakePresets.json` | the build (see [Build](#build)); exports from `tools/d3d11_exports.txt` |
 | `cmake/clang-cl-msvc-sdk.cmake`, `cmake/version.cmake` | the toolchain (clang-cl with MSVC's and the Windows SDK's headers and libraries), the version from `git describe` |
 | `tools/d3d11_exports.txt`, `tools/gen_exports_from_list.py` | the Windows d3d11 export names, and the run of EDVR's generator on them |
-| `tools/test.sh <build dir> <scratch>` | smoke test under wine without the game, both builds (each as `d3d11.dll`), plain and chained, patch and list pixels checked, EDSM's answer read from a saved one (`test/data/`), the shaders' catalog written (edworld_eht), game shaders' shapes read when `EDWORLD_SHADER_SAMPLE` names `.dxbc` files (environment: `EDWORLD_WINEPREFIX`) |
+| `tools/test.sh <build dir> <scratch>` | smoke test under wine without the game, both builds (each as `d3d11.dll`), plain and chained, patch and list pixels checked, EDSM's answer read from a saved one (`test/data/`), the shaders' catalog written (edworld_eht), game shaders' shapes read when `EDWORLD_SHADER_SAMPLE` names `.dxbc` files, `doc/settings.md` compared with the one edworld_eht makes from its table of settings (`EDWORLD_SETTINGS_DOC`; on a difference it prints the `cp` that brings the doc up to date) (environment: `EDWORLD_WINEPREFIX`) |
 | `tools/edworld_watch.py [path]` | live view of the shared file |
 | `tools/dump_to_png.py <dir>` | surface dumps to PNG |
 | `tools/shader_catalog.py` | the shaders' catalog offline: `names` (the planets' generator's archives), `diff` (two builds) |
@@ -555,7 +555,7 @@ list_alpha = 0.65
 clouds = 1
 clouds_height = 0.005
 clouds_alpha = 0.45
-clouds_cover = 0.4
+clouds_cover = 0.55
 clouds_light = 0.4
 ```
 

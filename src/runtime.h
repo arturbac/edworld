@@ -351,10 +351,12 @@ namespace edworld
   ///\brief the ini made if there is none, and every setting it does not name yet added as a comment with the value edworld
   /// runs on; a line already there, comment or not, stays as it is. After log_open: a failure is logged, the game goes on
   auto complete_settings(std::wstring const & config_dir) noexcept -> void;
-  ///\brief clouds_mode, clouds_far_steps, clouds_near_from, clouds_near_to, clouds_debug, clouds_hide_below_px,
-  /// clouds_full_from_px, clouds_max_steps, the three clouds_edge_* and clouds_game_fade read again from the ini when it changed - looked at most once a second,
-  /// from the render thread
+  ///\brief the settings the table marks live (settings_log.cc keys; doc/settings.md lists them) read again from the ini
+  /// when it changed - looked at most once a second, from the render thread while it draws the clouds
   auto refresh_live_settings() noexcept -> void;
+  ///\brief doc/settings.md from the table of settings, to the file `EDWORLD_SETTINGS_DOC` names; nothing without it.
+  /// After log_open: a failure is logged, the game goes on
+  auto write_settings_doc() noexcept -> void;
 
   auto log_open(std::wstring const & dir) -> void;
   ///\brief one line, time-stamped (UTC), flushed

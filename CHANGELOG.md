@@ -9,6 +9,9 @@
 - **Lumps of more than one size.** The clouds' shape had one scale over the whole planet, so its lumps were the
   same size everywhere. Now a slow noise over the planet makes them larger in some regions and smaller in others
   (`clouds_size_var`, by default their scale times 1 ± 0.25; `0` gives the old clouds).
+- **doc/settings.md.** Every setting by its topic (clouds, navballs, jump panel, other), its default, the values
+  that make sense, and whether it is read while the game runs or at its start. edworld makes the page from its own
+  table of settings, which also says which settings are read again while the game runs, so the two cannot drift.
 
 ## 1.2.0-beta.9
 
