@@ -11,7 +11,9 @@ seconds (10) while the game draws a planet's atmosphere, edworld copies two thin
 - **The atmosphere's kind.** The game lights its atmosphere through a table whose colour is one for each kind of
   atmosphere, at every star and on every planet measured (the ratio of red to green and of blue to green of its
   bright half). It follows the kind the scan names, not the mix of gases: an argon atmosphere with some nitrogen
-  has the same colour as pure argon. All 15 kinds found on planets you can land on stand apart.
+  has the same colour as pure argon. All 15 kinds found on planets you can land on stand apart. Neon has a second
+  colour, reddish and far brighter: every neon planet with volcanism measured has it, every one without has the
+  first; both are neon. A volcanic NeonRich or Helium keeps its kind's colour.
 - **The planet's radius and its day.** The planet's radius is in the game's own constants; its day is read off how
   far the planet has turned between two reads (two reads in a row must agree to 1%; while the game moves its frame
   of reference a read is left out). On 74 pairs of reads, 72 gave the scan's day within 1%.

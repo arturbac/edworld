@@ -52,8 +52,8 @@ namespace edworld
     float r_g, b_g;
     };
 
-  /// measured 2026-11-10 (the median over each kind's planets, four digits)
-  inline constexpr std::array<atmosphere_print_t, 15> atmosphere_prints{{
+  /// measured 2026-11-10 (the median over each kind's planets, four digits); a kind may have more than one
+  inline constexpr std::array<atmosphere_print_t, 16> atmosphere_prints{{
     {atmosphere_kind_e::ammonia, "Ammonia", 0.4897f, 1.4194f},
     {atmosphere_kind_e::argon, "Argon", 0.3981f, 2.5000f},
     {atmosphere_kind_e::argon_rich, "ArgonRich", 0.5158f, 2.7826f},
@@ -63,6 +63,10 @@ namespace edworld
     {atmosphere_kind_e::methane, "Methane", 0.6190f, 1.9459f},
     {atmosphere_kind_e::methane_rich, "MethaneRich", 0.6286f, 1.9213f},
     {atmosphere_kind_e::neon, "Neon", 0.8035f, 1.4802f},
+    // a neon atmosphere over volcanism has a table of its own, reddish and some forty times brighter: all 3 volcanic of
+    // 11 neon planets measured 2026-11-11 (methane and nitrogen magma, at a T dwarf and a bright star alike), none of
+    // the 8 without; a volcanic NeonRich or Helium keeps its kind's
+    {atmosphere_kind_e::neon, "Neon", 1.3109f, 0.9530f},
     {atmosphere_kind_e::neon_rich, "NeonRich", 0.7216f, 1.6897f},
     {atmosphere_kind_e::nitrogen, "Nitrogen", 0.6953f, 1.7551f},
     {atmosphere_kind_e::oxygen, "Oxygen", 0.7320f, 1.6538f},

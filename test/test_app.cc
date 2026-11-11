@@ -663,6 +663,8 @@ namespace
     check(itself, "atmosphere: a hue near a kind's is that kind, one past the tolerance none");
     auto const * argon{atmosphere_kind_of({true, 0.3980f, 2.5000f})};
     check(argon and argon->name == "Argon" and not atmosphere_kind_of({}), "atmosphere: Argon at an M7 star; no hue, no kind");
+    auto const * volcanic{atmosphere_kind_of({true, 1.3109f, 0.9524f})};
+    check(volcanic and volcanic->kind == atmosphere_kind_e::neon, "atmosphere: neon over volcanism is neon");
     check(small_float(960u, 6u) == 1.f and small_float(896u, 6u) == 0.5f and small_float(512u, 5u) == 2.f and small_float(0u, 6u) == 0.f,
           "atmosphere: the table's small floats");
     // 4x4, a pitch of 32 bytes: the upper half bright (r 0.5, g 1, b 2) beside dim texels of another hue (r 1, g 0.25,

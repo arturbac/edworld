@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Volcanic neon planets get neon's clouds.** The game draws a neon atmosphere over volcanism in a colour of its
+  own, so edworld did not know it and gave such a planet the default clouds. Now it is neon too.
 - **The clouds' colour by the kind.** The kinds' tints were so close to white that every planet's clouds looked the
   same white, coloured only by the star. Now ammonia's clouds are cream, methane's orange-brown, sulphur dioxide's
   yellowish and silicate vapour's grey-brown, from what colours them; the kinds whose ices are white get a slight
