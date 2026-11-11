@@ -1111,14 +1111,13 @@ namespace edworld
                static_cast<unsigned long long>(from), bd.ByteWidth, bd.StructureByteStride, bd.BindFlags, bd.MiscFlags);
       }
 
-#if defined(EDWORLD_EHT)
-    // ---- the atmosphere's fingerprint (PoC, 2026-11-09): what the game's shell of the atmosphere reads, to be put beside
-    // EHT's scans of the same planets afterwards (the planet's radius, VS cb1 row 126 x, is the journal's Radius) and to
-    // learn whether it tells the atmosphere's kind. At most every atmo_record_s seconds while the shell is drawn into the
-    // picture: its PS t0 (a table of the light through the atmosphere, 256x512 R11G11B10 at LQ-F b31-7 A 5) and its VS and
-    // PS constant buffers 0..3, copied on the GPU, read back a few frames later. Kept once a session per planet and octave
-    // of the camera's distance over the radius, to edworld_atmo beside the log: <stamp>.atmo (the constants) and
-    // t0_<hash>_....raw (each table once, as whether it changes with the view is not known)
+    // ---- the atmosphere read off the game's shell of it (both builds since 2026-11-11): every clouds_kind_read_s
+    // seconds while the shell is drawn into the picture, its PS t0 (a table of the light through the atmosphere, 256x512
+    // R11G11B10) and its VS and PS constant buffers 0..3, copied on the GPU, read back a few frames later: the kind from
+    // the table's hue, the day from the planet's turn, for the clouds; nothing written. edworld_eht also keeps them (the
+    // fingerprint, PoC 2026-11-09, to put beside EHT's scans; the planet's radius, VS cb1 row 126 x, is the journal's
+    // Radius) at most every atmo_record_s seconds, once a session per planet and octave of the camera's distance over the
+    // radius, to edworld_atmo beside the log: <stamp>.atmo (the constants) and t0_<hash>_....raw (each table once)
     struct atmo_pending_t
       {
       ID3D11Texture2D * t0;
@@ -1129,14 +1128,30 @@ namespace edworld
       char stamp[32];
       };
     constexpr std::uint32_t atmo_max_cb_bytes{8192};
-    constexpr std::uint32_t atmo_max_seen{1024};
     constexpr std::uint32_t atmo_furthest_band{7};  ///< the camera further than 2^8 radii: the planet a few pixels
     atmo_pending_t atmo_pending{};
     bool atmo_busy{};
     LONGLONG atmo_last{};
+#if defined(EDWORLD_EHT)
+    constexpr std::uint32_t atmo_max_seen{1024};
+    LONGLONG atmo_recorded{};
     std::uint64_t atmo_seen[atmo_max_seen]{};  ///< the radius in metres << 8 | the band
     std::uint32_t atmo_seen_count{};
     alignas(16) std::byte atmo_record[64 + 8 * (4 + atmo_max_cb_bytes)];
+#endif
+
+    ///\brief how often the shell is read, seconds: for the clouds, and in edworld_eht for the fingerprint too; 0 = never
+    [[nodiscard]]
+    auto atmo_period_s() noexcept -> std::uint32_t
+      {
+      std::uint32_t const kind{settings().clouds_kind_read_s};
+#if defined(EDWORLD_EHT)
+      std::uint32_t const record{settings().atmo_record_s};
+      if(record != 0u and (kind == 0u or record < kind))
+        return record;
+#endif
+      return kind;
+      }
     constexpr std::size_t atmo_hue_capacity{256u * 256u};  ///< the upper half of a 256x512 table
     float atmo_hue_r[atmo_hue_capacity], atmo_hue_b[atmo_hue_capacity];
     // the kind last told and the planet it is of (its radius in metres), since when (GetTickCount64): the clouds take
@@ -1315,10 +1330,11 @@ namespace edworld
     ///\brief at the shell's draw: the copies of its table and constants, when it is time for the next
     auto atmo_queue(ID3D11DeviceContext * ctx) noexcept -> void
       {
-      if(atmo_busy or atmo_seen_count == atmo_max_seen)
+      std::uint32_t const period{atmo_period_s()};
+      if(atmo_busy or period == 0u)
         return;
       LONGLONG const now{qpc_now()};
-      if((now - atmo_last) * 1000 / qpc_frequency < static_cast<LONGLONG>(settings().atmo_record_s) * 1000)
+      if((now - atmo_last) * 1000 / qpc_frequency < static_cast<LONGLONG>(period) * 1000)
         return;
       D3D11_VIEWPORT port{};
       UINT ports{1u};
@@ -1466,16 +1482,23 @@ namespace edworld
                                atmo_float(p, data, 0, 11, 0), atmo_float(p, data, 0, 11, 1), atmo_float(p, data, 0, 11, 2)};
       atmo_note_turn(radius, turn_rows, p.qpc);
 
+#if defined(EDWORLD_EHT)
+      // the fingerprint: at most every atmo_record_s seconds, once a session per planet and band
       std::uint32_t const band{over < 1.f ? 0u : static_cast<std::uint32_t>(std::floor(std::log2(over)))};
       std::uint64_t const key{(static_cast<std::uint64_t>(std::llround(radius)) << 8) | band};
-      for(std::uint32_t i{}; i != atmo_seen_count; ++i)
+      bool record{settings().atmo_record_s != 0u and atmo_seen_count != atmo_max_seen
+                  and (p.qpc - atmo_recorded) * 1000 / qpc_frequency >= static_cast<LONGLONG>(settings().atmo_record_s) * 1000};
+      for(std::uint32_t i{}; record and i != atmo_seen_count; ++i)
         if(atmo_seen[i] == key)
-          {
-          unmap_cbs();
-          atmo_release(p);
-          return;
-          }
+          record = false;
+      if(not record)
+        {
+        unmap_cbs();
+        atmo_release(p);
+        return;
+        }
       atmo_seen[atmo_seen_count++] = key;
+      atmo_recorded = p.qpc;
 
       std::wstring const folder{settings().dir + L"\\edworld_atmo"};
       CreateDirectoryW(folder.c_str(), nullptr);
@@ -1530,6 +1553,10 @@ namespace edworld
                p.height, p.format, new_table ? " (new table)" : "", kind ? static_cast<int>(kind->name.size()) : 7,
                kind ? kind->name.data() : "unknown", double(hue.r_g), double(hue.b_g));
       atmo_release(p);
+#else
+      unmap_cbs();
+      atmo_release(p);
+#endif
       }
 
     auto guarded_atmo(ID3D11DeviceContext * ctx) noexcept -> void
@@ -1555,7 +1582,6 @@ namespace edworld
         note_fault();
         }
       }
-#endif
 
     // ---- the whole frame (discovery, full_dump_request): every draw of one frame on the immediate context, one log
     // line each (its kind, the vertex shader's hash, counts, viewport, render target) and the first full_cb_bytes of
@@ -1783,9 +1809,7 @@ namespace edworld
         write_dumps(now);
       if(pending_buffer_count)
         write_buffers(now);
-#if defined(EDWORLD_EHT)
       guarded_atmo_drain(now);
-#endif
       check_trigger(now);
       check_full(now);
       if(full_done_waiting and not full_armed and pending_count == 0 and pending_buffer_count == 0)
@@ -4166,8 +4190,8 @@ namespace edworld
         }
 
       // 19..32 (the game's fade, near and far, the debug colour, the planet's size on the screen, the steps' most, the
-      // edge, the haze) and 33..42 (the atmosphere's kind, edworld_eht) are written again for each draw, as they change
-      // while the game runs, 44..87 the storms (edworld_eht); 43 fills to 16 bytes
+      // edge, the haze) and 33..42 (the atmosphere's kind) are written again for each draw, as they change while the game
+      // runs, 44..87 the storms; 43 fills to 16 bytes
       float const values[88]{
         settings().clouds_bottom, settings().clouds_top, settings().clouds_cover, settings().clouds_light,
         settings().clouds_steps, settings().clouds_density, settings().clouds_opacity, settings().clouds_top_gain,
@@ -4374,7 +4398,6 @@ namespace edworld
       clouds.volume_values[30] = std::max(settings().clouds_edge_full_px, settings().clouds_edge_hide_px + 0.01f);
       clouds.volume_values[31] = std::max(settings().clouds_edge_band_px, 0.01f);
       clouds.volume_values[32] = std::max(settings().clouds_haze, 0.f);
-#if defined(EDWORLD_EHT)
       atmo_kind_values(clouds.volume_values + 33);
       atmo_cyclone_values(clouds.volume_values + 44);
       if(clouds.volume_values[84] > 0.f)
@@ -4384,7 +4407,6 @@ namespace edworld
         clouds.volume_values[36] = floor_at + (clouds.volume_values[36] - floor_at) * 2.f;
         clouds.volume_values[85] = 2.f;
         }
-#endif
       ctx->UpdateSubresource(clouds.volume_params, 0, nullptr, clouds.volume_values, 0, 0);
       if(half)
         {
@@ -4666,11 +4688,9 @@ namespace edworld
           guarded_probe(self, index_count, instance_count);
         }
       orig_draw_indexed_instanced(self, index_count, instance_count, start_index, base_vertex, start_instance);
-#if defined(EDWORLD_EHT)
-      if(current_shell and settings().atmo_record_s and not disabled.load(std::memory_order_relaxed)
+      if(current_shell and atmo_period_s() and not disabled.load(std::memory_order_relaxed)
          and self == immediate.load(std::memory_order_relaxed))
         guarded_atmo(self);
-#endif
       if(current_shell and settings().clouds and not disabled.load(std::memory_order_relaxed)
          and self == immediate.load(std::memory_order_relaxed))
         guarded_clouds(self, index_count, instance_count, start_index, base_vertex, start_instance);

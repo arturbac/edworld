@@ -122,9 +122,10 @@ zip is the same start, by hand.
 | `clouds_hide_below_px`, `clouds_full_from_px` | `20`, `80` | no clouds with depth while the planet is narrower on the screen than the first many pixels, all of them from the second, a blend between; pixels of the picture the game draws, before its upscaling |
 | `clouds_max_steps` | `64` | (test) the most steps through the clouds with depth: the steps follow the way's length through them, many at the planet's edge |
 | `clouds_edge_hide_px`, `clouds_edge_full_px`, `clouds_edge_band_px` | `2`, `8`, `16` | no clouds with depth out of the planet's edge while their layer is thinner on the screen than the first many pixels, all from the second; on the disc the same within the third many pixels of the edge |
-| `clouds_by_kind` | `1` | `edworld_eht.dll` only (test): `1` = the clouds with depth by the atmosphere's kind (needs `atmo_record_s`, which reads the kind), `0` = the same on every planet; read again while the game runs |
-| `clouds_physics_intensity` | `1` | `edworld_eht.dll` only: how strongly the kinds' clouds show, `1` = as the physics gives, `2` = twice as strong (at most `clouds_opacity`) and a haze's cover up to clouds', `0` = none; read again while the game runs |
-| `clouds_cyclones` | `1` | `edworld_eht.dll` only (test): `1` = storms in the kinds' clouds by the planet's size, day and kind, `0` = none; read again while the game runs |
+| `clouds_kind_read_s` | `10` | how often the game's atmosphere is read for its kind and the planet's day, in seconds; `0` = never, the clouds as in 1.2.0-beta.8; read again while the game runs |
+| `clouds_by_kind` | `1` | `1` = the clouds with depth by the atmosphere's kind (needs `clouds_kind_read_s`), `0` = the same on every planet; read again while the game runs |
+| `clouds_physics_intensity` | `1` | how strongly the kinds' clouds show, `1` = as the physics gives, `2` = twice as strong (at most `clouds_opacity`) and a haze's cover up to clouds', `0` = none; read again while the game runs |
+| `clouds_cyclones` | `1` | `1` = storms in the kinds' clouds by the planet's size, day and kind, `0` = none; read again while the game runs |
 | `clouds_haze` | `0.05` | from under the clouds with depth and in them, a cloud this far away covers e times less, so they fade into the haze at the horizon instead of ending in a sharp line; a part of the planet's radius, `0` = never less; from orbit they stay as they are |
 | `list_top`, `list_x` | `500`, `1540` | where the list starts under the panel (pixels of the panel's surface) |
 | `list_rows` | `7` | factions listed at most |
@@ -217,7 +218,7 @@ long the graphics card spends on them (`ms median`) and how many pixels that tak
 the game near a planet, that line helps.
 Toward the horizon, where the way through the clouds is longest, they can show a fine, even grain.
 
-`edworld_eht.dll` (test): the clouds with depth by the atmosphere's kind. The kind is told by how the game's own
+The clouds with depth follow the atmosphere's kind (since 1.2.0-beta.9). The kind is told by how the game's own
 atmosphere draws it (its colour table), not by the journal: each of the 15 kinds on planets you land on gets its own
 layer, height, cover, opacity and tint, from the physics of the kind's typical planet (its temperature, pressure,
 size). A gas that does not condense at its planets' temperatures gives a thin haze, not clouds; large cold planets
@@ -225,9 +226,10 @@ get a thin, low layer, small warm ones a deep one. Until the kind is told (a few
 and for a kind not known the clouds are as above; then they change over 2 s. The log has
 `clouds: the planet of radius ... m is <kind>`. `clouds_physics_intensity` shows them stronger (`2` = twice, and a
 haze gets the cover of clouds) or weaker; `clouds_by_kind = 0` gives every planet the same clouds, to compare. Both
-are read again while the game runs.
+are read again while the game runs. edworld reads the game's atmosphere every `clouds_kind_read_s` seconds (10) while
+it is drawn; `0` stops that and the clouds are as in 1.2.0-beta.8. Nothing of it is written anywhere.
 
-Storms (test, `clouds_cyclones`): in the kinds' clouds, cyclones with spiral arms and a clear eye, as many and as large
+Storms (`clouds_cyclones`): in the kinds' clouds, cyclones with spiral arms and a clear eye, as many and as large
 as the planet's size, its day and its kind allow. edworld reads the day off the planet's turn in the picture
 (`clouds: the planet of radius ... m turns in ... h` in the log, after half a minute or so near it); a planet that turns
 slowly or is small has none, a large one turning in a day or two has one to three large ones and one at each pole, a
