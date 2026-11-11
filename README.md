@@ -20,6 +20,11 @@ Version 1.2.0-beta.2 puts clouds over the planets with an atmosphere you land on
 seen from orbit, on the way down through them and from the ground. They have depth, you fly through them, and they drift with the wind. They are on by default: `clouds_volume = 0` in the ini gives a flat layer
 for a weaker graphics card, `clouds = 0` turns them off, and they are only in your picture. See [Clouds](doc/users.md#clouds).
 
+Since 1.2.0-beta.9 the clouds follow the atmosphere: edworld tells its kind from how the game draws it, and each of the
+15 kinds on landable planets gets its own layer, cover and tint from the physics of its typical planet (a thin neon or
+helium atmosphere only a haze). Large planets that turn fast get cyclones with spiral arms and a clear eye, as many and
+as large as the planet's size, its day and its atmosphere allow. A video: https://youtu.be/_mVhSVoFirw
+
 ## Navballs, testers wanted
 
 ![Navballs beside the radar: the target's direction from the front (left) and from behind (right)](doc/images/navballs.jpg)

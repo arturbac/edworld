@@ -2,12 +2,16 @@
 
 ## Unreleased
 
+## 1.2.0-beta.9
+
 - **Clouds by the atmosphere's kind.** edworld reads the kind off how the game draws the atmosphere (not the
   journal), every `clouds_kind_read_s` seconds: each of the 15 kinds on landable planets gets its own layer, cover,
   opacity and tint from the physics of its typical planet; a gas that does not condense there gives only a haze
   (`clouds_by_kind`, `clouds_physics_intensity`).
 - **Storms.** Cyclones with spiral arms, a dense mass of clouds and a clear eye shaped like a funnel, as many and as
   large as the planet's size, its day (read off its turn in the picture) and its kind allow (`clouds_cyclones`).
+- `clouds_kind_read_s = 0` in `edworld.ini` gives the clouds of 1.2.0-beta.8 back. A video:
+  https://youtu.be/_mVhSVoFirw
 
 ## 1.2.0-beta.8
 
