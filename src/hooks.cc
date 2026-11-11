@@ -1227,7 +1227,7 @@ namespace edworld
       atmo_turn_qpc = qpc;
       }
 
-    ///\brief the clouds' values 33..43 (clouds3d.hlsl): the planet whose kind is known and its clouds, none when
+    ///\brief the clouds' values 33..42 (clouds3d.hlsl; 43, the lumps' size, is set beside it): the planet whose kind is known and its clouds, none when
     /// clouds_by_kind is 0 or the kind unknown
     auto atmo_kind_values(float * v) noexcept -> void
       {
@@ -1235,7 +1235,8 @@ namespace edworld
       auto const kind{static_cast<atmosphere_kind_e>(atmo_kind.load(std::memory_order_relaxed))};
       if(not settings().clouds_by_kind or kind == atmosphere_kind_e::unknown)
         return;
-      atmosphere_clouds_t const c{atmosphere_clouds(kind, settings().clouds_physics_intensity)};
+      atmosphere_clouds_t const c{
+        atmosphere_clouds_tinted(atmosphere_clouds(kind, settings().clouds_physics_intensity), settings().clouds_tint)};
       float const since{static_cast<float>(GetTickCount64() - atmo_kind_since.load(std::memory_order_relaxed))};
       v[0] = atmo_kind_radius.load(std::memory_order_relaxed);
       v[1] = std::clamp(since / atmo_kind_fade_ms, 0.f, 1.f);
@@ -4399,6 +4400,7 @@ namespace edworld
       clouds.volume_values[31] = std::max(settings().clouds_edge_band_px, 0.01f);
       clouds.volume_values[32] = std::max(settings().clouds_haze, 0.f);
       atmo_kind_values(clouds.volume_values + 33);
+      clouds.volume_values[43] = std::clamp(settings().clouds_size_var, 0.f, 0.9f);
       atmo_cyclone_values(clouds.volume_values + 44);
       if(clouds.volume_values[84] > 0.f)
         {

@@ -158,6 +158,8 @@ namespace edworld
       {"clouds_kind_read_s", &settings_t::clouds_kind_read_s, "how often the game's atmosphere is read for its kind and the planet's day, in seconds: 0 = never, the clouds as before"},
       {"clouds_by_kind", &settings_t::clouds_by_kind, "1 = the clouds with depth by the atmosphere's kind (needs clouds_kind_read_s), 0 = the same on every planet"},
       {"clouds_physics_intensity", &settings_t::clouds_physics_intensity, "how strongly the kinds' clouds show: 1 = as the physics gives, 2 = twice as strong (at most clouds_opacity) and the cover of a haze up to clouds', 0 = none"},
+      {"clouds_tint", &settings_t::clouds_tint, "how strongly the kinds' clouds take their colour: 1 = a little off white, as the table gives, 0 = white, 2 = twice as far from white"},
+      {"clouds_size_var", &settings_t::clouds_size_var, "(PoC) the lumps' size noised by region, their scale times 1 +- this: 0 = one size everywhere, at most 0.9"},
       {"clouds_cyclones", &settings_t::clouds_cyclones, "1 = storms in the kinds' clouds, by the planet's size, its day and the kind; 0 = none"},
       {"compass", &settings_t::compass, "The navballs beside the radar: 0 = none, the game's compass is not read at all"},
       {"edsm", &settings_t::edsm, "The destination's factions under the jump panel: 0 = never ask EDSM"},
@@ -473,10 +475,13 @@ namespace edworld
       current.clouds_kind_read_s = read.clouds_kind_read_s;
       current.clouds_by_kind = read.clouds_by_kind;
       current.clouds_physics_intensity = read.clouds_physics_intensity;
+      current.clouds_tint = read.clouds_tint;
+      current.clouds_size_var = read.clouds_size_var;
       current.clouds_cyclones = read.clouds_cyclones;
-      log_line("settings: read again: clouds_kind_read_s %u, clouds_by_kind %u, clouds_physics_intensity %g, clouds_cyclones %u",
+      log_line("settings: read again: clouds_kind_read_s %u, clouds_by_kind %u, clouds_physics_intensity %g, clouds_tint %g, "
+               "clouds_size_var %g, clouds_cyclones %u",
                current.clouds_kind_read_s, current.clouds_by_kind, static_cast<double>(current.clouds_physics_intensity),
-               current.clouds_cyclones);
+               static_cast<double>(current.clouds_tint), static_cast<double>(current.clouds_size_var), current.clouds_cyclones);
       log_line("settings: read again: clouds_mode %u, clouds_far_steps %g, clouds_near_from %g, clouds_near_to %g, clouds_debug %u, "
                "clouds_hide_below_px %g, clouds_full_from_px %g, clouds_max_steps %g, clouds_edge_hide_px %g, "
                "clouds_edge_full_px %g, clouds_edge_band_px %g, clouds_game_fade %u, clouds_haze %g",

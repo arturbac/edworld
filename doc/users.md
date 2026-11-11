@@ -125,6 +125,8 @@ zip is the same start, by hand.
 | `clouds_kind_read_s` | `10` | how often the game's atmosphere is read for its kind and the planet's day, in seconds; `0` = never, the clouds as in 1.2.0-beta.8; read again while the game runs |
 | `clouds_by_kind` | `1` | `1` = the clouds with depth by the atmosphere's kind (needs `clouds_kind_read_s`), `0` = the same on every planet; read again while the game runs |
 | `clouds_physics_intensity` | `1` | how strongly the kinds' clouds show, `1` = as the physics gives, `2` = twice as strong (at most `clouds_opacity`) and a haze's cover up to clouds', `0` = none; read again while the game runs |
+| `clouds_tint` | `1` | how strongly the kinds' clouds take their colour, `1` = a little off white as [clouds.md](clouds.md) gives, `0` = white on every planet, `2` = twice as far from white; read again while the game runs |
+| `clouds_size_var` | `0.25` | (PoC) the lumps' size noised by region: their scale times 1 ± this from a slow noise over the planet, so some regions have larger lumps and others smaller; `0` = one size everywhere, at most `0.9`; read again while the game runs |
 | `clouds_cyclones` | `1` | `1` = storms in the kinds' clouds by the planet's size, day and kind, `0` = none; read again while the game runs |
 | `clouds_haze` | `0.05` | from under the clouds with depth and in them, a cloud this far away covers e times less, so they fade into the haze at the horizon instead of ending in a sharp line; a part of the planet's radius, `0` = never less; from orbit they stay as they are |
 | `list_top`, `list_x` | `500`, `1540` | where the list starts under the panel (pixels of the panel's surface) |
@@ -225,7 +227,7 @@ size). A gas that does not condense at its planets' temperatures gives a thin ha
 get a thin, low layer, small warm ones a deep one. Until the kind is told (a few seconds after the planet comes near)
 and for a kind not known the clouds are as above; then they change over 2 s. The log has
 `clouds: the planet of radius ... m is <kind>`. `clouds_physics_intensity` shows them stronger (`2` = twice, and a
-haze gets the cover of clouds) or weaker; `clouds_by_kind = 0` gives every planet the same clouds, to compare. Both
+haze gets the cover of clouds) or weaker; `clouds_tint` their colour (`0` = white, `2` = twice as far from it); `clouds_by_kind = 0` gives every planet the same clouds, to compare. All
 are read again while the game runs; what each kind gets and why is in [clouds.md](clouds.md). edworld reads the game's atmosphere every `clouds_kind_read_s` seconds (10) while
 it is drawn; `0` stops that and the clouds are as in 1.2.0-beta.8. Nothing of it is written anywhere.
 

@@ -32,7 +32,13 @@ The layer, its cover and its opacity follow the physics of the kind's typical pl
 - **Cover.** Clouds form where the main gas condenses at the planet's temperature. A gas that condenses there gets
   clouds (cover 0.55); one that does not gets a haze of what else is in the air (0.45); helium, which never
   condenses, the least (0.35).
-- **Tint.** A colour per kind, times the star's light.
+- **Tint.** A colour per kind, times the star's light, kept close to white. The ices of most of these gases are
+  white or colourless, so their clouds are too; a colour of their own comes from what else is in the air: ammonia's
+  clouds cream (the compounds that colour Jupiter's), methane's orange-brown (the haze its sunlit chemistry makes, as
+  on Titan), less where the methane is only a trace, sulphur dioxide's yellowish (sulphur), silicate vapour's
+  grey-brown (dust). Where nothing colours them the kind gets a slight tint only to be told apart from the others -
+  cool for argon, helium and carbon dioxide, faintly lilac for neon, faintly pink for nitrogen, blue-white for oxygen.
+  Water stays white. `clouds_tint` scales how far from white they are: `0` white everywhere, `2` twice as far.
 
 The "Rich" kinds are named by a gas that is not their main one: in the scans most NeonRich, ArgonRich and
 MethaneRich atmospheres are mainly nitrogen (some NeonRich mainly helium), and most CarbonDioxideRich ones mainly
@@ -40,21 +46,21 @@ oxygen. They get the clouds of their main gas.
 
 | kind | typical planet (radius, surface) | main gas condenses? | layer top / floor (radius) | opacity | cover | tint |
 |---|---|---|---|---|---|---|
-| CarbonDioxide | 1115 km, 175 K, 0.018 atm | yes (130-195 K) | 0.0366 / 0.0091 | 0.63 | 0.55 | `#F0F4FA` |
-| Neon | 5435 km, 31 K, 0.002 atm | barely (15-27 K) | 0.0060 / 0.0015 | 0.30 | 0.45 | `#E8ECF0` |
-| SulphurDioxide | 2937 km, 270 K, 0.003 atm | at its edge (110-260 K) | 0.0126 / 0.0032 | 0.30 | 0.45 | `#EDE3A8` |
-| Argon | 2953 km, 69 K, 0.006 atm | yes (50-87 K) | 0.0120 / 0.0030 | 0.39 | 0.55 | `#F2F2F5` |
-| Ammonia | 1351 km, 165 K, 0.002 atm | yes (130-200 K) | 0.0400 / 0.0100 | 0.30 | 0.55 | `#F3E9D2` |
-| NeonRich | 5529 km, 63 K, 0.015 atm | yes, nitrogen (40-80 K) | 0.0067 / 0.0017 | 0.58 | 0.55 | white |
-| Methane | 654 km, 93 K, 0.059 atm | yes (70-110 K) | 0.0400 / 0.0100 | 0.89 | 0.55 | `#F5F0E6` |
-| Nitrogen | 3399 km, 79 K, 0.010 atm | yes (40-80 K) | 0.0109 / 0.0027 | 0.50 | 0.55 | white |
-| ArgonRich | 4143 km, 83 K, 0.036 atm | at its edge | 0.0104 / 0.0026 | 0.78 | 0.55 | `#F2F2F5` |
-| CarbonDioxideRich | 3738 km, 230 K, 0.069 atm | no | 0.0124 / 0.0031 | 0.92 | 0.45 | white |
-| Helium | 7711 km, 28 K, 0.068 atm | never | 0.0060 / 0.0015 | 0.30 | 0.35 | `#DDE3EA` |
+| CarbonDioxide | 1115 km, 175 K, 0.018 atm | yes (130-195 K) | 0.0366 / 0.0091 | 0.63 | 0.55 | `#E6EEF8` |
+| Neon | 5435 km, 31 K, 0.002 atm | barely (15-27 K) | 0.0060 / 0.0015 | 0.30 | 0.45 | `#ECE4F0` |
+| SulphurDioxide | 2937 km, 270 K, 0.003 atm | at its edge (110-260 K) | 0.0126 / 0.0032 | 0.30 | 0.45 | `#EBE0B4` |
+| Argon | 2953 km, 69 K, 0.006 atm | yes (50-87 K) | 0.0120 / 0.0030 | 0.39 | 0.55 | `#E4EAF4` |
+| Ammonia | 1351 km, 165 K, 0.002 atm | yes (130-200 K) | 0.0400 / 0.0100 | 0.30 | 0.55 | `#EADBC0` |
+| NeonRich | 5529 km, 63 K, 0.015 atm | yes, nitrogen (40-80 K) | 0.0067 / 0.0017 | 0.58 | 0.55 | `#F0E8EA` |
+| Methane | 654 km, 93 K, 0.059 atm | yes (70-110 K) | 0.0400 / 0.0100 | 0.89 | 0.55 | `#E8CFB0` |
+| Nitrogen | 3399 km, 79 K, 0.010 atm | yes (40-80 K) | 0.0109 / 0.0027 | 0.50 | 0.55 | `#F0E8EA` |
+| ArgonRich | 4143 km, 83 K, 0.036 atm | at its edge | 0.0104 / 0.0026 | 0.78 | 0.55 | `#F0E8EA` |
+| CarbonDioxideRich | 3738 km, 230 K, 0.069 atm | no | 0.0124 / 0.0031 | 0.92 | 0.45 | `#E8F0F8` |
+| Helium | 7711 km, 28 K, 0.068 atm | never | 0.0060 / 0.0015 | 0.30 | 0.35 | `#DEE6F0` |
 | Water | 436 km, 445 K, 0.092 atm | no (fog at night) | 0.0400 / 0.0100 | 0.98 | 0.45 | white |
-| MethaneRich | 3942 km, 140 K, 0.028 atm | no, for methane | 0.0103 / 0.0026 | 0.72 | 0.45 | `#F5E6D0` |
-| Oxygen | 3070 km, 181 K, 0.037 atm | no | 0.0140 / 0.0035 | 0.79 | 0.45 | white |
-| SilicateVapour | 4330 km, 1808 K, 0.042 atm | yes (1500-2500 K) | 0.0152 / 0.0038 | 0.81 | 0.55 | `#B8B2AA` |
+| MethaneRich | 3942 km, 140 K, 0.028 atm | no, for methane | 0.0103 / 0.0026 | 0.72 | 0.45 | `#EEDDCB` |
+| Oxygen | 3070 km, 181 K, 0.037 atm | no | 0.0140 / 0.0035 | 0.79 | 0.45 | `#E8F0F8` |
+| SilicateVapour | 4330 km, 1808 K, 0.042 atm | yes (1500-2500 K) | 0.0152 / 0.0038 | 0.81 | 0.55 | `#B8A898` |
 
 ![The sky from the ground under each kind's clouds, beside the clouds before 1.2.0-beta.9](images/clouds-by-kind.jpg)
 
@@ -66,6 +72,9 @@ the kinds with one another: the first picture is the clouds every planet had bef
 The opacity is a share of `clouds_opacity`. `clouds_physics_intensity` multiplies it (at most all of it) and, above
 1, brings a haze's cover up toward that of clouds, all the way at 2. Until the kind is known, and for a kind not
 known, a planet gets the clouds of the ini; once it is known they change over 2 s.
+
+The lumps are not one size over the whole planet: a slow noise makes them larger in some regions and smaller in
+others, by a quarter either way (`clouds_size_var`, `0` = one size).
 
 **Where to expect what.** Methane and water worlds are small and have the densest clouds; carbon dioxide worlds
 are small to medium with clear, cool decks; nitrogen worlds are medium with plain white clouds; neon and helium
