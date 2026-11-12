@@ -398,13 +398,9 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   clouds with depth take it (below). Since 1.2.0-beta.9 both builds read the shell, every `clouds_kind_read_s`
   seconds (`atmo_period_s`: in edworld_eht the shorter of it and `atmo_record_s`), for the kind and the day; only
   edworld_eht keeps the fingerprint (`atmo_record_s` apart, once a session per planet and band).
-  Each kind told (not `unknown`) goes to `edworld_kinds.txt` beside the log (`atmo_known_keep`: a line
-  `<radius in metres, %.0f> <AtmosphereType>` a planet, at most 4096, the whole file written again through
-  `edworld_kinds.txt.new` when a planet is added or its kind changes), read at the first need
-  (`atmosphere_known_line`). A read whose radius is not the planet's by the camera's distance (over the radius under
-  0.9) but over 1000 m takes the kind from the file for that radius within 4 m (`atmo_note_known`, the log line ends
-  `(from edworld_kinds.txt)`): 2026-11-12 a session begun in a settlement drew the shell and told no kind in minutes.
-  While no read gets through, `atmo_misses` counts why (a target under 1024 wide, no table, a table of more samples
+  The copies are read back (`atmo_drain`) at a frame's start and also at the shell's next draw before a new read:
+  a frame's start is found by the HUD's panels, which a commander on foot does not have (2026-11-12: a read made in
+  a settlement waited two minutes, until the ship, and no other was made meanwhile). While no read gets through, `atmo_misses` counts why (a target under 1024 wide, no table, a table of more samples
   or layers, the radius not the planet's, with the last radius and distance) and logs it at most once a minute; the
   camera too far is not counted.
 - (both builds, `clouds_by_kind`, 2026-11-10) The clouds with depth by the atmosphere's kind:

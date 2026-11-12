@@ -722,17 +722,6 @@ namespace
             and atmosphere_lumps(atmosphere_kind_e::unknown, 5435e3f).scale == 0.f and atmosphere_lumps(atmosphere_kind_e::neon, 0.f).scale == 0.f,
           "atmosphere: the lumps by the layer's thickness, 25 of it the coarsest within 4..40; cold kinds flat, warm ones towers");
 
-    // the kinds told before, a line of edworld_kinds.txt each
-    auto const sulphur{atmosphere_known_line("3394121 SulphurDioxide\r")};
-    auto const neon_line{atmosphere_known_line("5435000 Neon")};
-    check(sulphur and sulphur->radius == 3394121.f and sulphur->kind == atmosphere_kind_e::sulphur_dioxide and neon_line
-            and neon_line->kind == atmosphere_kind_e::neon and not atmosphere_known_line("3394121 Xenon")
-            and not atmosphere_known_line("SulphurDioxide 3394121") and not atmosphere_known_line("12 Neon")
-            and not atmosphere_known_line("") and not atmosphere_known_line("3394121x Neon")
-            and atmosphere_kind_name(atmosphere_kind_e::methane) == "Methane" and atmosphere_kind_name(atmosphere_kind_e::unknown).empty()
-            and atmosphere_kind_named("CarbonDioxideRich") == atmosphere_kind_e::carbon_dioxide_rich,
-          "atmosphere: a line of edworld_kinds.txt, the radius and the kind by the journal's name; anything else none");
-
     // the storms (design of the cyclones v1)
     float const boelts{rossby_ratio(atmosphere_kind_e::nitrogen, 3478e3f, 25.1f * 3600.f)};
     float const unknown_day{rossby_ratio(atmosphere_kind_e::nitrogen, 3478e3f, 0.f)};

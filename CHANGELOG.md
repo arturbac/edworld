@@ -2,10 +2,10 @@
 
 ## Unreleased
 
-- **The atmosphere's kind on logging in on a planet's surface.** A session begun in a settlement could draw the
-  clouds of no kind (as before 1.2.0-beta.9) the whole time, as the game's atmosphere did not tell its kind there.
-  edworld now keeps each planet's kind in `edworld_kinds.txt` beside the log and takes it from there; when no read
-  gets through for a minute, the log says why.
+- **Fixed: on foot the atmosphere's kind was not told.** edworld took the game's atmosphere in only while the ship's
+  HUD was drawn, so a session begun in a settlement, or on foot, had the clouds of no kind (as before 1.2.0-beta.9)
+  until you boarded a ship. Now it is told a moment after the planet is in view, on foot too; when no read gets
+  through for a minute, the log says why.
 
 - **Storms keep their clouds in the weather's clear bands.** The weather of 1.2.0-beta.10 thinned a storm that stood
   in a clear band, as it moves the clouds' edge everywhere. Now it is given back inside a storm, which brings its own

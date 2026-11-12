@@ -235,12 +235,8 @@ and for a kind not known the clouds are as above; then they change over 2 s. The
 `clouds: the planet of radius ... m is <kind>`. `clouds_physics_intensity` shows them stronger (`2` = twice, and a
 haze gets the cover of clouds) or weaker; `clouds_tint` their colour (`0` = white, `2` = twice as far from it); `clouds_by_kind = 0` gives every planet the same clouds, to compare. All
 are read again while the game runs; what each kind gets and why is in [clouds.md](clouds.md). edworld reads the game's atmosphere every `clouds_kind_read_s` seconds (10) while
-it is drawn; `0` stops that and the clouds are as in 1.2.0-beta.8. The only thing written is `edworld_kinds.txt` beside
-the log: each planet whose kind was told, a line `<radius in metres> <kind>`, so that when you log in on that planet's
-surface, where the game's atmosphere may not tell its kind, the clouds have it at once (the log:
-`clouds: the planet of radius ... m is <kind> (from edworld_kinds.txt)`). Deleting the file only makes edworld tell
-the kinds again. When no read of the atmosphere gets through for a minute, the log says why
-(`atmo: no read of the shell got through in a minute: ...`).
+it is drawn; `0` stops that and the clouds are as in 1.2.0-beta.8. Nothing of it is written anywhere. When no read of
+the atmosphere gets through for a minute, the log says why (`atmo: no read of the shell got through in a minute: ...`).
 
 Storms (`clouds_cyclones`): in the kinds' clouds, cyclones with spiral arms and a clear eye, as many and as large
 as the planet's size, its day and its kind allow. edworld reads the day off the planet's turn in the picture
