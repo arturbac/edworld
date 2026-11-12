@@ -34,6 +34,8 @@ In `edworld.ini` (or `edworld_eht.ini`), beside the dll or in `edloader\config`;
 | `clouds_tint` | `1` | 0 and more (clamped) | how strongly the kinds' clouds take their colour: `1` = a little off white as [clouds.md](clouds.md) gives, `0` = white on every planet, `2` = twice as far from white |
 | `clouds_size_var` | `0.25` | 0..0.9 (clamped) | (PoC) the lumps' size noised by region: their scale times 1 +- this from a slow noise over the planet; `0` = one size everywhere |
 | `clouds_cyclones` | `1` | 0, 1 | `1` = storms in the kinds' clouds by the planet's size, its day and the kind, `0` = none |
+| `clouds_lumps_by_layer` | `1` | 0, 1 | (PoC) `1` = the kinds' lumps by the layer's thickness: larger on small planets, smaller on large ones, the fine shape near you a quarter of the layer, each lump as high as it is strong; `0` = as before |
+| `clouds_weather` | `1` | 0..2 (clamped) | (PoC) the weather in the kinds' clouds: overcast and clear regions by how fast the planet turns for its size; `1` = as [clouds.md](clouds.md) gives, `0` = none, `2` = twice as strong |
 
 ### Read at the game's start (a change needs a restart)
 

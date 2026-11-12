@@ -191,6 +191,13 @@ namespace edworld
     ///\brief (PoC, 2026-11-10) storms in the kinds' clouds: how many and how large from the planet's size, its day
     /// (read off its turn) and the kind (design of the cyclones v1), each with its arms and a clear eye; 0 = none
     std::uint32_t clouds_cyclones{1};
+    ///\brief (PoC, design v2, 2026-11-12) the kinds' lumps by the layer's thickness: the coarsest 25 times it, the fine
+    /// shape near the eye a quarter of it, each lump as high as it is strong, warm kinds' higher; 0 = as before
+    std::uint32_t clouds_lumps_by_layer{1};
+    ///\brief (PoC, design v2) the weather in the kinds' clouds: overcast and clear regions by the planet's R/L (the
+    /// day side under the star for a slow turn, bands by latitude and patches for a faster one); 1 = as the design
+    /// gives, 0 = none, 2 = twice as strong
+    float clouds_weather{1.f};
 
     // ---- the compass (PoC): the HUD compass's dot read off its interface surface, the angles written beside it ----
     ///\brief 0 off, 1 the angles, 2 also everything known for checking them, 3 also a grid of the surface's pixels

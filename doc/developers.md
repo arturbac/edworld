@@ -416,6 +416,18 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   its planet's radius go to the volume's buffer (values 33..42); `clouds3d.hlsl` takes them only for the planet of
   that radius (within 4 m), coming in over 2 s; any other planet keeps the ini's clouds. The opacity share times
   `clouds_physics_intensity`, at most 1; over 1 the cover also comes up toward 0.55, all of it at 2.
+- (both builds, `clouds_lumps_by_layer`, `clouds_weather`, 2026-11-12, PoC, design v2) `atmosphere_lumps` gives the
+  kind's shape scale `clamp(R / (25 H), 4, 40)` (H = (top - bottom) times the kind's median radius), the fine shape's
+  size H / 4 and the lean 0.55..1 from the kind's typical temperature (log scale 30..450 K); values 86..88 of the
+  volume's buffer (the storms' pad before), then 89 the weather's shift (`atmosphere_weather_shift` 0.2 times
+  `clouds_weather`) and 90 the planet's R/L (`rossby_ratio`, the day read off the turn or the kind's median); the
+  buffer is 92 floats. `clouds3d.hlsl`: the scale (times `grow`) replaces 7 in the shape and the storms' shadow, the
+  steps get more by scale / 7; the fine shape's size times `grow`; per step `reach = (0.3 + 0.7 saturate(4 shape))
+  lean` (1 in a storm) divides the profile's height, and the profile is divided by `max(reach, 0.3)` to keep the
+  column. The weather once a ray: R/L under 0.3 `2 smoothstep(-0.2, 0.8, dot(ground_dir, sun)) - 1` with the ray's
+  middle before the wind's turn; otherwise half a band `cos(latitude / period 2 pi)` (period 50°, or 100° / (R/L / 2)
+  past 4, faded to 30% toward the poles) and half a patch `fbm(middle * max(1.5 R/L, 1.5) + seed + 57, 2)`; the edge
+  moves by the shift times it times the kind's weight. All zero, as before, for an unknown kind and in edworld.dll.
 - (both builds, `clouds_cyclones`, 2026-11-10) Storms. The planet's day is read off the shell's object
   matrix (VS b0 rows 9..11), which turns about the model's y with the planet: `planet_turn` takes two reads (the
   fingerprint's, `atmo_record_s` apart), the angle from the off-diagonal parts of old rows' transpose times new; a

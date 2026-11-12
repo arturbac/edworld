@@ -131,6 +131,8 @@ the values that make sense, and whether a change shows while the game runs or ne
 | `clouds_tint` | `1` | how strongly the kinds' clouds take their colour, `1` = a little off white as [clouds.md](clouds.md) gives, `0` = white on every planet, `2` = twice as far from white; read again while the game runs |
 | `clouds_size_var` | `0.25` | (PoC) the lumps' size noised by region: their scale times 1 ± this from a slow noise over the planet, so some regions have larger lumps and others smaller; `0` = one size everywhere, at most `0.9`; read again while the game runs |
 | `clouds_cyclones` | `1` | `1` = storms in the kinds' clouds by the planet's size, day and kind, `0` = none; read again while the game runs |
+| `clouds_lumps_by_layer` | `1` | (PoC) `1` = the kinds' lumps by the layer's thickness (larger on small planets, smaller on large ones, the fine shape near you too) and each as high as it is strong, `0` = as before; read again while the game runs |
+| `clouds_weather` | `1` | (PoC) the weather in the kinds' clouds: overcast and clear regions by how fast the planet turns for its size, `1` = as [clouds.md](clouds.md) gives, `0` = none, `2` = twice as strong; read again while the game runs |
 | `clouds_haze` | `0.05` | from under the clouds with depth and in them, a cloud this far away covers e times less, so they fade into the haze at the horizon instead of ending in a sharp line; a part of the planet's radius, `0` = never less; from orbit they stay as they are |
 | `list_top`, `list_x` | `500`, `1540` | where the list starts under the panel (pixels of the panel's surface) |
 | `list_rows` | `7` | factions listed at most |
@@ -242,6 +244,11 @@ slowly or is small has none, a large one turning in a day or two has one to thre
 fast large one several smaller ones. They turn the planet's way on one half, the other way on the other. The log has
 `clouds: N storm(s) on the planet ...`. `clouds_cyclones = 0` turns them off, read again while the game runs. Which
 planets to visit for them: [clouds.md](clouds.md#cyclones).
+
+Lumps and weather (`clouds_lumps_by_layer`, `clouds_weather`, PoC): in the kinds' clouds the lumps' size follows the
+cloud layer's thickness and each lump is as high as it is strong; the clouds gather on the day side of a planet
+that turns slowly for its size and lie in bands by latitude on a faster one. Both `0` give the clouds as before;
+read again while the game runs. Why: [clouds.md](clouds.md).
 
 ## Check that it works
 

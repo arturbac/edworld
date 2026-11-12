@@ -105,6 +105,12 @@
 ; 1 = storms in the kinds' clouds, by the planet's size, its day and the kind; 0 = none
 ;clouds_cyclones = 1
 
+; (PoC) 1 = the kinds' lumps by the layer's thickness and each as high as it is strong, 0 = as before
+;clouds_lumps_by_layer = 1
+
+; (PoC) the weather in the kinds' clouds, overcast and clear regions: 1 = as designed, 0 = none, 2 = twice as strong
+;clouds_weather = 1
+
 ; The navballs beside the radar: 0 = none, the game's compass is not read at all
 ;compass = 1
 

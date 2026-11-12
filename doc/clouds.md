@@ -78,6 +78,34 @@ known, a planet gets the clouds of the ini; once it is known they change over 2 
 The lumps are not one size over the whole planet: a slow noise makes them larger in some regions and smaller in
 others, by a quarter either way (`clouds_size_var`, `0` = one size).
 
+**Lumps by the layer's thickness (PoC, `clouds_lumps_by_layer`).** Convection cells are about as wide as the layer
+they rise through is deep, and they gather into groups ten to forty times that. The layer's thickness H is taken
+from the kind's typical planet (its floor to top times the kind's median radius: edworld does not know the planet's
+gravity), the coarsest lumps are 25 H and the finest about 1.5 H; the scale stays between 4 and 40 lumps' lattice
+spacings per radius, as under 4 a small planet would show two or three blots. So a small planet's lumps are larger
+for its size than before and a large one's smaller. The fine shape near you is a quarter of H. Each lump is as high
+as it is strong: a weak one is a low, flat sheet, a strong core rises to the layer's top, with the same amount of
+cloud in a lower lump. How high they go also follows the kind's typical temperature, from flat sheets on the coldest
+kinds (helium, neon) to towers on the warmest (water, sulphur dioxide); this is only an approximation, as what
+decides it is how stable the atmosphere is, not its temperature.
+
+| kind | median radius | H | lumps before, coarsest / finest | now |
+|---|---|---|---|---|
+| Water | 436 km | 13 km | 62 / 4 km | 109 / 6 km |
+| CarbonDioxide | 1115 km | 31 km | 159 / 9 km | 279 / 16 km |
+| Nitrogen | 3399 km | 28 km | 486 / 29 km | 697 / 41 km |
+| Neon | 5435 km | 24 km | 776 / 46 km | 611 / 36 km |
+| Helium | 7711 km | 35 km | 1102 / 65 km | 867 / 51 km |
+
+**Weather (PoC, `clouds_weather`).** The cover is moved up or down by region, by at most 0.2, so some regions are
+overcast and others clear, the planet's mean the same. What shapes it is R/L, as for the storms below: under 0.3
+(a slow turn for the planet's size) the clouds gather on the day side around the point under the star, where it heats
+most, as models of slowly turning planets give, and they stay with the star as the planet turns; above it they lie in
+bands by latitude, the equator overcast where the air meets and rises, about 25° clearer where it sinks, the middle
+latitudes overcast again with their fronts (past R/L 4 more and narrower bands), with patches the size of the Rossby
+radius, the planet's highs and lows, drifting with the wind. How strong it is (0.2) is chosen to be seen, not given
+by the physics; `clouds_weather` scales it (`0` = none, `2` = twice).
+
 **Where to expect what.** Methane and water worlds are small and have the densest clouds; carbon dioxide worlds
 are small to medium with clear, cool decks; nitrogen worlds are medium with plain white clouds; neon and helium
 worlds are large and cold and show only a faint haze; sulphur dioxide and ammonia atmospheres are thin, a yellowish

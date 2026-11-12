@@ -67,7 +67,13 @@ cbuffer clouds : register(b4)
   float4 cyclone_twist[2];
   float cyclone_count;
   float cyclone_tower;      // how many times the layer's height the storms reach, the rest keeping its lower part
-  float2 cyclone_pad;
+  // the lumps by the layer's thickness and the weather (edworld_eht, design v2) of that planet
+  float cloud_kind_scale;   // the shape's scale on the unit sphere, 0 = 7 as before
+  float cloud_kind_detail_size; // the fine shape's largest lumps in metres, 0 = cloud_detail_size
+  float cloud_kind_lean;    // how high the lumps reach, 0.55 flat sheets .. 1 towers; 0 = all the layer as before
+  float cloud_weather;      // how far the weather moves a cloud's edge at most, 0 = no weather
+  float cloud_kind_rossby;  // the planet's R/L, which the weather follows
+  float cloud_v2_pad;
   };
 
 Texture2D<float> scene_depth : register(t0);
@@ -216,7 +222,7 @@ float3 storms(float3 d, float weight, float height, inout float eye, inout float
 // a storm's cloud at p (from the planet's centre, the world's axes) by its large shape alone, for the shadow it casts:
 // what the step's density is, in two octaves instead of five
 float storm_density(float3 p, float bottom, float top, float kind, float tower, float3 seed, float3 warp, float edge,
-                    float wind_angle, float grow)
+                    float wind_angle, float scale)
   {
   float distance_to_centre = length(p);
   if(distance_to_centre < bottom || distance_to_centre > top)
@@ -226,7 +232,7 @@ float storm_density(float3 p, float bottom, float top, float kind, float tower, 
   float eye = 1.f, wall = 0.f, inner = 0.f, wallness = 0.f;
   float3 inward = 0.f;
   d = storms(d, kind, height, eye, wall, inner, wallness, inward);
-  float3 place = blown(d, wind_angle * lerp(cloud_wind_low, cloud_wind_high, height)) * (7.f * grow) + seed + warp * 3.5f + float3(0.f, height * 0.4f, 0.f);
+  float3 place = blown(d, wind_angle * lerp(cloud_wind_low, cloud_wind_high, height)) * scale + seed + warp * 3.5f + float3(0.f, height * 0.4f, 0.f);
   float shape = fbm_head(place) + 0.11f - edge + wall;  // the last three octaves' mean
   float low = min(height * tower, 1.f);
   float h = lerp(low, height, saturate(inner * 1.5f));
@@ -323,6 +329,7 @@ float4 ps_main(ps_in input) : SV_TARGET
   // difference of 150 km/h would draw a lump of 3 km out into a streak in a minute. Each planet its own way
   float wind_angle = (seed.x > 25.f ? 1.f : -1.f) * cloud_wind_seconds / planet;
   float mean_angle = wind_angle * (cloud_wind_low + cloud_wind_high) * 0.5f;
+  float3 ground_dir = middle_dir;  // held to the planet, for the weather under the star
   middle_dir = blown(middle_dir, mean_angle);
   float middle_eye = 1.f;
   float middle_wall = 0.f;
@@ -338,12 +345,39 @@ float4 ps_main(ps_in input) : SV_TARGET
   // of the ray's middle (fbm of 2 octaves spans 0..0.75, mean 0.375), so one region has larger lumps and another
   // smaller instead of one size over the whole planet; once a ray, as the warp
   float grow = 1.f + cloud_size_var * (fbm(middle_dir * 1.5f + seed + 31.f, 2) - 0.375f) / 0.375f;
+  // design v2 (2026-11-12): the lumps' scale by the layer's thickness of the kind instead of a 7th of the radius, so a
+  // small planet's lumps are larger for its size and a large one's smaller; the fine shape near the eye by it as well,
+  // noised by region as the coarse one. Coming in with the kind as its other clouds
+  float shape_scale = lerp(7.f, cloud_kind_scale > 0.f ? cloud_kind_scale : 7.f, kind) * grow;
+  float detail_size = lerp(cloud_detail_size, cloud_kind_detail_size > 0.f ? cloud_kind_detail_size * grow : cloud_detail_size, kind);
+  float dome = cloud_kind_lean > 0.f ? kind : 0.f;  // how much the lumps' own heights have come in
+  // the weather (design v2): overcast and clear regions, a cloud's edge moved by up to cloud_weather, once a ray. A
+  // slow turn for the planet's size (R/L under 0.3): clouds over the day side about the point under the star, where it
+  // heats most, held to the ground, not the wind; a faster one: bands by latitude, the equator's and the middle
+  // latitudes' overcast, about 25 degrees clear (narrower bands past R/L 4), and patches the size of the Rossby radius
+  // drifting with the wind
+  if(cloud_weather > 0.f && kind > 0.f)
+    {
+    float rossby = cloud_kind_rossby;
+    float weather;
+    if(rossby < 0.3f)
+      weather = 2.f * smoothstep(-0.2f, 0.8f, dot(ground_dir, sun_model)) - 1.f;
+    else
+      {
+      float latitude = degrees(asin(clamp(middle_dir.y, -1.f, 1.f)));
+      float period = rossby <= 4.f ? 50.f : 100.f / (rossby * 0.5f);
+      float band = cos(latitude / period * 6.2831853f) * (1.f - 0.7f * smoothstep(60.f, 85.f, abs(latitude)));
+      float patch = (fbm(middle_dir * max(rossby * 1.5f, 1.5f) + seed + 57.f, 2) - 0.375f) / 0.375f;
+      weather = clamp(0.5f * band + 0.5f * patch, -1.f, 1.f);
+      }
+    edge -= cloud_weather * weather * kind;
+    }
 
   // the steps follow the way's length through the layer: a step no longer than half the smallest lumps (the shape's
   // last octave, about a 118th of the radius), at the edge seen edge on many, across the layer few - at least the count
   // set for near or far, at most cloud_max_steps
   float least_steps = lerp(cloud_far_steps, cloud_steps, near_weight);
-  float wanted_steps = (leave - enter) / (planet / 236.f) * max(grow, 1.f);  // smaller lumps, shorter steps
+  float wanted_steps = (leave - enter) / (planet / 236.f) * (max(shape_scale, 7.f) / 7.f);  // smaller lumps, shorter steps
   int steps = max(1, (int)ceil(clamp(wanted_steps, least_steps, max(cloud_max_steps, least_steps))));
   float step_length = (leave - enter) / steps;
   float through = step_length / (top - bottom);
@@ -384,10 +418,10 @@ float4 ps_main(ps_in input) : SV_TARGET
     float wallness = 0.f;
     float3 inward = 0.f;
     dir = storms(dir, kind, height, eye, wall, inner, wallness, inward);
-    float3 place = blown(dir, wind_angle * lerp(cloud_wind_low, cloud_wind_high, height)) * (7.f * grow) + seed + warp * 3.5f + float3(0.f, height * 0.4f, 0.f);
+    float3 place = blown(dir, wind_angle * lerp(cloud_wind_low, cloud_wind_high, height)) * shape_scale + seed + warp * 3.5f + float3(0.f, height * 0.4f, 0.f);
     // the shape above has lumps of tens of km: fine from orbit, one smooth fog from under them. Near the eye lumps of a
     // few km cut it, where the steps are short enough to show them
-    float near = saturate(1.f - t / cloud_detail_range) * saturate(cloud_detail_size * 2.f / step_length) * near_weight;
+    float near = saturate(1.f - t / cloud_detail_range) * saturate(detail_size * 2.f / step_length) * near_weight;
     float head = fbm_head(place);
     float most = head + 0.21875f - edge + wall;
     if(most + (layer_detail > 0.f && most > -0.2f ? detail_most * near : 0.f) <= 0.f)
@@ -398,7 +432,7 @@ float4 ps_main(ps_in input) : SV_TARGET
     float sharpness = 2.5f;
     if(layer_detail > 0.f && near > 0.f && shape > -0.2f)
       {
-      float3 fine = blown(dir, mean_angle) * (distance_to_centre / cloud_detail_size) + seed;
+      float3 fine = blown(dir, mean_angle) * (distance_to_centre / detail_size) + seed;
       shape += ((fbm(fine, 3) - 0.44f) * layer_detail - cloud_detail_gap) * near;
       sharpness = lerp(2.5f, cloud_detail_edge, near);
       }
@@ -406,7 +440,12 @@ float4 ps_main(ps_in input) : SV_TARGET
     float low = min(height * tower, 1.f);
     float stormy = saturate(inner * 1.5f);
     float profile_height = lerp(low, height, stormy);
-    float profile = saturate(profile_height * 5.f) * saturate((1.f - profile_height) * 2.5f);
+    // design v2: a lump as high as it is strong, a weak one a low flat sheet, a strong core up to the top (lean: the
+    // kind's leaning to towers); the same column in a lower lump, or the shallow ones all but vanish from orbit. A
+    // storm's clouds keep all the layer
+    float reach = lerp(1.f, (0.3f + 0.7f * saturate(shape * 4.f)) * cloud_kind_lean, dome * (1.f - stormy));
+    profile_height /= max(reach, 1e-3f);
+    float profile = saturate(profile_height * 5.f) * saturate((1.f - profile_height) * 2.5f) / max(reach, 0.3f);
     if(tower > 1.f && height * tower >= 1.f && inner < 0.3f)
       profile = 0.f;
     float density = saturate(shape * sharpness);
@@ -425,8 +464,8 @@ float4 ps_main(ps_in input) : SV_TARGET
       if(inner > 0.05f)
         {
         float span = top - bottom;
-        float towards = storm_density(from_centre + sun * span * 0.25f, bottom, top, kind, tower, seed, warp, edge, wind_angle, grow) * 0.25f
-                        + storm_density(from_centre + sun * span * 0.8f, bottom, top, kind, tower, seed, warp, edge, wind_angle, grow) * 0.55f;
+        float towards = storm_density(from_centre + sun * span * 0.25f, bottom, top, kind, tower, seed, warp, edge, wind_angle, shape_scale) * 0.25f
+                        + storm_density(from_centre + sun * span * 0.8f, bottom, top, kind, tower, seed, warp, edge, wind_angle, shape_scale) * 0.55f;
         own = lerp(1.f, exp(-towards * 2.4f), saturate(inner * 4.f));
         }
       // the tops catch the sun, the undersides are in the shade of what is above them

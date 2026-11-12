@@ -713,6 +713,14 @@ namespace
             and atmosphere_clouds_tinted(methane, -1.f).tint[1] == 1.f
             and atmosphere_clouds(atmosphere_kind_e::water, 1.f).tint[0] == 1.f and methane.tint[2] < methane.tint[0],
           "atmosphere: the tint's strength, 0 white, 2 twice as far from it, never under 0; water white, methane warm");
+    auto const small_co2{atmosphere_lumps(atmosphere_kind_e::carbon_dioxide, 563e3f)};
+    auto const neon_lumps{atmosphere_lumps(atmosphere_kind_e::neon, 5435e3f)};
+    auto const helium_lumps{atmosphere_lumps(atmosphere_kind_e::helium, 7711e3f)};
+    auto const water_lumps{atmosphere_lumps(atmosphere_kind_e::water, 436e3f)};
+    check(small_co2.scale == 4.f and std::fabs(neon_lumps.scale - 8.87f) < 0.05f and atmosphere_lumps(atmosphere_kind_e::neon, 1e9f).scale == 40.f
+            and std::fabs(neon_lumps.detail_m - 0.0045f * 5435e3f / 4.f) < 1.f and helium_lumps.lean == 0.55f and water_lumps.lean > 0.99f
+            and atmosphere_lumps(atmosphere_kind_e::unknown, 5435e3f).scale == 0.f and atmosphere_lumps(atmosphere_kind_e::neon, 0.f).scale == 0.f,
+          "atmosphere: the lumps by the layer's thickness, 25 of it the coarsest within 4..40; cold kinds flat, warm ones towers");
 
     // the storms (design of the cyclones v1)
     float const boelts{rossby_ratio(atmosphere_kind_e::nitrogen, 3478e3f, 25.1f * 3600.f)};

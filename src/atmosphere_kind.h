@@ -244,6 +244,35 @@ namespace edworld
     return radius_m * f / std::sqrt(8.314f * p.kelvin / (p.molar / 1000.f));
     }
 
+  ///\brief the lumps of a kind's clouds (design v2, 2026-11-12, readable variant): the shape's scale on the unit sphere
+  /// from the layer's thickness H of the kind's typical planet (its floor to top times the median radius; the planet's
+  /// own gravity is not known without a journal), the coarsest lumps 25 H, the finest about 1.5 H, the scale within
+  /// 4..40 (under 4 a small planet would show two or three blots); the fine shape near the eye a quarter of H; how
+  /// high its lumps reach, 0.55 for the coldest kinds (flat sheets) to 1 for the warmest (towers), by the kind's
+  /// typical temperature on a log scale from 30 K to 450 K
+  struct atmosphere_lumps_t
+    {
+    float scale, detail_m, lean;
+    };
+
+  ///\brief how far the weather moves a cloud's edge at most (design v2, the readable variant): the clouds' cover
+  /// within +- this between the clear and the overcast regions
+  inline constexpr float atmosphere_weather_shift{0.20f};
+
+  [[nodiscard]]
+  inline auto atmosphere_lumps(atmosphere_kind_e kind, float radius_m) noexcept -> atmosphere_lumps_t
+    {
+    if(kind == atmosphere_kind_e::unknown or not(radius_m > 0.f))
+      return {};
+    std::size_t const i{static_cast<std::size_t>(kind) - 1u};
+    atmosphere_clouds_t const & c{atmosphere_clouds_table[i]};
+    atmosphere_physics_t const & p{atmosphere_physics_table[i]};
+    float const thick_m{(c.top - c.bottom) * p.radius_km * 1000.f};
+    float const scale{std::clamp(radius_m / (25.f * thick_m), 4.f, 40.f)};
+    float const warm{std::clamp(std::log(p.kelvin / 30.f) / std::log(15.f), 0.f, 1.f)};
+    return {scale, thick_m * 0.25f, 0.55f + 0.45f * warm};
+    }
+
   struct planet_turn_t
     {
     bool ok;        ///< a small turn about y alone: not across the game's change of its frame

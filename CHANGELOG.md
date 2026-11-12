@@ -11,6 +11,15 @@
 - **Lumps of more than one size.** The clouds' shape had one scale over the whole planet, so its lumps were the
   same size everywhere. Now a slow noise over the planet makes them larger in some regions and smaller in others
   (`clouds_size_var`, by default their scale times 1 ± 0.25; `0` gives the old clouds).
+- **Lumps by the layer's thickness (PoC).** The lumps were a fixed share of the planet's radius, so a small planet
+  had small ones and a large planet huge flat ones, all reaching the same height. Now their size follows the
+  thickness of the kind's cloud layer (larger on small planets, smaller on large ones, the fine shape near you too),
+  and each lump is as high as it is strong: weak ones low and flat, strong ones towering, warm kinds' higher than
+  cold ones' (`clouds_lumps_by_layer`).
+- **Weather (PoC).** Overcast and clear regions instead of one cover over the whole planet: on a planet that turns
+  slowly for its size the clouds gather on the day side under the star; on a faster one they lie in bands by
+  latitude, the equator and the middle latitudes overcast and about 25° clearer, with patches the size of its
+  weather systems (`clouds_weather`).
 - **doc/settings.md.** Every setting by its topic (clouds, navballs, jump panel, other), its default, the values
   that make sense, and whether it is read while the game runs or at its start. edworld makes the page from its own
   table of settings, which also says which settings are read again while the game runs, so the two cannot drift.
