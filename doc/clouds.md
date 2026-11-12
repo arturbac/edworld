@@ -106,6 +106,39 @@ latitudes overcast again with their fronts (past R/L 4 more and narrower bands),
 radius, the planet's highs and lows, drifting with the wind. How strong it is (0.2) is chosen to be seen, not given
 by the physics; `clouds_weather` scales it (`0` = none, `2` = twice).
 
+**The physics behind the weather.** Clouds form where air rises and cools, and they clear where it sinks and
+warms. So the weather mask is a map of where a planet's air goes up and where it comes down. That pattern depends
+mostly on two things: how strongly the star heats the day side and the equator, and how fast the planet turns for
+its size. R/L captures the second one. L, the Rossby radius of deformation, is the distance over which the planet's
+turn starts to steer the flow; R/L says how many such distances fit around the planet.
+
+- **R/L under 0.3: one flow over the whole planet.** The turn barely steers the air. Heated air rises under the
+  star, spreads out high up towards the night side and sinks there. Models of slowly turning and tidally locked
+  planets put a thick, bright cloud deck around the point under the star, where the rising is strongest, and clear
+  skies on the night side. The mask follows the point under the star, not the ground, so the deck stays under the
+  star as the planet turns. Most carbon dioxide worlds you can land on are here: their days are long for their small
+  size.
+- **R/L from 0.3 to 4: bands like Earth's.** The turn breaks the one flow into cells by latitude. Air rises at the
+  equator, where the trade winds from both sides meet, so there is a cloudy band there. It sinks again about 25-30°
+  away, under the subtropical highs, the latitudes of Earth's deserts, so it is clearer there. The middle latitudes
+  are cloudy again: that is where warm and cold air meet along fronts. Near the poles air sinks and is dry; the mask
+  softens the bands there instead of drawing another clear ring. Over the bands lie patches about L across. These are
+  the highs and lows of the middle latitudes, each about as large as the turn allows an eddy to grow. They drift with
+  the wind.
+- **R/L over 4: more and narrower bands.** A faster turn, or a larger planet, splits the flow into more jets, as on
+  Jupiter. The mask narrows the bands with R/L, and the patches get smaller for the planet's size.
+
+What comes from the physics and what was chosen to be seen:
+
+| part | where it comes from |
+|---|---|
+| the threshold R/L 0.3, the same as for storms | physics, rounded: below it the turn does not split the flow |
+| the deck under the star on slow planets | physics: models of slowly turning planets |
+| equator and middle latitudes overcast, about 25° clear | physics: Earth's cells; on other planets the widths also depend on the heating and the layer, which edworld does not know |
+| bands narrower past R/L 4 | physics, qualitatively; the exact narrowing is a choice |
+| patches about L across | physics: the size of the eddies |
+| the strength, at most 0.2 of the cover | chosen to be seen; `clouds_weather` scales it |
+
 **Where to expect what.** Methane and water worlds are small and have the densest clouds; carbon dioxide worlds
 are small to medium with clear, cool decks; nitrogen worlds are medium with plain white clouds; neon and helium
 worlds are large and cold and show only a faint haze; sulphur dioxide and ammonia atmospheres are thin, a yellowish
