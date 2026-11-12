@@ -24,6 +24,13 @@ Since 1.2.0-beta.9 the clouds follow the atmosphere: edworld tells its kind from
 15 kinds on landable planets gets its own layer, cover and tint from the physics of its typical planet (a thin neon or
 helium atmosphere only a haze). Large planets that turn fast get cyclones with spiral arms and a clear eye, as many and
 as large as the planet's size, its day and its atmosphere allow. A video: https://youtu.be/_mVhSVoFirw
+
+Since 1.2.0-beta.10 the clouds have weather: overcast and clear regions, a deck under the star on a planet that turns
+slowly, bands by latitude on a faster one. Their lumps follow the thickness of the cloud layer, weak ones low and flat,
+strong ones towering, and each kind's clouds have a colour of their own.
+
+![A methane world's cloud deck under the star, seen from the ground](doc/images/clouds-weather.jpg)
+
 How the clouds follow the physics, and where to look for cyclones: [doc/clouds.md](doc/clouds.md).
 
 ## Navballs, testers wanted

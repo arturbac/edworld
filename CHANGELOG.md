@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.0-beta.10
 
 - **Volcanic neon planets get neon's clouds.** The game draws a neon atmosphere over volcanism in a colour of its
   own, so edworld did not know it and gave such a planet the default clouds. Now it is neon too.
