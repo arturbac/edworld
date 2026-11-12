@@ -139,6 +139,8 @@ What comes from the physics and what was chosen to be seen:
 | patches about L across | physics: the size of the eddies |
 | the strength, at most 0.2 of the cover | chosen to be seen; `clouds_weather` scales it |
 
+![A methane world of 553 km, the cloud deck under the star, seen from the ground](images/clouds-weather.jpg)
+
 **Where to expect what.** Methane and water worlds are small and have the densest clouds; carbon dioxide worlds
 are small to medium with clear, cool decks; nitrogen worlds are medium with plain white clouds; neon and helium
 worlds are large and cold and show only a faint haze; sulphur dioxide and ammonia atmospheres are thin, a yellowish
