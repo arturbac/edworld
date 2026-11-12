@@ -104,7 +104,8 @@ most, as models of slowly turning planets give, and they stay with the star as t
 bands by latitude, the equator overcast where the air meets and rises, about 25° clearer where it sinks, the middle
 latitudes overcast again with their fronts (past R/L 4 more and narrower bands), with patches the size of the Rossby
 radius, the planet's highs and lows, drifting with the wind. How strong it is (0.2) is chosen to be seen, not given
-by the physics; `clouds_weather` scales it (`0` = none, `2` = twice).
+by the physics; `clouds_weather` scales it (`0` = none, `2` = twice). In a storm the weather is given back, as a storm
+brings its own clouds: it looks the same in a clear band as in an overcast one.
 
 **The physics behind the weather.** Clouds form where air rises and cools, and they clear where it sinks and
 warms. So the weather mask is a map of where a planet's air goes up and where it comes down. That pattern depends

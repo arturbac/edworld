@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Storms keep their clouds in the weather's clear bands.** The weather of 1.2.0-beta.10 thinned a storm that stood
+  in a clear band, as it moves the clouds' edge everywhere. Now it is given back inside a storm, which brings its own
+  clouds, so the storms look as in 1.2.0-beta.9 wherever they are.
+
 ## 1.2.0-beta.10
 
 - **Volcanic neon planets get neon's clouds.** The game draws a neon atmosphere over volcanism in a colour of its
