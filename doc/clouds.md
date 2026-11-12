@@ -6,7 +6,8 @@ How edworld decides what clouds a planet gets, and where to look for cyclones. T
 ## What edworld knows about a planet
 
 edworld reads nothing but what the game draws: no journal, no scan, no network. Every `clouds_kind_read_s`
-seconds (10) while the game draws a planet's atmosphere, edworld copies two things the game uses for it:
+seconds (10) while the game draws a planet's atmosphere, edworld copies two things the game uses for it (and keeps
+each planet's kind in `edworld_kinds.txt` beside the log, for a session that starts on its surface):
 
 - **The atmosphere's kind.** The game lights its atmosphere through a table whose colour is one for each kind of
   atmosphere, at every star and on every planet measured (the ratio of red to green and of blue to green of its

@@ -11,10 +11,12 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <optional>
 #include <string_view>
 
 namespace edworld
@@ -395,5 +397,51 @@ namespace edworld
         }
       }
     return best;
+    }
+
+  ///\brief the kind of the journal's AtmosphereType name, unknown for any other
+  constexpr auto atmosphere_kind_named(std::string_view name) noexcept -> atmosphere_kind_e
+    {
+    for(atmosphere_print_t const & p: atmosphere_prints)
+      if(p.name == name)
+        return p.kind;
+    return atmosphere_kind_e::unknown;
+    }
+
+  ///\brief the journal's AtmosphereType name of a kind, empty for unknown
+  constexpr auto atmosphere_kind_name(atmosphere_kind_e kind) noexcept -> std::string_view
+    {
+    for(atmosphere_print_t const & p: atmosphere_prints)
+      if(p.kind == kind)
+        return p.name;
+    return {};
+    }
+
+  /// a planet whose kind was told once, kept beside the log so that a session starting on its surface has it at once
+  struct atmosphere_known_t
+    {
+    float radius;  ///< metres, the planet's identity (the shell's own value, to the metre)
+    atmosphere_kind_e kind;
+    };
+
+  /// two radii within this many metres are the same planet's (the shell's radius differs by less between reads)
+  inline constexpr float atmosphere_same_radius_m{4.f};
+
+  ///\brief one line of edworld_kinds.txt, "<radius in metres> <AtmosphereType>": nothing for a line that is not one
+  inline auto atmosphere_known_line(std::string_view line) noexcept -> std::optional<atmosphere_known_t>
+    {
+    while(not line.empty() and (line.back() == '\r' or line.back() == ' '))
+      line.remove_suffix(1);
+    std::size_t const gap{line.find(' ')};
+    if(gap == std::string_view::npos or gap == 0u)
+      return std::nullopt;
+    float radius{};
+    auto const [end, ec]{std::from_chars(line.data(), line.data() + gap, radius)};
+    if(ec != std::errc{} or end != line.data() + gap or not (radius > 1000.f))
+      return std::nullopt;
+    atmosphere_kind_e const kind{atmosphere_kind_named(line.substr(gap + 1u))};
+    if(kind == atmosphere_kind_e::unknown)
+      return std::nullopt;
+    return atmosphere_known_t{radius, kind};
     }
   }  // namespace edworld

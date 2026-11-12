@@ -1161,12 +1161,116 @@ namespace edworld
     std::atomic<ULONGLONG> atmo_kind_since{};
     constexpr float atmo_kind_fade_ms{2000.f};
 
+    // ---- the kinds told before (both builds since 2026-11-12), beside the log in edworld_kinds.txt, a line
+    // "<radius in metres> <AtmosphereType>" a planet: a session that starts on a planet's surface, where the shell's read
+    // may not tell the kind (2026-11-12, a settlement after logging in: the shell drawn, no read through in minutes), has
+    // it from the file when the shell gives the planet's radius. Read at the first need; written again whole, through a
+    // temporary file, when a planet is added or its kind changes
+    constexpr std::uint32_t atmo_known_most{4096};
+    atmosphere_known_t atmo_known[atmo_known_most]{};
+    std::uint32_t atmo_known_count{};
+    bool atmo_known_read{};
+    bool atmo_known_full_told{};
+    char atmo_known_text[atmo_known_most * 32u];
+
+    auto atmo_known_load() noexcept -> void
+      {
+      if(atmo_known_read)
+        return;
+      atmo_known_read = true;
+      std::wstring const path{settings().dir + L"\\edworld_kinds.txt"};
+      HANDLE const file{CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                                    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr)};
+      if(file == INVALID_HANDLE_VALUE)
+        {
+        DWORD const error{GetLastError()};
+        if(error != ERROR_FILE_NOT_FOUND)
+          log_line("clouds: %S could not be opened (error %lu), the kinds are told by the shell alone", path.c_str(), error);
+        return;
+        }
+      DWORD got{};
+      bool const ok{ReadFile(file, atmo_known_text, sizeof atmo_known_text, &got, nullptr) != FALSE};
+      DWORD const error{GetLastError()};
+      CloseHandle(file);
+      if(not ok)
+        {
+        log_line("clouds: %S could not be read (error %lu), the kinds are told by the shell alone", path.c_str(), error);
+        return;
+        }
+      std::string_view text{atmo_known_text, got};
+      std::uint32_t skipped{};
+      while(not text.empty() and atmo_known_count != atmo_known_most)
+        {
+        std::size_t const end{text.find('\n')};
+        std::string_view const line{text.substr(0u, end)};
+        text.remove_prefix(end == std::string_view::npos ? text.size() : end + 1u);
+        if(line.empty() or line == "\r")
+          continue;
+        if(std::optional<atmosphere_known_t> const known{atmosphere_known_line(line)})
+          atmo_known[atmo_known_count++] = *known;
+        else
+          ++skipped;
+        }
+      log_line("clouds: %u planet(s) of a known kind from %S, %u line(s) not understood", atmo_known_count, path.c_str(),
+               skipped);
+      }
+
+    ///\brief the kind told before for the planet of this radius, unknown when none
+    auto atmo_known_kind(float radius) noexcept -> atmosphere_kind_e
+      {
+      atmo_known_load();
+      for(std::uint32_t i{}; i != atmo_known_count; ++i)
+        if(std::fabs(atmo_known[i].radius - radius) < atmosphere_same_radius_m)
+          return atmo_known[i].kind;
+      return atmosphere_kind_e::unknown;
+      }
+
+    ///\brief the kind just told for the planet of this radius into the file, when it is new there
+    auto atmo_known_keep(float radius, atmosphere_kind_e kind) noexcept -> void
+      {
+      if(kind == atmosphere_kind_e::unknown)
+        return;
+      atmo_known_load();
+      std::uint32_t i{};
+      while(i != atmo_known_count and not (std::fabs(atmo_known[i].radius - radius) < atmosphere_same_radius_m))
+        ++i;
+      if(i != atmo_known_count)
+        {
+        if(atmo_known[i].kind == kind)
+          return;
+        atmo_known[i].kind = kind;
+        }
+      else if(atmo_known_count == atmo_known_most)
+        {
+        if(not atmo_known_full_told)
+          log_line("clouds: edworld_kinds.txt holds %u planets, no more are kept", atmo_known_most);
+        atmo_known_full_told = true;
+        return;
+        }
+      else
+        atmo_known[atmo_known_count++] = atmosphere_known_t{radius, kind};
+      std::size_t n{};
+      for(std::uint32_t k{}; k != atmo_known_count; ++k)
+        {
+        std::string_view const name{atmosphere_kind_name(atmo_known[k].kind)};
+        int const wrote{std::snprintf(atmo_known_text + n, sizeof atmo_known_text - n, "%.0f %.*s\r\n",
+                                      double(atmo_known[k].radius), static_cast<int>(name.size()), name.data())};
+        if(wrote < 0 or n + static_cast<std::size_t>(wrote) >= sizeof atmo_known_text)
+          break;
+        n += static_cast<std::size_t>(wrote);
+        }
+      std::wstring const path{settings().dir + L"\\edworld_kinds.txt"};
+      std::wstring const temporary{path + L".new"};
+      queue_write(temporary.c_str(), atmo_known_text, static_cast<std::uint32_t>(n), false, path.c_str());
+      }
+
     ///\brief the kind just read for the planet of this radius: a new planet or another kind starts again from the
     /// clouds above; logged when it changes
     auto atmo_note_kind(float radius, atmosphere_hue_t const & hue) noexcept -> void
       {
       atmosphere_print_t const * found{atmosphere_kind_of(hue)};
       atmosphere_kind_e const kind{found ? found->kind : atmosphere_kind_e::unknown};
+      atmo_known_keep(radius, kind);
       if(std::fabs(radius - atmo_kind_radius.load(std::memory_order_relaxed)) < 4.f
          and kind == static_cast<atmosphere_kind_e>(atmo_kind.load(std::memory_order_relaxed)))
         return;
@@ -1176,6 +1280,47 @@ namespace edworld
       log_line("clouds: the planet of radius %.0f m is %.*s (r/g %.4f b/g %.4f)", double(radius),
                found ? static_cast<int>(found->name.size()) : 7, found ? found->name.data() : "unknown", double(hue.r_g),
                double(hue.b_g));
+      }
+
+    ///\brief a read that cannot tell the kind but gives the planet's radius: the kind told before, from the file
+    auto atmo_note_known(float radius) noexcept -> void
+      {
+      atmosphere_kind_e const kind{atmo_known_kind(radius)};
+      if(kind == atmosphere_kind_e::unknown
+         or (std::fabs(radius - atmo_kind_radius.load(std::memory_order_relaxed)) < 4.f
+             and kind == static_cast<atmosphere_kind_e>(atmo_kind.load(std::memory_order_relaxed))))
+        return;
+      atmo_kind_since.store(GetTickCount64(), std::memory_order_relaxed);
+      atmo_kind.store(static_cast<std::uint8_t>(kind), std::memory_order_relaxed);
+      atmo_kind_radius.store(radius, std::memory_order_relaxed);
+      std::string_view const name{atmosphere_kind_name(kind)};
+      log_line("clouds: the planet of radius %.0f m is %.*s (from edworld_kinds.txt)", double(radius),
+               static_cast<int>(name.size()), name.data());
+      }
+
+    // why the shell's reads do not get through (2026-11-12: none in a settlement after logging in, and no word why),
+    // counted while none does and logged at most once a minute; the camera too far from the planet is not counted
+    struct atmo_misses_t
+      {
+      std::uint32_t small_target, no_table, odd_table, radius_off;
+      float radius, distance;
+      };
+    atmo_misses_t atmo_misses{};
+    LONGLONG atmo_misses_since{};
+
+    auto atmo_misses_log(LONGLONG now) noexcept -> void
+      {
+      if(atmo_misses_since == 0)
+        atmo_misses_since = now;
+      if((now - atmo_misses_since) * 1000 / qpc_frequency < 60000)
+        return;
+      atmo_misses_t const & m{atmo_misses};
+      if(m.small_target or m.no_table or m.odd_table or m.radius_off)
+        log_line("atmo: no read of the shell got through in a minute: a small target %u, no table %u, a table of more "
+                 "samples or layers %u, the radius not the planet's %u (the last radius %.0f m, distance %.0f km)",
+                 m.small_target, m.no_table, m.odd_table, m.radius_off, double(m.radius), double(m.distance) / 1000.0);
+      atmo_misses = atmo_misses_t{};
+      atmo_misses_since = now;
       }
 
     // the planet's day from its turn between two reads (the shell's object matrix, VS b0 rows 9..11, turns about the
@@ -1363,17 +1508,24 @@ namespace edworld
       LONGLONG const now{qpc_now()};
       if((now - atmo_last) * 1000 / qpc_frequency < static_cast<LONGLONG>(period) * 1000)
         return;
+      atmo_misses_log(now);
       D3D11_VIEWPORT port{};
       UINT ports{1u};
       ctx->RSGetViewports(&ports, &port);
       if(port.Width < 1024.f)  // the shell drawn into a small target too, for the reflections
+        {
+        ++atmo_misses.small_target;
         return;
+        }
       atmo_last = now;
 
       ID3D11ShaderResourceView * srv{};
       ctx->PSGetShaderResources(0, 1, &srv);
       if(not srv)
+        {
+        ++atmo_misses.no_table;
         return;
+        }
       ID3D11Resource * res{};
       srv->GetResource(&res);
       srv->Release();
@@ -1384,11 +1536,15 @@ namespace edworld
         res->Release();
         }
       if(not tex)
+        {
+        ++atmo_misses.no_table;
         return;
+        }
       D3D11_TEXTURE2D_DESC d{};
       tex->GetDesc(&d);
       if(d.SampleDesc.Count != 1 or d.ArraySize != 1)
         {
+        ++atmo_misses.odd_table;
         tex->Release();
         return;
         }
@@ -1490,10 +1646,20 @@ namespace edworld
       float const over{radius > 1000.f ? distance / radius : 0.f};
       if(over < 0.9f or over >= float(2u << atmo_furthest_band))  // below 0.9: the radius not the planet's
         {
+        if(over < 0.9f)
+          {
+          ++atmo_misses.radius_off;
+          atmo_misses.radius = radius;
+          atmo_misses.distance = distance;
+          if(radius > 1000.f)  // a radius known from before tells the kind all the same
+            atmo_note_known(radius);
+          }
         unmap_cbs();
         atmo_release(p);
         return;
         }
+      atmo_misses = atmo_misses_t{};
+      atmo_misses_since = p.qpc;
       // the kind on every read, for the clouds; the record below once a session per planet and band
       atmosphere_hue_t hue{};
       D3D11_MAPPED_SUBRESOURCE tm{};
