@@ -61,6 +61,11 @@ With EDVR's anti-aliasing on, set `ui_quality = off` in the `[fix]` section of `
 otherwise makes the cockpit panels bigger, edworld no longer finds them and the navballs are gone. The clouds are not
 affected.
 
+With the game from the Epic Games Store, add `accept_takeover = true` to `edloader.txt`
+([edloader's doc/users.md](https://github.com/arturbac/edloader/blob/main/doc/users.md#the-epic-games-store-epics-overlay)).
+edworld itself needs nothing set: from 1.2.0-beta.7 it does not follow the device of Epic's overlay and stays with
+the game's (`not followed` in its log).
+
 ### On its own
 
 For edworld as the only d3d11 mod, or for a player who does not want edloader.
