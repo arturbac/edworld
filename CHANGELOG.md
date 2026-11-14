@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## 1.2.0-beta.11
+
+- **edloader 1.1.0 in the zip: Epic's overlay needs nothing set.** The game from the Epic Games Store loads Epic's
+  overlay, which takes the game's calls a moment after its first device; edloader 1.0.1 stopped there unless
+  `accept_takeover = true` was in `edloader.txt`. edloader 1.1.0 knows the overlay and goes on by itself. doc/users.md
+  says what to do with an older edloader.
 
 - **Fixed: on foot the atmosphere's kind was not told.** edworld took the game's atmosphere in only while the ship's
   HUD was drawn, so a session begun in a settlement, or on foot, had the clouds of no kind (as before 1.2.0-beta.9)

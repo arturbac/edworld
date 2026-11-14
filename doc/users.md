@@ -61,10 +61,10 @@ With EDVR's anti-aliasing on, set `ui_quality = off` in the `[fix]` section of `
 otherwise makes the cockpit panels bigger, edworld no longer finds them and the navballs are gone. The clouds are not
 affected.
 
-With the game from the Epic Games Store, add `accept_takeover = true` to `edloader.txt`
+With the game from the Epic Games Store nothing is to be set: edloader from 1.1.0 (the one in this zip) knows Epic's
+overlay, and edworld from 1.2.0-beta.7 does not follow the overlay's device and stays with the game's (`not followed`
+in its log). An older edloader needs `accept_takeover = true` in `edloader.txt`
 ([edloader's doc/users.md](https://github.com/arturbac/edloader/blob/main/doc/users.md#the-epic-games-store-epics-overlay)).
-edworld itself needs nothing set: from 1.2.0-beta.7 it does not follow the device of Epic's overlay and stays with
-the game's (`not followed` in its log).
 
 ### On its own
 
