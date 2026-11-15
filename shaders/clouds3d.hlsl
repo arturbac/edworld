@@ -516,12 +516,19 @@ float aurora_star_wind()
 // one arc of curtains, across degrees from its middle (aurora_across), thick degrees thin (a few km: the sheet the
 // particles come down in), its own brightness here 0..1: a bright part comes from more and harder particles, which go
 // deeper, light the curtain higher and spread it wider; a faint one stands higher, short and thin. Sharp at its foot,
-// it fades upward slowly, as the particles light the air all the way down to where they stop
-float aurora_arc(float across, float thick, float thick_least, float h, float bright)
+// it fades upward slowly, as the particles light the air all the way down to where they stop. Its edges frayed, each
+// arc its own (seed), along it by u (the rays' scale, about 3 km a unit): the foot by a small, fast noise at the
+// rays' scale and four times finer, about 3% of the shell up or down; the top by how far each ray reaches (0.4..1.6,
+// slower, at the rays' scale and three times coarser) and by holes and wisps cut by a noise along the arc and up,
+// none low, most at the top
+float aurora_arc(float across, float thick, float thick_least, float h, float bright, float u, float seed, float time)
   {
   float wide = max(thick * (0.7f + 0.6f * bright), thick_least);
-  float above = h - 0.08f * (1.f - bright);
-  return exp(-pow(across / wide, 2.f)) * saturate(above / 0.04f) * exp(-max(above, 0.f) / (0.6f * (0.7f + 0.6f * bright)));
+  float fray = noise(float3(u + seed, time * 3.f, 1.7f)) - 0.5f + 0.5f * (noise(float3(u * 4.f + seed, time * 5.f, 4.1f)) - 0.5f);
+  float above = h - 0.08f * (1.f - bright) - 0.04f * fray;
+  float reach = 0.4f + 1.2f * saturate(0.6f * noise(float3(u + seed, 2.3f, time * 0.3f)) + 0.6f * noise(float3(u / 3.f + seed, 6.1f, time * 0.15f)) - 0.1f);
+  float wisps = lerp(1.f, smoothstep(0.35f, 0.65f, noise(float3(u * 2.f + seed, h * 12.f - time * 0.5f, 8.3f))), smoothstep(0.f, 0.9f, h));
+  return exp(-pow(across / wide, 2.f)) * saturate(above / 0.04f) * exp(-max(above, 0.f) / (0.6f * (0.7f + 0.6f * bright) * reach)) * wisps;
   }
 
 // how far across an arc whose middle lies at magnetic latitude centre the point at north is, degrees, with the arc's
@@ -615,18 +622,19 @@ float3 aurora_glow(float3 dir, float h, float level, float3 sun_model, float tim
   float lit1 = aurora_lit(circle, 0.f, gaps, time, dance);
   float lit2 = second > 0.f ? aurora_lit(circle, 23.f, gaps, time, dance) : 0.f;
   float lit3 = third > 0.f ? aurora_lit(circle, 47.f, gaps, time, dance) : 0.f;
+  // the rays about 3 km wide: the angle's length along the arc at its colatitude
+  float ray_scale = planet * sin(radians(90.f - centre)) / 3000.f;
+  float u = angle * ray_scale;
   float arc = 0.f;
   if(lit1 > 0.f)
-    arc += lit1 * aurora_arc(aurora_across(north, centre, angle, 0.f, sway, time, dance), thick, thick_least, h, saturate(lit1 * waves / 2.f));
+    arc += lit1 * aurora_arc(aurora_across(north, centre, angle, 0.f, sway, time, dance), thick, thick_least, h, saturate(lit1 * waves / 2.f), u, 0.f, time);
   if(lit2 > 0.f)
-    arc += second * lit2 * aurora_arc(aurora_across(north, centre + width * 0.45f + 0.5f * fold, angle, 23.f, sway * 1.3f, time, dance), thick * 1.3f, thick_least, h, saturate(lit2 * waves / 2.f));
+    arc += second * lit2 * aurora_arc(aurora_across(north, centre + width * 0.45f + 0.5f * fold, angle, 23.f, sway * 1.3f, time, dance), thick * 1.3f, thick_least, h, saturate(lit2 * waves / 2.f), u, 23.f, time);
   if(lit3 > 0.f)
-    arc += third * lit3 * aurora_arc(aurora_across(north, centre + width * 0.85f + 0.7f * fold, angle, 47.f, sway * 1.1f, time, dance), thick * 1.1f, thick_least, h, saturate(lit3 * waves / 2.f));
+    arc += third * lit3 * aurora_arc(aurora_across(north, centre + width * 0.85f + 0.7f * fold, angle, 47.f, sway * 1.1f, time, dance), thick * 1.1f, thick_least, h, saturate(lit3 * waves / 2.f), u, 47.f, time);
   if(arc < 0.002f && diffuse < 0.002f)
     return 0.f;
   // the rays along the arc, moving faster and lighting up in a substorm
-  // the rays about 3 km wide: the angle's length along the arc at its colatitude
-  float ray_scale = planet * sin(radians(90.f - centre)) / 3000.f;
   float rays = pow(noise(float3(angle * ray_scale + time * (0.4f + 2.5f * dance), 3.7f, 0.f)), 3.f);
   rays = 0.35f + 0.65f * rays * (1.f + dance * 1.5f * saturate(noise(float3(angle * 40.f - time * 3.f, 9.1f, 0.f)) * 2.f - 1.f));
   float flicker = 1.f;

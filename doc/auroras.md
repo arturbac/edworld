@@ -101,7 +101,9 @@ one place there may be none, one, two or three. Where an arc is bright it is wid
 taller; a faint part stands higher, thin and short. Each curtain is a thin, tall sheet, as the particles come down
 along the field's lines, nearly upright near the pole, in sheets a few km thin: about 4 km thick (2.8-5.2 by its
 brightness), sharp at its foot and fading slowly upward over most of the shell, coloured from the gas's low colour
-to its high one, with rays about 3 km wide; the faint diffuse glow beside the arcs is half as bright as before. The
+to its high one, with rays about 3 km wide. Its edges are frayed: the foot a little, by about 3% of the shell up
+or down, changing fast; the top much more, each ray reaching from 0.4 to 1.6 times as high and broken into wisps and
+holes the higher it goes; the faint diffuse glow beside the arcs is half as bright as before. The
 lines lean 10-15° on the Earth; edworld draws the curtains upright.
 
 **How high.** On the Earth an aurora's foot stands about 100 km up, where the electrons have gone through as much
