@@ -36,6 +36,12 @@ In `edworld.ini` (or `edworld_eht.ini`), beside the dll or in `edloader\config`;
 | `clouds_cyclones` | `1` | 0, 1 | `1` = storms in the kinds' clouds by the planet's size, its day and the kind, `0` = none |
 | `clouds_lumps_by_layer` | `1` | 0, 1 | (PoC) `1` = the kinds' lumps by the layer's thickness: larger on small planets, smaller on large ones, the fine shape near you a quarter of the layer, each lump as high as it is strong; `0` = as before |
 | `clouds_weather` | `1` | 0..2 (clamped) | (PoC) the weather in the kinds' clouds: overcast and clear regions by how fast the planet turns for its size; `1` = as [clouds.md](clouds.md) gives, `0` = none, `2` = twice as strong |
+| `aurora` | `1` | 0, 1 | (PoC) `1` = an aurora over the night side of a planet whose atmosphere's kind is known, as [clouds.md](clouds.md#aurora) gives; `0` = none |
+| `aurora_gain` | `1` | 0..3 (clamped) | how bright the aurora is; `1` = as designed |
+| `aurora_activity` | `-1` | -1, 0..9 (clamped) | (test) how stormy: `-1` = by the time, each 3 hours its own and the same for everyone; `0`..`9` = always this, as the Kp index |
+| `aurora_dance` | `1` | 0..2 (clamped) | how much the aurora moves in seconds in a substorm: waves along its arc, folds, rays lighting up; `1` = as designed, `0` = a still aurora, `2` = twice as much |
+| `aurora_flicker` | `1` | 0, 1 | `1` = small patches of the aurora flicker a few times a second in a substorm, as real ones do; `0` = none |
+| `aurora_field` | `-1` | -1, 0, 1 | (test) whether the planet has a magnetic field of its own: `-1` = as guessed from its size and turn, `1` = always (the whole aurora on any planet whose kind is known), `0` = never (a faint glow only) |
 
 ### Read at the game's start (a change needs a restart)
 

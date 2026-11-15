@@ -13,7 +13,9 @@ seconds (10) while the game draws a planet's atmosphere, edworld copies two thin
   bright half). It follows the kind the scan names, not the mix of gases: an argon atmosphere with some nitrogen
   has the same colour as pure argon. All 15 kinds found on planets you can land on stand apart. Neon has a second
   colour, reddish and far brighter: every neon planet with volcanism measured has it, every one without has the
-  first; both are neon. A volcanic NeonRich or Helium keeps its kind's colour.
+  first; both are neon. A volcanic NeonRich or Helium keeps its kind's colour. Ammonia has a second colour too,
+  seen on one planet whose twin in the same system, the same in every number of the scan, has the first; why is
+  not known; both are ammonia.
 - **The planet's radius and its day.** The planet's radius is in the game's own constants; its day is read off how
   far the planet has turned between two reads (two reads in a row must agree to 1%; while the game moves its frame
   of reference a read is left out). On 74 pairs of reads, 72 gave the scan's day within 1%.
@@ -190,3 +192,9 @@ storms stand comes from the planet's radius, so the same planet always has the s
 Carbon dioxide worlds split by size: under 2500 km (seven in ten) they turn slowly and have no storms; from 2500 km
 up they turn in about two days and hold one to three large cyclones with their eyes, the most striking case. Nitrogen
 worlds of 3000-4000 km turning in a day or so are the other good place: several cyclones in dense white clouds.
+
+## Aurora
+
+On a planet whose kind is known (`aurora = 1`), an aurora over the night side, over the clouds. What edworld reads,
+what it carries over from the Earth and what it chooses, the colours of each kind and how often you will meet them:
+[auroras.md](auroras.md).

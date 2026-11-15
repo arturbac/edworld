@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **Aurora (PoC).** On the night side of a planet whose atmosphere's kind is known, an oval of curtains around its
+  pole, over the clouds, in its gas's colours: oxygen green low and red high, nitrogen violet with a pink lower edge,
+  neon orange, and so on. Whether a planet has a field of its own comes from its size and turn (the game has none to
+  read), how strong from its star's class read off the colour of its light, how stormy from the time, each 3 hours
+  its own and the same for everyone. In a substorm the aurora brightens over minutes and dances in seconds: waves
+  run along its arcs, curtains fold, rays light up. One arc in a quiet sky, two in a storm, a third while a strong
+  substorm expands, each broken by gaps; a bright part is wider and taller than a faint one. Settings `aurora`, `aurora_gain`, `aurora_activity`,
+  `aurora_dance`, `aurora_flicker`, and for a look on any planet `aurora_field`; doc/auroras.md says how, which colours there are and how often.
+- **A second ammonia.** The game draws some ammonia atmospheres in a colour of their own, so edworld did not know
+  such a planet and gave it the default clouds. Now it is ammonia too.
+
 ## 1.2.0-beta.11
 
 - **edloader 1.1.0 in the zip: Epic's overlay needs nothing set.** The game from the Epic Games Store loads Epic's

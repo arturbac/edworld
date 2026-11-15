@@ -53,8 +53,12 @@ namespace edworld
     };
 
   /// measured 2026-11-10 (the median over each kind's planets, four digits); a kind may have more than one
-  inline constexpr std::array<atmosphere_print_t, 16> atmosphere_prints{{
+  inline constexpr std::array<atmosphere_print_t, 17> atmosphere_prints{{
     {atmosphere_kind_e::ammonia, "Ammonia", 0.4897f, 1.4194f},
+    // an ammonia atmosphere with a table of its own (2026-11-15, one planet, Spoihee IT-F d12-1113 7 e): its twin 7 d,
+    // the same in every number of the scan (no volcanism, 100% ammonia, tidally locked to the same planet), has the
+    // first; why, not known
+    {atmosphere_kind_e::ammonia, "Ammonia", 0.8800f, 1.6522f},
     {atmosphere_kind_e::argon, "Argon", 0.3981f, 2.5000f},
     {atmosphere_kind_e::argon_rich, "ArgonRich", 0.5158f, 2.7826f},
     {atmosphere_kind_e::carbon_dioxide, "CarbonDioxide", 0.6199f, 1.9350f},
