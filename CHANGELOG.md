@@ -12,7 +12,7 @@
   itself on its own and winds into curls here and there. It stands as high as the kind's air makes it: low over the
   cold, thin neon worlds, hundreds of km up over small carbon dioxide and ammonia worlds. Its curtains are thin, tall
   sheets, a few km thick, with rays a few km wide, their foot a little ragged and their top frayed into wisps that change within a second; stretches of an arc light
-  and go dark on their own in seconds. Settings `aurora`, `aurora_gain`, `aurora_activity`,
+  and go dark on their own in seconds, from the foot up, the top following 3 s behind. Settings `aurora`, `aurora_gain`, `aurora_activity`,
   `aurora_dance`, `aurora_flicker`, and for a look on any planet `aurora_field`; doc/auroras.md says how, which colours there are and how often.
 - **A second ammonia.** The game draws some ammonia atmospheres in a colour of their own, so edworld did not know
   such a planet and gave it the default clouds. Now it is ammonia too.

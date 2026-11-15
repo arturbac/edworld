@@ -518,16 +518,18 @@ float aurora_star_wind()
 // deeper, light the curtain higher and spread it wider; a faint one stands higher, short and thin. Sharp at its foot,
 // it fades upward slowly, as the particles light the air all the way down to where they stop. Its edges frayed, each
 // arc its own (seed), along it by u (the rays' scale, about 3 km a unit): the foot by a small, fast noise at the
-// rays' scale and four times finer, about 3% of the shell up or down; the top by how far each ray reaches (0.4..1.6,
-// changing in about a second, at the rays' scale and three times coarser) and by holes and wisps cut by a noise along
-// the arc and up that changes its shape in about a second, drifting up a little, none low, most at the top
-float aurora_arc(float across, float thick, float thick_least, float h, float bright, float u, float seed, float time)
+// rays' scale and four times finer, about 3% of the shell up or down; the top by how far each ray reaches (0.4..1.7
+// for nine rays of ten, the mean of two noises at the rays' scale and three times coarser stretched twice, changing in
+// about a second) and by holes and wisps cut by a noise along the arc and up that changes its shape in about a
+// second, drifting up a little, none low, most at the top. late: the time as the gas higher up shows it (below)
+float aurora_arc(float across, float thick, float thick_least, float h, float bright, float u, float seed, float time, float late)
   {
   float wide = max(thick * (0.7f + 0.6f * bright), thick_least);
   float fray = noise(float3(u + seed, time * 3.f, 1.7f)) - 0.5f + 0.5f * (noise(float3(u * 4.f + seed, time * 5.f, 4.1f)) - 0.5f);
   float above = h - 0.08f * (1.f - bright) - 0.04f * fray;
-  float reach = 0.4f + 1.2f * saturate(0.6f * noise(float3(u + seed, 2.3f, time * 1.5f)) + 0.6f * noise(float3(u / 3.f + seed, 6.1f, time * 0.75f)) - 0.1f);
-  float wisps = lerp(1.f, smoothstep(0.35f, 0.65f, noise(float3(u * 2.f + seed, h * 12.f - time * 0.15f, time * 1.2f + 8.3f))), smoothstep(0.f, 0.9f, h));
+  float mean = 0.5f * (noise(float3(u + seed, 2.3f, late * 1.5f)) + noise(float3(u / 3.f + seed, 6.1f, late * 0.75f)));
+  float reach = 0.3f + 1.5f * saturate((mean - 0.5f) * 2.f + 0.5f);
+  float wisps = lerp(1.f, smoothstep(0.35f, 0.65f, noise(float3(u * 2.f + seed, h * 12.f - late * 0.15f, late * 1.2f + 8.3f))), smoothstep(0.f, 0.9f, h));
   return exp(-pow(across / wide, 2.f)) * saturate(above / 0.04f) * exp(-max(above, 0.f) / (0.6f * (0.7f + 0.6f * bright) * reach)) * wisps;
   }
 
@@ -561,12 +563,12 @@ float aurora_across(float north, float centre, float angle, float seed, float sw
 
 // where along the oval an arc lights at all, 0..1: parts of it go dark, more of them as gaps is higher (0.38 about a
 // quarter, 0.52 about a half); each arc its own (seed), drifting over minutes, faster in a substorm. And locally, by u
-// (the rays' scale): stretches of about 25 km light and go dark on their own in about 0.3..2 seconds, some 20% of the
-// arc dark at a time, the change never quicker than about 0.3 s
-float aurora_lit(float2 circle, float seed, float gaps, float time, float dance, float u)
+// (the rays' scale): stretches of about 25 km light and go dark on their own, from dark to full in about 1.25 s (0.75 s
+// for one in ten, 5 s for one in ten the other way), about a quarter of the arc dark at a time, at the time late
+float aurora_lit(float2 circle, float seed, float gaps, float time, float dance, float u, float late)
   {
   return smoothstep(gaps, gaps + 0.12f, noise(float3(circle * 3.f + seed, time * (0.02f + 0.1f * dance))))
-         * smoothstep(0.35f, 0.5f, noise(float3(u / 8.f + seed, time * 1.5f, 11.3f)));
+         * smoothstep(0.3f, 0.65f, noise(float3(u / 8.f + seed, late * 0.35f, 11.3f)));
   }
 
 // the aurora's light at dir (the planet's frame, unit) and h (0 the shell's floor .. 1 its ceiling): the oval about the
@@ -625,16 +627,19 @@ float3 aurora_glow(float3 dir, float h, float level, float3 sun_model, float tim
   // the rays about 3 km wide: the angle's length along the arc at its colatitude
   float ray_scale = planet * sin(radians(90.f - centre)) / 3000.f;
   float u = angle * ray_scale;
-  float lit1 = aurora_lit(circle, 0.f, gaps, time, dance, u);
-  float lit2 = second > 0.f ? aurora_lit(circle, 23.f, gaps, time, dance, u) : 0.f;
-  float lit3 = third > 0.f ? aurora_lit(circle, 47.f, gaps, time, dance, u) : 0.f;
+  // the gas higher up shows a change later: oxygen's green low in about 0.7 s, its red high in about 110 s; here the
+  // curtain's top 3 s behind its foot, so a stretch lights from the foot up and goes dark at the foot first
+  float late = time - 3.f * h;
+  float lit1 = aurora_lit(circle, 0.f, gaps, time, dance, u, late);
+  float lit2 = second > 0.f ? aurora_lit(circle, 23.f, gaps, time, dance, u, late) : 0.f;
+  float lit3 = third > 0.f ? aurora_lit(circle, 47.f, gaps, time, dance, u, late) : 0.f;
   float arc = 0.f;
   if(lit1 > 0.f)
-    arc += lit1 * aurora_arc(aurora_across(north, centre, angle, 0.f, sway, time, dance), thick, thick_least, h, saturate(lit1 * waves / 2.f), u, 0.f, time);
+    arc += lit1 * aurora_arc(aurora_across(north, centre, angle, 0.f, sway, time, dance), thick, thick_least, h, saturate(lit1 * waves / 2.f), u, 0.f, time, late);
   if(lit2 > 0.f)
-    arc += second * lit2 * aurora_arc(aurora_across(north, centre + width * 0.45f + 0.5f * fold, angle, 23.f, sway * 1.3f, time, dance), thick * 1.3f, thick_least, h, saturate(lit2 * waves / 2.f), u, 23.f, time);
+    arc += second * lit2 * aurora_arc(aurora_across(north, centre + width * 0.45f + 0.5f * fold, angle, 23.f, sway * 1.3f, time, dance), thick * 1.3f, thick_least, h, saturate(lit2 * waves / 2.f), u, 23.f, time, late);
   if(lit3 > 0.f)
-    arc += third * lit3 * aurora_arc(aurora_across(north, centre + width * 0.85f + 0.7f * fold, angle, 47.f, sway * 1.1f, time, dance), thick * 1.1f, thick_least, h, saturate(lit3 * waves / 2.f), u, 47.f, time);
+    arc += third * lit3 * aurora_arc(aurora_across(north, centre + width * 0.85f + 0.7f * fold, angle, 47.f, sway * 1.1f, time, dance), thick * 1.1f, thick_least, h, saturate(lit3 * waves / 2.f), u, 47.f, time, late);
   if(arc < 0.002f && diffuse < 0.002f)
     return 0.f;
   // the rays along the arc, moving faster and lighting up in a substorm

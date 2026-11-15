@@ -97,14 +97,16 @@ what moves in seconds is local:
 substorm expands from level 6 (by the time alone about 7.5% of the time is at level 6 or more, and the expansion is a
 fifth of each substorm, so the third arc is rare). No arc runs all round: each has its own dark gaps, drifting over
 minutes, about half of it dark in a quiet sky, a quarter in a strong storm, more again as a substorm recovers, so in
-one place there may be none, one, two or three. Besides, stretches of about 25 km light and go dark on their own in
-0.3-2 seconds, about a fifth of an arc dark at a time. Where an arc is bright it is wider, its foot lower and its rays
+one place there may be none, one, two or three. Besides, stretches of about 25 km light and go dark on their own,
+from dark to full in about 1.25 s (0.75-5 s), about a quarter of an arc dark at a time. The gas higher up shows a
+change later (oxygen's green low in about 0.7 s, its red high in about 110 s): the curtain's top follows its foot
+3 s behind, so a stretch lights from the foot up and goes dark at the foot first. Where an arc is bright it is wider, its foot lower and its rays
 taller; a faint part stands higher, thin and short. Each curtain is a thin, tall sheet, as the particles come down
 along the field's lines, nearly upright near the pole, in sheets a few km thin: about 4 km thick (2.8-5.2 by its
 brightness), sharp at its foot and fading slowly upward over most of the shell, coloured from the gas's low colour
 to its high one, with rays about 3 km wide. Its edges are frayed: the foot a little, by about 3% of the shell up
-or down, changing fast; the top much more, each ray reaching from 0.4 to 1.6 times as high and broken into wisps and
-holes the higher it goes, all of it changing within about a second; the faint diffuse glow beside the arcs is half as bright as before. The
+or down, changing fast; the top much more, each ray reaching from 0.4 to 1.7 times as high (nine rays of ten) and
+broken into wisps and holes the higher it goes, all of it changing within about a second; the faint diffuse glow beside the arcs is half as bright as before. The
 lines lean 10-15° on the Earth; edworld draws the curtains upright.
 
 **How high.** On the Earth an aurora's foot stands about 100 km up, where the electrons have gone through as much
