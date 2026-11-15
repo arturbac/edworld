@@ -1,5 +1,7 @@
 # ED CPU profile 2026-11-15 18:29:44
 
+from EDHM_2DMigoto-v0.1.3-x64.zip
+
 - account: Sjona (Steam), pid 385489
 - window: 30.2 s, 176334 samples (perf, 1999 Hz per thread)
 - fps 44.2 (EHT overlay frame count) = 22.6 ms per frame; Render thread busy 58% = 13.1 ms of CPU per frame
