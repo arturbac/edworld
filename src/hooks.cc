@@ -9,6 +9,7 @@
 //    and map it frames later with DO_NOT_WAIT;
 //  - GetType before GetDesc; a fault in edworld's code disables edworld, never the game call.
 #include "atmosphere_kind.h"
+#include "aurora.h"
 #include "blue_noise.h"
 #include "compass_math.h"
 #include "edworld_share.h"
@@ -1158,6 +1159,7 @@ namespace edworld
     // it in over atmo_kind_fade_ms. Written when the copies are read back, read at the clouds' draw
     std::atomic<float> atmo_kind_radius{};
     std::atomic<std::uint8_t> atmo_kind{};
+    std::atomic<bool> atmo_kind_volcanic{};  ///< neon's second table: a neon atmosphere over volcanism
     std::atomic<ULONGLONG> atmo_kind_since{};
     constexpr float atmo_kind_fade_ms{2000.f};
 
@@ -1171,6 +1173,7 @@ namespace edworld
          and kind == static_cast<atmosphere_kind_e>(atmo_kind.load(std::memory_order_relaxed)))
         return;
       atmo_kind_since.store(GetTickCount64(), std::memory_order_relaxed);
+      atmo_kind_volcanic.store(found and kind == atmosphere_kind_e::neon and found->r_g > 1.f, std::memory_order_relaxed);
       atmo_kind.store(static_cast<std::uint8_t>(kind), std::memory_order_relaxed);
       atmo_kind_radius.store(radius, std::memory_order_relaxed);
       log_line("clouds: the planet of radius %.0f m is %.*s (r/g %.4f b/g %.4f)", double(radius),
@@ -1337,6 +1340,61 @@ namespace edworld
         }
       v[3] = atmosphere_weather_shift * std::clamp(settings().clouds_weather, 0.f, 2.f);
       v[4] = rossby_ratio(kind, radius, atmo_day_of(radius));
+      }
+
+    float atmo_aurora_radius{};
+    bool atmo_aurora_day{};
+    bool atmo_aurora_field{};
+
+    ///\brief the clouds' values 92..111 (clouds3d.hlsl, the aurora's design v1): its strength (0 = none: aurora 0,
+    /// clouds_by_kind 0 or the kind unknown), how stormy (K), how much it dances, the oval's shift; the colours low and
+    /// high and nitrogen's edge, whether the planet has a field of its own, the dipole in the planet's frame, the shell's
+    /// floor and ceiling over the surface as parts of the radius. The star's part is the shader's, out of its light
+    auto atmo_aurora_values(float * v) noexcept -> void
+      {
+      std::fill(v, v + 20, 0.f);
+      auto const kind{static_cast<atmosphere_kind_e>(atmo_kind.load(std::memory_order_relaxed))};
+      if(not settings().aurora or not settings().clouds_by_kind or kind == atmosphere_kind_e::unknown)
+        return;
+      float const radius{atmo_kind_radius.load(std::memory_order_relaxed)};
+      float const day{atmo_day_of(radius)};
+      std::uint64_t const seed{static_cast<std::uint64_t>(std::llround(radius))};
+      aurora_planet_t planet{aurora_planet(radius, day, rossby_ratio(kind, radius, day), atmo_kind_volcanic.load(std::memory_order_relaxed), seed)};
+      float const set_field{settings().aurora_field};
+      if(set_field >= 0.f)
+        planet.field = set_field >= 0.5f;
+      FILETIME ft{};
+      GetSystemTimeAsFileTime(&ft);
+      double const utc_s{static_cast<double>((static_cast<std::uint64_t>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime) / 1e7};
+      float const set_level{settings().aurora_activity};
+      float const level{set_level >= 0.f ? std::min(set_level, 9.f) : aurora_storm_level(seed, utc_s)};
+      aurora_substorm_t const sub{aurora_substorm(level, planet.substorm_s, utc_s, seed)};
+      aurora_colours_t const c{aurora_colours(kind)};
+      v[0] = c.yield * std::clamp(settings().aurora_gain, 0.f, 3.f) * sub.bright;
+      v[1] = level;
+      v[2] = sub.dance * std::clamp(settings().aurora_dance, 0.f, 2.f);
+      v[3] = sub.shift;
+      std::copy(c.low, c.low + 3, v + 4);
+      v[7] = settings().aurora_flicker ? 1.f : 0.f;
+      std::copy(c.high, c.high + 3, v + 8);
+      v[11] = planet.field ? 1.f : 0.f;
+      std::copy(planet.axis, planet.axis + 3, v + 12);
+      // the shell over the clouds: its floor 0.015 of the radius over the kind's top, 0.03 high (the Earth's: about 95
+      // km over the clouds, 190 km high); an effect, as the planet's gravity, and so where the air thins, is not known
+      float const floor_at{atmosphere_clouds(kind, 1.f).top + 0.015f};
+      v[15] = floor_at;
+      v[16] = floor_at + 0.03f;
+      std::copy(c.edge, c.edge + 3, v + 17);
+      if(atmo_aurora_radius != radius or atmo_aurora_day != (day > 0.f) or atmo_aurora_field != planet.field)
+        {
+        atmo_aurora_radius = radius;
+        atmo_aurora_day = day > 0.f;
+        atmo_aurora_field = planet.field;
+        log_line("aurora: the planet of radius %.0f m %s, the dipole leaning %.0f degrees, substorms each %.1f h, K %.1f now%s",
+                 double(radius), planet.field ? "has a field of its own" : "has no field of its own (a faint glow only)",
+                 double(planet.lean_deg), double(planet.substorm_s) / 3600., double(level),
+                 day > 0.f ? "" : " (its day not read yet)");
+        }
       }
 
     auto atmo_release(atmo_pending_t & p) noexcept -> void
@@ -4015,7 +4073,7 @@ namespace edworld
       ID3D11DepthStencilState * volume_depth_state{};
       ID3D11Buffer * volume_params{};
       // the volume's parameters, the wind's seconds among them, written again for each draw
-      float volume_values[92]{};
+      float volume_values[112]{};
       ULONGLONG wind_start{};
       ID3D11Texture2D * depth_copy{};
       ID3D11ShaderResourceView * depth_view{};
@@ -4271,15 +4329,15 @@ namespace edworld
 
       // 19..32 (the game's fade, near and far, the debug colour, the planet's size on the screen, the steps' most, the
       // edge, the haze) and 33..42 (the atmosphere's kind) are written again for each draw, as they change while the game
-      // runs, 43 the lumps' size, 44..85 the storms, 86..91 the lumps by the layer and the weather
-      float const values[92]{
+      // runs, 43 the lumps' size, 44..85 the storms, 86..91 the lumps by the layer and the weather, 92..111 the aurora
+      float const values[112]{
         settings().clouds_bottom, settings().clouds_top, settings().clouds_cover, settings().clouds_light,
         settings().clouds_steps, settings().clouds_density, settings().clouds_opacity, settings().clouds_top_gain,
         settings().clouds_min_light, settings().clouds_under_gain, settings().clouds_detail, settings().clouds_detail_size,
         settings().clouds_detail_range, settings().clouds_detail_edge, settings().clouds_detail_gap, 0.f,
         settings().clouds_wind_low / 3.6f, settings().clouds_wind_high / 3.6f, 1.f, 0.f,
         0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f
-      };  // the rest, 44..91, zero
+      };  // the rest, 44..111, zero
       std::memcpy(clouds.volume_values, values, sizeof values);
       clouds.wind_start = GetTickCount64();
       D3D11_BUFFER_DESC desc{};
@@ -4482,6 +4540,7 @@ namespace edworld
       clouds.volume_values[43] = std::clamp(settings().clouds_size_var, 0.f, 0.9f);
       atmo_cyclone_values(clouds.volume_values + 44);
       atmo_lump_values(clouds.volume_values + 86);
+      atmo_aurora_values(clouds.volume_values + 92);
       if(clouds.volume_values[84] > 0.f)
         {
         // the storms tower to twice the layer's height (v1.4s): the kind's top raised, the tower told to the shader

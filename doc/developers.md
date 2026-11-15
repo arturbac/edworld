@@ -433,6 +433,23 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   middle before the wind's turn; otherwise half a band `cos(latitude / period 2 pi)` (period 50°, or 100° / (R/L / 2)
   past 4, faded to 30% toward the poles) and half a patch `fbm(middle * max(1.5 R/L, 1.5) + seed + 57, 2)`; the edge
   moves by the shift times it times the kind's weight. All zero, as before, for an unknown kind and in edworld.dll.
+- (both builds, `aurora`, 2026-11-15, PoC, the aurora's design v1) `src/aurora.h`: the kinds' colours and yields
+  (`aurora_colours_table`), the star's activity by the red over green of its light (`aurora_star_activity`; the
+  shader works the same out of VS b1 row 293), whether the planet has a field and its dipole (`aurora_planet`, from
+  the radius as the seed, the day and R/L, neon's volcanic table), the storm's level per 3 h of UTC
+  (`aurora_storm_level`) and the substorm (`aurora_substorm`: the whole aurora's brightness over minutes, the dance,
+  the oval's shift). `atmo_aurora_values` fills values 92..111 of the volume's buffer (now 112 floats): strength,
+  level, dance, shift, the low colour and the flicker, the high colour and the field, the dipole and the shell's
+  floor, its ceiling and nitrogen's edge; the floor is the kind's top + 0.015, the ceiling 0.03 over it. The VS's
+  sphere reaches the ceiling while there is an aurora. `clouds3d.hlsl`: `ps_main` adds `aurora_along` to
+  `clouds_along` (the old body, whose misses return 0 instead of discarding), times 1 - the clouds' cover when the eye
+  is under the clouds' top; `aurora_along` marches the shell's part before the floor and the part past it (none when
+  the planet stands between), 32 steps near, 16 far, ending at the scene; `aurora_glow` the oval about the dipole
+  with the angle from midnight (the seam of what is noised along it falls at noon), up to three arcs (`aurora_arc`:
+  width, foot and height by the arc's brightness there; the second from level 3, the third while the dance is over
+  0.7 from level 6), each lit where its own noise (`aurora_lit`) passes the gaps' threshold, the curtains no thinner than half
+  a step, the night side only, from under the floor only while the eye's own sky is dark. Its light is 120 times
+  `frame_rows[90].y` (40 was faint at an F star, 2026-11-15), scaled by `aurora_gain`.
 - (both builds, `clouds_cyclones`, 2026-11-10) Storms. The planet's day is read off the shell's object
   matrix (VS b0 rows 9..11), which turns about the model's y with the planet: `planet_turn` takes two reads (the
   fingerprint's, `atmo_record_s` apart), the angle from the off-diagonal parts of old rows' transpose times new; a

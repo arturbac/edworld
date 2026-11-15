@@ -13,7 +13,9 @@ seconds (10) while the game draws a planet's atmosphere, edworld copies two thin
   bright half). It follows the kind the scan names, not the mix of gases: an argon atmosphere with some nitrogen
   has the same colour as pure argon. All 15 kinds found on planets you can land on stand apart. Neon has a second
   colour, reddish and far brighter: every neon planet with volcanism measured has it, every one without has the
-  first; both are neon. A volcanic NeonRich or Helium keeps its kind's colour.
+  first; both are neon. A volcanic NeonRich or Helium keeps its kind's colour. Ammonia has a second colour too,
+  seen on one planet whose twin in the same system, the same in every number of the scan, has the first; why is
+  not known; both are ammonia.
 - **The planet's radius and its day.** The planet's radius is in the game's own constants; its day is read off how
   far the planet has turned between two reads (two reads in a row must agree to 1%; while the game moves its frame
   of reference a read is left out). On 74 pairs of reads, 72 gave the scan's day within 1%.
@@ -190,3 +192,65 @@ storms stand comes from the planet's radius, so the same planet always has the s
 Carbon dioxide worlds split by size: under 2500 km (seven in ten) they turn slowly and have no storms; from 2500 km
 up they turn in about two days and hold one to three large cyclones with their eyes, the most striking case. Nitrogen
 worlds of 3000-4000 km turning in a day or so are the other good place: several cyclones in dense white clouds.
+
+## Aurora
+
+On a planet whose kind is known (`aurora = 1`), an aurora over the night side: an oval of curtains around each
+magnetic pole, between 1.5% and 4.5% of the radius over the clouds' top. Like the clouds it comes from what the game
+draws only; the game models no magnetic field, so whether a planet has one is a guess, the same planet always the
+same. The physics behind each number is general knowledge, not measured in the game.
+
+**Whether, and how strong.**
+
+- **A field of its own** comes from a planet's molten, turning core. The chance: 0.15 under 1000 km of radius, 0.4
+  to 3000 km, 0.7 past; a third of it for a planet that turns slowly (R/L under 0.3 or a day over 10 days); a third
+  more for a volcanic neon world. Without a field only a faint patchy glow covers the night side, as on Mars and
+  Venus, where the star's wind meets the air directly. The dipole leans 0-12° off the axis the planet turns on on
+  nine planets of ten and 15-60° on the tenth (as Uranus); it turns with the planet, so the oval sways in a day.
+- **The star's wind.** edworld reads the star's class off the colour of its light in the game, one value per class
+  (red over green: M 1.044, K 1.032, G 1.012, F 1.003, A and hotter 0.982, brown dwarfs over 1.5; 80 planets of two
+  commanders). Activity by class: M 1, K 0.6, G 0.5, F 0.3, brown dwarfs 0.3, hotter 0.1 (no convective envelope,
+  little activity). The light's level follows the distance only weakly in the game (about the flux to the power
+  0.14), so it scales the wind within 0.5-2 only. A strong wind makes the storm up to 3 levels stronger.
+- **The gas's colours** (low in a curtain / high in it / yield): oxygen and CarbonDioxideRich green 557.7 nm / red
+  630 nm / 1; carbon dioxide the same from its oxygen, 0.5; water the same with hydrogen's red, 0.6; nitrogen and the
+  kinds mostly nitrogen (NeonRich, ArgonRich, MethaneRich) violet-blue (N2+ 391/428 nm) with a pink lower edge, 0.6;
+  neon orange 585 nm / red 640 nm, 0.8; argon lilac, 0.3 (its lines are mostly infrared); helium yellow 587.6 nm,
+  0.2; methane and ammonia violet-pink / hydrogen's red, 0.4 and 0.5 (only to tell them apart); sulphur dioxide red
+  / green, 0.4 (as on Io); silicate vapour sodium's yellow, 0.5 (only to tell it apart).
+
+**When.** How stormy is a level 0-9 as the Earth's Kp index, one for each 3 hours of the time (UTC, the game's own)
+and the planet: 0-2 six times in ten, 3-4 three, 5-6 one, 7-9 rarely; the last 20 minutes go over to the next.
+From level 3 substorms come every 1.5-3 hours (the planet's own period): the oval's arc drifts 2° toward the
+equator for 40% of it, breaks up (a part of it brightening), expands toward the pole with the aurora at its
+brightest and moving most to 60%, then pulses as it recovers. The whole aurora's brightness changes only over
+minutes, at most 2.5 times its quiet level, so it never flashes as one; what moves in seconds is local:
+
+- waves of brightness running along the arcs, three times as bright here and a third there;
+- curtains folding and swaying by a degree or two;
+- rays moving along the arc and lighting up for a moment;
+- small patches flickering about 8 times a second, at most 15% (`aurora_flicker = 0` turns this off).
+
+`aurora_dance` scales all of it (`0` = a still aurora); a weak storm dances less, three quarters at level 4.
+To look at it on any planet whose kind is known: `aurora_activity = 7` and `aurora_field = 1` (a field of its own
+whatever the guess; `0` = never).
+
+**Where.** The oval's boundary lies at magnetic latitude 67° - 2° K on the midnight side and 77° - 1° K at noon,
+3-8° wide; the arcs stand in its part toward the equator: one in a quiet sky, a second one poleward of it from
+level 3, a third further poleward while a substorm expands from level 6; and a faint glow over all of it. No arc runs
+all round: each has its own dark gaps, drifting over minutes, about half of it dark in a quiet sky, a quarter in a
+strong storm, more again as a substorm recovers, so in one place there may be none, one, two or three. Where an arc
+is bright it is wider, its foot lower and its rays taller (more and harder particles go deeper); a faint part
+stands higher, thin and short. Curtains are sharp at their foot and fade upward, coloured from the gas's low colour
+to its high one. Only the
+night side shows it; from the ground only under a dark sky, through the clouds' gaps; from orbit over the clouds,
+past the planet's night edge too. From the ground at high latitudes on a planet with a field, at night: under a
+strong storm the oval comes down toward the equator and passes over you.
+
+| | physics | a choice |
+|---|---|---|
+| the oval, its shift by storm and by noon/midnight | the Earth's, scaled by nothing | the numbers on other planets |
+| colours by gas | the gases' emission lines | methane, ammonia, silicate vapour only to tell apart |
+| whether a field | a dynamo needs a large, turning, warm inside | the chances |
+| how high | - | 1.5% of the radius over the clouds, 3% high (the Earth's about 100-300 km); the planet's gravity is not known |
+| the dance | substorms, Alfvén waves | how fast and how much |

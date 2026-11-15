@@ -198,6 +198,22 @@ namespace edworld
     /// day side under the star for a slow turn, bands by latitude and patches for a faster one); 1 = as the design
     /// gives, 0 = none, 2 = twice as strong
     float clouds_weather{1.f};
+    ///\brief (PoC, the aurora's design v1, 2026-11-15) the aurora over the night side of a planet whose kind is known:
+    /// its colours by the kind, its strength by the star's class and the planet's own field (a guess from its size and
+    /// turn), how stormy by the time; 0 = none
+    std::uint32_t aurora{1};
+    ///\brief how bright the aurora is: 1 = as designed, 0..3
+    float aurora_gain{1.f};
+    ///\brief (test) how stormy: -1 = by the time (each 3 h its own, the same for everyone), 0..9 = always this (as Kp)
+    float aurora_activity{-1.f};
+    ///\brief how much the aurora moves in seconds in a substorm (waves along its arc, folds, rays lighting up): 1 = as
+    /// designed, 0 = a still aurora, 2 = twice as much
+    float aurora_dance{1.f};
+    ///\brief 1 = small patches of the aurora flicker a few times a second in a substorm, as real ones do; 0 = none
+    std::uint32_t aurora_flicker{1};
+    ///\brief (test) whether the planet has a field of its own: -1 = as the design guesses from its size and turn, 1 =
+    /// always (the whole aurora on any planet whose kind is known), 0 = never (the faint glow only)
+    float aurora_field{-1.f};
 
     // ---- the compass (PoC): the HUD compass's dot read off its interface surface, the angles written beside it ----
     ///\brief 0 off, 1 the angles, 2 also everything known for checking them, 3 also a grid of the surface's pixels

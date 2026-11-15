@@ -74,6 +74,19 @@ cbuffer clouds : register(b4)
   float cloud_weather;      // how far the weather moves a cloud's edge at most, 0 = no weather
   float cloud_kind_rossby;  // the planet's R/L, which the weather follows
   float cloud_v2_pad;
+  // the aurora (design v1, 2026-11-15) of that planet, over the clouds on its night side; strength 0 = none
+  float aurora_strength;    // the kind's yield times aurora_gain and the substorm's brightness, changing over minutes
+  float aurora_level;       // how stormy, 0..9 as the Kp index
+  float aurora_dance;       // how much it moves in seconds, 0..2
+  float aurora_shift;       // the oval's boundary moved by the substorm, degrees
+  float3 aurora_low;        // the light low in a curtain
+  float aurora_flicker;     // 1: small patches flicker a few times a second
+  float3 aurora_high;       // and high in it
+  float aurora_field;       // 1: the planet has a field of its own, 0: a faint glow over the night side only
+  float3 aurora_axis;       // the dipole, in the planet's frame
+  float aurora_floor;       // the shell's floor and ceiling over the surface, as parts of the radius
+  float aurora_ceiling;
+  float3 aurora_edge;       // nitrogen's pink lower edge, 0 = none
   };
 
 Texture2D<float> scene_depth : register(t0);
@@ -93,7 +106,8 @@ struct ps_in
 ps_in vs_main(vs_in input)
   {
   ps_in output;
-  float scale = frame_rows[126].x * (1.f + max(cloud_top, cloud_kind_top)) * 1.01f / length(object_rows[9].xyz);
+  float shell = max(max(cloud_top, cloud_kind_top), aurora_strength > 0.f ? aurora_ceiling : 0.f);
+  float scale = frame_rows[126].x * (1.f + shell) * 1.01f / length(object_rows[9].xyz);
   float4 p = float4(input.pos * scale, 1.f);
   precise float x = dot(object_rows[9], p);
   precise float y = dot(object_rows[10], p);
@@ -243,13 +257,9 @@ float storm_density(float3 p, float bottom, float top, float kind, float tower, 
   return density * density * saturate(h * 5.f) * saturate((1.f - h) * 2.5f) * eye;
   }
 
-float4 ps_main(ps_in input) : SV_TARGET
+// the clouds along the ray, premultiplied; none (0) where the ray misses them, so the aurora may still be drawn
+float4 clouds_along(ps_in input, float3 ray, float3 centre)
   {
-  float3 ray = normalize(input.view);
-  float3 centre = float3(object_rows[9].w, object_rows[10].w, object_rows[11].w);
-  if(dot(input.view - centre, ray) <= 0.f)
-    discard;
-
   float planet = frame_rows[126].x;
   // this planet's kind known: its clouds, coming in over cloud_kind_weight; any other planet the clouds above
   float kind = abs(planet - cloud_kind_radius) < 4.f ? cloud_kind_weight : 0.f;
@@ -264,12 +274,12 @@ float4 ps_main(ps_in input) : SV_TARGET
   float3 aside = centre - ray * along;
   float miss = dot(aside, aside);
   if(miss >= top * top)
-    discard;
+    return 0.f;
   float half_top = sqrt(top * top - miss);
   float enter = max(along - half_top, 0.f);
   float leave = along + half_top;
   if(leave <= 0.f)
-    discard;
+    return 0.f;
   // where the ray meets the floor, or comes nearest to it past the limb: moves smoothly with the ray and the eye
   float anchor = along;
   if(miss < bottom * bottom)
@@ -287,7 +297,7 @@ float4 ps_main(ps_in input) : SV_TARGET
       }
     }
   if(leave <= enter)
-    discard;
+    return 0.f;
 
   // a planet of a few dozen pixels across shows no clouds, only lumps standing out of its edge: none until it is larger
   // rows 270..272 take a place in the world's axes: the screen's x of one metre is the length of their x, whichever way
@@ -303,7 +313,7 @@ float4 ps_main(ps_in input) : SV_TARGET
   float from_edge = (bottom - sqrt(miss)) * pixels_a_metre;
   shown *= lerp(edge_kept, 1.f, saturate(from_edge / cloud_edge_band_px));
   if(shown <= 0.f)
-    discard;
+    return 0.f;
   // the game's own fade of its atmosphere's shell: on the way in the clouds faded out for a moment with it, where the
   // game changes the planet's detail (2026-11-08, about 8.3 Mm out)
   float game_fade = cloud_game_fade >= 0.5f ? frame_rows[126].z : 1.f;
@@ -490,4 +500,210 @@ float4 ps_main(ps_in input) : SV_TARGET
   float3 colour = light * star * tint * cloud_light * frame_rows[90].y * gain;
   float weight = game_fade * layer_opacity * shown;
   return float4(colour * weight, (1.f - clear) * weight);
+  }
+
+// the star's wind at the planet (aurora_star_wind in aurora.h): its activity by its class, read off the red over green
+// of its light (one value per class in the game), times the light's level within 0.5..2 of 468
+float aurora_star_wind()
+  {
+  float3 star = frame_rows[293].xyz;
+  float red_over_green = star.r / max(star.g, 1e-6f);
+  float activity = red_over_green >= 1.5f ? 0.3f : red_over_green >= 1.038f ? 1.f : red_over_green >= 1.022f ? 0.6f
+                   : red_over_green >= 1.0075f ? 0.5f : red_over_green >= 0.9925f ? 0.3f : 0.1f;
+  return activity * clamp(sqrt(max(star.g, 0.f) / 468.f), 0.5f, 2.f);
+  }
+
+// one arc of curtains at magnetic latitude north, its own brightness here 0..1: a bright part comes from more and harder
+// particles, which go deeper, light the curtain higher and spread it wider; a faint one stands higher, short and thin
+float aurora_arc(float north, float centre, float thick, float thick_least, float h, float bright)
+  {
+  float wide = max(thick * (0.7f + 0.6f * bright), thick_least);
+  float above = h - 0.08f * (1.f - bright);
+  return exp(-pow((north - centre) / wide, 2.f)) * saturate(above / 0.04f) * exp(-max(above, 0.f) / (0.28f * (0.7f + 0.6f * bright)));
+  }
+
+// where along the oval an arc lights at all, 0..1: parts of it go dark, more of them as gaps is higher (0.38 about a
+// quarter, 0.52 about a half); each arc its own (seed), drifting over minutes, faster in a substorm
+float aurora_lit(float2 circle, float seed, float gaps, float time, float dance)
+  {
+  return smoothstep(gaps, gaps + 0.12f, noise(float3(circle * 6.f + seed, time * (0.02f + 0.1f * dance))));
+  }
+
+// the aurora's light at dir (the planet's frame, unit) and h (0 the shell's floor .. 1 its ceiling): the oval about the
+// dipole, lower on the night side and with the storm, one arc in a quiet sky, two from level 3 and a third toward the
+// pole as a strong substorm expands, each broken where it does not light, its curtains folded, their rays, the waves
+// running along them in a substorm, the diffuse glow beside them; per unit of the shell's height
+float3 aurora_glow(float3 dir, float h, float level, float3 sun_model, float time, float thick_least)
+  {
+  float night = saturate((0.1f - dot(dir, sun_model)) / 0.25f);
+  if(night <= 0.f)
+    return 0.f;
+  float vertical = saturate(h / 0.04f) * exp(-h / 0.28f);
+  float up = saturate((h - 0.15f) / 0.45f);
+  float3 colour = lerp(aurora_low, aurora_high, up);
+  if(dot(aurora_edge, aurora_edge) > 0.f)
+    colour = lerp(colour, aurora_edge, exp(-h / 0.03f));
+  if(aurora_field < 0.5f)  // no field of its own: a faint patchy glow over all the night side
+    return colour * (0.04f * (0.5f + 0.5f * noise(dir * 4.f + time * 0.02f)) * vertical * night);
+
+  float north = abs(degrees(asin(clamp(dot(dir, aurora_axis), -1.f, 1.f))));
+  float3 noon = normalize(sun_model - aurora_axis * dot(sun_model, aurora_axis) + float3(1e-6f, 0.f, 0.f));
+  float3 dusk = cross(aurora_axis, noon);
+  // about the dipole from midnight: the seam of what is noised along the angle falls at noon, where nothing shows
+  float2 about = float2(-dot(dir, noon), dot(dir, dusk));
+  float angle = atan2(about.y, about.x);
+  float2 circle = about / max(length(about), 1e-4f);
+  float to_noon = -circle.x;
+  float boundary = 72.f - 1.5f * level + (5.f + 0.5f * level) * to_noon + aurora_shift;
+  float width = 3.f + 0.6f * level;
+  float dance = aurora_dance;
+  // the folds: slow ones always, and in a substorm ones that move in seconds
+  float fold = (1.f + 0.2f * level) * (noise(float3(circle * 3.f, time * 0.05f)) * 2.f - 1.f)
+               + dance * (0.6f * (noise(float3(circle * 5.f + 13.f, time * 0.35f)) * 2.f - 1.f) + 0.8f * sin(angle * 9.f - time * 1.3f));
+  float centre = boundary + width * 0.3f + fold;
+  float thick = 0.35f + 0.15f * level / 9.f;
+  // the second arc from level 3, the third as a strong substorm expands (it dances most only then, from level 6)
+  float second = 0.6f * saturate(level - 2.f);
+  float third = 0.5f * saturate((dance - 0.7f) / 0.25f) * saturate(level - 5.f);
+  float diffuse = 0.04f * exp(-pow((north - (boundary + width * 0.5f)) / (width * 0.6f), 2.f));
+  // far from every arc: no noise to work out
+  float off = north - centre;
+  float reach = 3.f * max(thick * 1.3f, thick_least) + abs(fold);
+  if((off < -reach || off > reach + width * (third > 0.f ? 0.85f : 0.45f)) && diffuse < 0.002f)
+    return 0.f;
+  // the waves of brightness running along the arc, a few times as bright here and less there; the aurora as a whole
+  // changes only with aurora_strength, over minutes
+  float waves = clamp(1.f + dance * (0.9f * sin(angle * 14.f - time * 2.1f) + 0.6f * sin(angle * 23.f + time * 3.4f)), 0.3f, 3.f);
+  // the gaps: about half the arcs dark in a quiet sky, a quarter in a strong one, more again as a substorm recovers
+  // (the oval still pushed poleward, the dance fading)
+  float recovering = saturate(aurora_shift / 3.f) * saturate(1.f - dance);
+  float gaps = 0.52f - 0.14f * saturate((level - 2.f) / 5.f) + 0.1f * recovering;
+  float lit1 = aurora_lit(circle, 0.f, gaps, time, dance);
+  float lit2 = second > 0.f ? aurora_lit(circle, 23.f, gaps, time, dance) : 0.f;
+  float lit3 = third > 0.f ? aurora_lit(circle, 47.f, gaps, time, dance) : 0.f;
+  float arc = lit1 * aurora_arc(north, centre, thick, thick_least, h, saturate(lit1 * waves / 2.f))
+              + second * lit2 * aurora_arc(north, centre + width * 0.45f + 0.5f * fold, thick * 1.3f, thick_least, h, saturate(lit2 * waves / 2.f))
+              + third * lit3 * aurora_arc(north, centre + width * 0.85f + 0.7f * fold, thick * 1.1f, thick_least, h, saturate(lit3 * waves / 2.f));
+  if(arc < 0.002f && diffuse < 0.002f)
+    return 0.f;
+  // the rays along the arc, moving faster and lighting up in a substorm
+  float rays = pow(noise(float3(angle * 260.f + time * (0.4f + 2.5f * dance), 3.7f, 0.f)), 3.f);
+  rays = 0.35f + 0.65f * rays * (1.f + dance * 1.5f * saturate(noise(float3(angle * 40.f - time * 3.f, 9.1f, 0.f)) * 2.f - 1.f));
+  float flicker = 1.f;
+  if(aurora_flicker > 0.5f && dance > 0.f && noise(float3(angle * 30.f + time, 5.3f, 0.f)) > 0.6f)
+    flicker += min(dance, 1.f) * 0.15f * sin(time * 50.265f + hash(float3(floor(angle * 120.f), 1.f, 2.f)) * 6.283f);
+  return colour * ((arc * rays * waves * flicker + diffuse * vertical) * night);
+  }
+
+// the aurora along the ray: its shell between the floor and the ceiling, the part before the floor and the part past
+// it unless the planet stands between, marched in a few steps, ending at the scene
+float3 aurora_along(ps_in input, float3 ray, float3 centre, out float eye_under)
+  {
+  eye_under = 0.f;
+  if(aurora_strength <= 0.f)
+    return 0.f;
+  float planet = frame_rows[126].x;
+  float kind = abs(planet - cloud_kind_radius) < 4.f ? cloud_kind_weight : 0.f;
+  if(kind <= 0.f)
+    return 0.f;
+  float floor_r = planet * (1.f + aurora_floor);
+  float ceiling_r = planet * (1.f + aurora_ceiling);
+  float along = dot(ray, centre);
+  float3 aside = centre - ray * along;
+  float miss = dot(aside, aside);
+  if(miss >= ceiling_r * ceiling_r)
+    return 0.f;
+  float x_scale = length(float3(frame_rows[270].x, frame_rows[271].x, frame_rows[272].x));
+  float across = 2.f * planet / max(length(centre), planet) * x_scale * cloud_view_width * 0.5f;
+  if(across < cloud_hide_px)
+    return 0.f;
+  float half_ceiling = sqrt(ceiling_r * ceiling_r - miss);
+  float a0 = max(along - half_ceiling, 0.f);
+  float a1 = along + half_ceiling;
+  float b0 = a1, b1 = a1;
+  if(miss < floor_r * floor_r)
+    {
+    float half_floor = sqrt(floor_r * floor_r - miss);
+    b0 = max(a0, along + half_floor);
+    a1 = min(a1, along - half_floor);
+    // the far part hidden behind the planet when the ray meets the ground ahead
+    if(miss < planet * planet && along - sqrt(planet * planet - miss) > 0.f)
+      b1 = b0;
+    }
+  float length_a = max(a1 - a0, 0.f);
+  float length_b = max(b1 - b0, 0.f);
+  if(length_a + length_b <= 0.f)
+    return 0.f;
+
+  float eye_height = length(centre) / planet - 1.f;
+  eye_under = eye_height < lerp(cloud_top, cloud_kind_top, kind) ? 1.f : 0.f;
+  float3 sun = -frame_rows[291].xyz;
+  float3 sun_model = normalize(object_rows[9].xyz * sun.x + object_rows[10].xyz * sun.y + object_rows[11].xyz * sun.z);
+  float inverse_square = 1.f / dot(object_rows[9].xyz, object_rows[9].xyz);
+  float3 turned_ray = (object_rows[9].xyz * ray.x + object_rows[10].xyz * ray.y + object_rows[11].xyz * ray.z) * inverse_square;
+  float3 turned_centre = (object_rows[9].xyz * centre.x + object_rows[10].xyz * centre.y + object_rows[11].xyz * centre.z) * inverse_square;
+  // from under the shell only a dark sky shows it: the eye's own night
+  float eye_night = 1.f;
+  if(eye_height < aurora_floor)
+    eye_night = saturate((0.05f - dot(normalize(-turned_centre), sun_model)) / 0.2f);
+  if(eye_night <= 0.f)
+    return 0.f;
+  // the storm a little stronger under a strong star's wind
+  float wind = aurora_star_wind();
+  float level = min(aurora_level + 3.f * saturate((wind - 0.6f) / 1.4f), 9.f);
+  float time = cloud_wind_seconds;
+  float4 clip_ray = frame_rows[270] * ray.x + frame_rows[271] * ray.y + frame_rows[272] * ray.z;
+  float scene = scene_depth.Load(int3(input.pos.xy * cloud_pixel, 0));
+  float start = blue_noise.Load(int3(uint2(input.pos.xy) & 63u, 0));
+  int steps = eye_height < aurora_ceiling * 1.5f ? 32 : 16;
+  int steps_a = length_b <= 0.f ? steps : length_a <= 0.f ? 0 : clamp((int)round(steps * length_a / (length_a + length_b)), 1, steps - 1);
+  float height = ceiling_r - floor_r;
+  float3 light = 0.f;
+  [loop]
+  for(int i = 0; i != steps; ++i)
+    {
+    bool first = i < steps_a;
+    float from = first ? a0 : b0;
+    float span = first ? length_a : length_b;
+    int n = first ? steps_a : steps - steps_a;
+    float step_length = span / n;
+    float t = from + step_length * ((first ? i : i - steps_a) + start);
+    float4 clip = clip_ray * t + frame_rows[273];
+    if(clip.z < scene * clip.w)  // the depth is reversed: the scene stands nearer
+      {
+      if(first)
+        {
+        i = steps_a - 1;  // on to the far part, which lies further still: none of it shows either
+        continue;
+        }
+      break;
+      }
+    float3 p = turned_ray * t - turned_centre;
+    float r = length(ray * t - centre);
+    float h = (r - floor_r) / height;
+    if(h < 0.f || h > 1.f)
+      continue;
+    // a curtain no thinner than the step across it, or it would flicker as the ship moves
+    light += aurora_glow(normalize(p), h, level, sun_model, time, degrees(step_length / planet) * 0.5f) * (step_length / height);
+    }
+  // the light in the game's units: 120 was what aurora_gain 3 gave over 40 at an F star, faint, and clear in the game
+  // (2026-11-15, Dunkan from orbit); tuned by aurora_gain
+  float strength = aurora_strength * wind * (0.3f + 0.7f * level / 9.f) * kind * eye_night;
+  return light * strength * 120.f * frame_rows[90].y;
+  }
+
+float4 ps_main(ps_in input) : SV_TARGET
+  {
+  float3 ray = normalize(input.view);
+  float3 centre = float3(object_rows[9].w, object_rows[10].w, object_rows[11].w);
+  if(dot(input.view - centre, ray) <= 0.f)
+    discard;
+  float4 clouds = clouds_along(input, ray, centre);
+  float eye_under;
+  float3 aurora = aurora_along(input, ray, centre, eye_under);
+  // the aurora only gives light: from under the clouds it shows through their gaps, from over them it stands in front
+  float4 result = clouds + float4(aurora * lerp(1.f, 1.f - clouds.a, eye_under), 0.f);
+  if(all(result == 0.f))
+    discard;
+  return result;
   }

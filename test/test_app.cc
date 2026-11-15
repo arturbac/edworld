@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "../src/atmosphere_kind.h"
+#include "../src/aurora.h"
 #include "../src/compass_math.h"
 #include "../src/edworld_share.h"
 #include "../src/faction_list.h"
@@ -665,6 +666,8 @@ namespace
     check(argon and argon->name == "Argon" and not atmosphere_kind_of({}), "atmosphere: Argon at an M7 star; no hue, no kind");
     auto const * volcanic{atmosphere_kind_of({true, 1.3109f, 0.9524f})};
     check(volcanic and volcanic->kind == atmosphere_kind_e::neon, "atmosphere: neon over volcanism is neon");
+    auto const * ammonia_b{atmosphere_kind_of({true, 0.8800f, 1.6522f})};
+    check(ammonia_b and ammonia_b->kind == atmosphere_kind_e::ammonia, "atmosphere: ammonia's second table is ammonia");
     check(small_float(960u, 6u) == 1.f and small_float(896u, 6u) == 0.5f and small_float(512u, 5u) == 2.f and small_float(0u, 6u) == 0.f,
           "atmosphere: the table's small floats");
     // 4x4, a pitch of 32 bytes: the upper half bright (r 0.5, g 1, b 2) beside dim texels of another hue (r 1, g 0.25,
@@ -713,6 +716,73 @@ namespace
             and atmosphere_clouds_tinted(methane, -1.f).tint[1] == 1.f
             and atmosphere_clouds(atmosphere_kind_e::water, 1.f).tint[0] == 1.f and methane.tint[2] < methane.tint[0],
           "atmosphere: the tint's strength, 0 white, 2 twice as far from it, never under 0; water white, methane warm");
+
+    // the aurora (design v1, 2026-11-15)
+    bool colours{aurora_colours(atmosphere_kind_e::unknown).yield == 0.f};
+    for(std::size_t k{1u}; k != 16u; ++k)
+      {
+      auto const c{aurora_colours(static_cast<atmosphere_kind_e>(k))};
+      colours = colours and c.yield > 0.f and c.yield <= 1.f and std::max({c.low[0], c.low[1], c.low[2]}) == 1.f;
+      }
+    check(colours and aurora_colours(atmosphere_kind_e::oxygen).low[1] == 1.f and aurora_colours(atmosphere_kind_e::oxygen).high[0] == 1.f
+            and aurora_colours(atmosphere_kind_e::neon_rich).edge[0] == 1.f and aurora_colours(atmosphere_kind_e::neon).edge[0] == 0.f,
+          "aurora: every kind its colours and a yield, oxygen green low and red high, the Rich nitrogen kinds' pink edge; none unknown");
+    check(aurora_star_activity(2.04f) == 0.3f and aurora_star_activity(1.044f) == 1.f and aurora_star_activity(1.032f) == 0.6f
+            and aurora_star_activity(1.012f) == 0.5f and aurora_star_activity(1.003f) == 0.3f and aurora_star_activity(0.982f) == 0.1f
+            and std::fabs(aurora_star_wind(1.044f, 468.f) - 1.f) < 1e-6f and aurora_star_wind(1.044f, 1.f) == 0.5f
+            and aurora_star_wind(1.044f, 1e6f) == 2.f,
+          "aurora: the star's class off its light's red over green as measured, its level within 0.5..2");
+    std::uint32_t fields{}, slow_fields{}, leaning{};
+    bool unit_axis{true}, periods{true};
+    for(std::uint64_t seed{1u}; seed != 2001u; ++seed)
+      {
+      auto const fast{aurora_planet(4000e3f, 30.f * 3600.f, 2.f, false, seed)};
+      auto const slow{aurora_planet(4000e3f, 400.f * 3600.f, 0.1f, false, seed)};
+      fields += fast.field;
+      slow_fields += slow.field;
+      leaning += fast.lean_deg > 12.f;
+      unit_axis = unit_axis and std::fabs(fast.axis[0] * fast.axis[0] + fast.axis[1] * fast.axis[1] + fast.axis[2] * fast.axis[2] - 1.f) < 1e-4f
+                  and fast.axis[1] > 0.f;
+      periods = periods and fast.substorm_s >= 1.5f * 3600.f and fast.substorm_s <= 3.f * 3600.f;
+      }
+    auto const p1{aurora_planet(4000e3f, 30.f * 3600.f, 2.f, false, 77u)};
+    auto const p2{aurora_planet(4000e3f, 30.f * 3600.f, 2.f, false, 77u)};
+    check(fields > 1300u and fields < 1500u and slow_fields > 340u and slow_fields < 500u and leaning > 140u and leaning < 260u
+            and unit_axis and periods and std::memcmp(&p1, &p2, sizeof p1) == 0,
+          "aurora: a large fast planet has a field seven times in ten, a slow one a third as often; the dipole leans past 12 degrees on one in ten; the same planet the same");
+    std::uint32_t quiet{}, storms{};
+    bool bounded{true}, steady{true};
+    double const span_start{10800. * 166667.};  // a span's start, about 2027
+    for(std::int64_t block{}; block != 3000; ++block)
+      {
+      double const t{span_start + static_cast<double>(block) * 10800. + 100.};
+      float const k{aurora_storm_level(42u, t)};
+      quiet += k < 3.f;
+      storms += k >= 7.f;
+      bounded = bounded and k >= 0.f and k < 10.f;
+      steady = steady and k == aurora_storm_level(42u, t + 3600.);
+      }
+    float const before{aurora_storm_level(42u, span_start + 10800. * 5. + 9599.)};
+    float const after{aurora_storm_level(42u, span_start + 10800. * 5. + 10801.)};
+    float const edge{aurora_storm_level(42u, span_start + 10800. * 5. + 10799.99)};
+    check(bounded and steady and quiet > 1650u and quiet < 1950u and storms > 40u and storms < 160u and std::fabs(edge - after) < 0.01f
+            and std::fabs(before - aurora_storm_level(42u, span_start + 10800. * 5. + 100.)) < 1e-6f,
+          "aurora: K for each 3 h, quiet six times in ten, 7 and over rarely, the last 20 minutes going over to the next");
+    auto const calm{aurora_substorm(2.f, 7200.f, 1.8e9, 3u)};
+    float most_bright{}, most_dance{};
+    bool changes_slowly{true};
+    float last_bright{aurora_substorm(6.f, 7200.f, 1.8e9, 3u).bright};
+    for(int s{1}; s != 7200; ++s)
+      {
+      auto const sub{aurora_substorm(6.f, 7200.f, 1.8e9 + s, 3u)};
+      most_bright = std::max(most_bright, sub.bright);
+      most_dance = std::max(most_dance, sub.dance);
+      changes_slowly = changes_slowly and std::fabs(sub.bright - last_bright) < 0.05f;
+      last_bright = sub.bright;
+      }
+    check(calm.bright == 1.f and calm.shift == 0.f and calm.dance < 0.1f and most_bright <= 2.5f and most_bright > 2.f
+            and most_dance == 1.f and changes_slowly and aurora_substorm(4.f, 7200.f, 1.8e9 + 0.5 * 7200., 3u).dance <= 0.75f,
+          "aurora: no substorm under K 3; in one the whole aurora at most 2.5 times as bright and never by more than 5% a second, the dance less at K 4");
     auto const small_co2{atmosphere_lumps(atmosphere_kind_e::carbon_dioxide, 563e3f)};
     auto const neon_lumps{atmosphere_lumps(atmosphere_kind_e::neon, 5435e3f)};
     auto const helium_lumps{atmosphere_lumps(atmosphere_kind_e::helium, 7711e3f)};
