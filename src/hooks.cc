@@ -1379,20 +1379,21 @@ namespace edworld
       std::copy(c.high, c.high + 3, v + 8);
       v[11] = planet.field ? 1.f : 0.f;
       std::copy(planet.axis, planet.axis + 3, v + 12);
-      // the shell over the clouds: its floor 0.015 of the radius over the kind's top, 0.03 high (the Earth's: about 95
-      // km over the clouds, 190 km high); an effect, as the planet's gravity, and so where the air thins, is not known
-      float const floor_at{atmosphere_clouds(kind, 1.f).top + 0.015f};
-      v[15] = floor_at;
-      v[16] = floor_at + 0.03f;
+      // the shell: from where the kind's typical air over a planet of this radius thins as the Earth's over 100 km
+      // (aurora_height), to three times as high
+      aurora_height_t const height{aurora_height(kind, radius)};
+      v[15] = height.floor;
+      v[16] = height.ceiling;
       std::copy(c.edge, c.edge + 3, v + 17);
       if(atmo_aurora_radius != radius or atmo_aurora_day != (day > 0.f) or atmo_aurora_field != planet.field)
         {
         atmo_aurora_radius = radius;
         atmo_aurora_day = day > 0.f;
         atmo_aurora_field = planet.field;
-        log_line("aurora: the planet of radius %.0f m %s, the dipole leaning %.0f degrees, substorms each %.1f h, K %.1f now%s",
+        log_line("aurora: the planet of radius %.0f m %s, the dipole leaning %.0f degrees, substorms each %.1f h, K %.1f now, %.0f..%.0f km high%s",
                  double(radius), planet.field ? "has a field of its own" : "has no field of its own (a faint glow only)",
-                 double(planet.lean_deg), double(planet.substorm_s) / 3600., double(level),
+                 double(planet.lean_deg), double(planet.substorm_s) / 3600., double(level), double(height.floor * radius) / 1000.,
+                 double(height.ceiling * radius) / 1000.,
                  day > 0.f ? "" : " (its day not read yet)");
         }
       }

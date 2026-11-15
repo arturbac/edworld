@@ -7,6 +7,7 @@
 // and turn, the same planet always the same. The physics behind each number is general knowledge, not measured.
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -128,6 +129,65 @@ namespace edworld
     p.lean_deg = lean;
     p.substorm_s = (1.5f + 1.5f * aurora_unit(state)) * 3600.f;
     return p;
+    }
+
+  ///\brief a kind's typical landable planet for the aurora's height: its surface pressure (Pa) and its gravity over
+  /// its radius (1/s2, nearly the same within a kind: a like density), medians of the scans (2026-11-16, both
+  /// commanders' galaxies, 1843 planets); the temperature and the gas are atmosphere_physics_table's
+  struct aurora_air_t
+    {
+    float surface_pa, gravity_per_m;
+    };
+
+  inline constexpr std::array<aurora_air_t, 15> aurora_air_table{{
+    {165.f, 1.18e-6f},   // Ammonia
+    {615.f, 6.10e-7f},   // Argon
+    {3644.f, 7.26e-7f},  // ArgonRich
+    {1747.f, 1.16e-6f},  // CarbonDioxide
+    {6039.f, 1.55e-6f},  // CarbonDioxideRich
+    {6928.f, 1.96e-6f},  // Helium
+    {6006.f, 5.77e-7f},  // Methane
+    {2802.f, 1.58e-6f},  // MethaneRich
+    {204.f, 7.71e-7f},   // Neon
+    {1477.f, 7.89e-7f},  // NeonRich
+    {1012.f, 1.05e-6f},  // Nitrogen
+    {3767.f, 1.47e-6f},  // Oxygen
+    {4215.f, 3.35e-6f},  // SilicateVapour (one planet)
+    {274.f, 1.50e-6f},   // SulphurDioxide
+    {9352.f, 1.18e-6f},  // Water
+  }};
+
+  ///\brief the aurora's shell over the surface, as parts of the radius
+  struct aurora_height_t
+    {
+    float floor, ceiling;
+    };
+
+  ///\brief where the aurora's foot stands (design 2026-11-16): where as much gas lies over it as over the Earth's 100
+  /// km (0.032 Pa / 9.81 m/s2 a square metre), the air taken as at the surface's temperature all the way up, z = H
+  /// ln(p0 / (column g)), H = R T / (M g), from the radius and the kind's typical planet (the Earth itself gives 126 km
+  /// so). Within 20 km .. 1000 km and half the radius (past them the model fails: a small warm planet's air would
+  /// reach thousands of km), and never under the kind's clouds' top + 2 km; the ceiling three times as high (the
+  /// Earth's 100 to 300 km). An unknown kind: the Earth's 100 / 300 km
+  [[nodiscard]]
+  inline auto aurora_height(atmosphere_kind_e kind, float radius_m) noexcept -> aurora_height_t
+    {
+    if(not(radius_m > 0.f))
+      return {};
+    float foot_m{100e3f};
+    if(kind != atmosphere_kind_e::unknown)
+      {
+      std::size_t const i{static_cast<std::size_t>(kind) - 1u};
+      atmosphere_physics_t const & p{atmosphere_physics_table[i]};
+      aurora_air_t const & a{aurora_air_table[i]};
+      float const g{a.gravity_per_m * radius_m};
+      float const scale_m{8.314f * p.kelvin / (p.molar / 1000.f * g)};
+      float const aurora_pa{0.032f / 9.81f * g};
+      foot_m = a.surface_pa > aurora_pa ? scale_m * std::log(a.surface_pa / aurora_pa) : 0.f;
+      foot_m = std::clamp(foot_m, 20e3f, std::max(20e3f, std::min(1000e3f, 0.5f * radius_m)));
+      foot_m = std::max(foot_m, atmosphere_clouds(kind, 1.f).top * radius_m + 2e3f);
+      }
+    return {foot_m / radius_m, 3.f * foot_m / radius_m};
     }
 
   ///\brief how stormy it is now, as the Kp index: 0..9 for each 3 h of the time (UTC, the game's own), from the

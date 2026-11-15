@@ -440,7 +440,8 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   (`aurora_storm_level`) and the substorm (`aurora_substorm`: the whole aurora's brightness over minutes, the dance,
   the oval's shift). `atmo_aurora_values` fills values 92..111 of the volume's buffer (now 112 floats): strength,
   level, dance, shift, the low colour and the flicker, the high colour and the field, the dipole and the shell's
-  floor, its ceiling and nitrogen's edge; the floor is the kind's top + 0.015, the ceiling 0.03 over it. The VS's
+  floor, its ceiling and nitrogen's edge; the floor and the ceiling from `aurora_height` (the kind's typical air in
+  `aurora_air_table`, 2026-11-16), logged in km on the `aurora:` line. The VS's
   sphere reaches the ceiling while there is an aurora. `clouds3d.hlsl`: `ps_main` adds `aurora_along` to
   `clouds_along` (the old body, whose misses return 0 instead of discarding), times 1 - the clouds' cover when the eye
   is under the clouds' top; `aurora_along` marches the shell's part before the floor and the part past it (none when

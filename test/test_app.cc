@@ -732,6 +732,23 @@ namespace
             and std::fabs(aurora_star_wind(1.044f, 468.f) - 1.f) < 1e-6f and aurora_star_wind(1.044f, 1.f) == 0.5f
             and aurora_star_wind(1.044f, 1e6f) == 2.f,
           "aurora: the star's class off its light's red over green as measured, its level within 0.5..2");
+    bool heights{true};
+    for(std::size_t k{1u}; k != 16u; ++k)
+      for(float r{300e3f}; r < 8000e3f; r *= 1.5f)
+        {
+        auto const kind{static_cast<atmosphere_kind_e>(k)};
+        auto const h{aurora_height(kind, r)};
+        float const foot{h.floor * r};
+        heights = heights and std::fabs(h.ceiling - 3.f * h.floor) < 1e-6f and foot >= 20e3f - 1.f
+                  and foot >= atmosphere_clouds(kind, 1.f).top * r + 2e3f - 1.f
+                  and (foot <= std::max(20e3f, std::min(1000e3f, 0.5f * r)) + 1.f or foot <= atmosphere_clouds(kind, 1.f).top * r + 2e3f + 1.f);
+        }
+    auto const neon_height{aurora_height(atmosphere_kind_e::neon, 6216219.f)};
+    auto const co2_height{aurora_height(atmosphere_kind_e::carbon_dioxide, 3105606.f)};
+    auto const unknown_height{aurora_height(atmosphere_kind_e::unknown, 3000e3f)};
+    check(heights and std::fabs(neon_height.floor * 6216219.f - (atmosphere_clouds(atmosphere_kind_e::neon, 1.f).top * 6216219.f + 2e3f)) < 1.f
+            and co2_height.floor * 3105606.f > 100e3f and co2_height.floor * 3105606.f < 130e3f and std::fabs(unknown_height.floor * 3000e3f - 100e3f) < 1.f,
+          "aurora: its foot where the kind's air thins as the Earth's over 100 km, within 20..1000 km and half the radius, over the clouds; the ceiling three times as high");
     std::uint32_t fields{}, slow_fields{}, leaning{};
     bool unit_axis{true}, periods{true};
     for(std::uint64_t seed{1u}; seed != 2001u; ++seed)

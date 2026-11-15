@@ -9,7 +9,8 @@
   its own and the same for everyone. In a substorm the aurora brightens over minutes and dances in seconds: waves
   run along its arcs, curtains fold, rays light up. One arc in a quiet sky, two in a storm, a third while a strong
   substorm expands, each broken by gaps; a bright part is wider and taller than a faint one. Each arc wiggles across
-  itself on its own and winds into curls here and there. Settings `aurora`, `aurora_gain`, `aurora_activity`,
+  itself on its own and winds into curls here and there. It stands as high as the kind's air makes it: low over the
+  cold, thin neon worlds, hundreds of km up over small carbon dioxide and ammonia worlds. Settings `aurora`, `aurora_gain`, `aurora_activity`,
   `aurora_dance`, `aurora_flicker`, and for a look on any planet `aurora_field`; doc/auroras.md says how, which colours there are and how often.
 - **A second ammonia.** The game draws some ammonia atmospheres in a colour of their own, so edworld did not know
   such a planet and gave it the default clouds. Now it is ammonia too.

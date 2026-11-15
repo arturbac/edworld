@@ -1,7 +1,7 @@
 # Auroras
 
 On a planet whose atmosphere's kind is known (`aurora = 1`), edworld draws an aurora over the night side: an oval of
-curtains around each magnetic pole, between 1.5% and 4.5% of the radius over the clouds' top, in the colours of the
+curtains around each magnetic pole, as high as its kind's air makes it (below), in the colours of the
 planet's gas. Like the clouds it comes from what the game draws only. The game models no magnetic field, no star's
 wind and no storms, so most of what makes an aurora is a guess, the same planet always the same and the same for
 everyone. This page says what is read, what is physics carried over from the Earth, and what is a choice, then
@@ -28,7 +28,7 @@ channel 1, so the kinds' different yields are not shown. Nitrogen's pink edge is
 | a bright part of an arc wider, lower at its foot and taller | more and harder particles go deeper | physics, the amounts a choice |
 | whether a planet has a field | a dynamo needs a large, turning, warm inside | the reason physics, the chances a choice |
 | how active a star is for its class | convective envelopes: M most, hot stars little | the order physics, the numbers a choice |
-| how high the shell is | - | a choice: the planet's gravity is not known, so not its scale height |
+| how high it stands | where the air thins as the Earth's over 100 km: the scale height from the gas, the temperature and the gravity, and the surface pressure | physics with the kind's typical planet (the radius read off the render), the air taken as at the surface's temperature all the way up; the bounds a choice |
 | how much the curtains dance, the gaps along an arc, the local wiggles and curls | substorms, Alfvén waves, the instabilities of the sheet of current (on the Earth curls of 5-10 km, folds of 20-50 km) | how fast and how much a choice |
 
 ## Colours by atmosphere
@@ -100,6 +100,25 @@ minutes, about half of it dark in a quiet sky, a quarter in a strong storm, more
 one place there may be none, one, two or three. Where an arc is bright it is wider, its foot lower and its rays
 taller; a faint part stands higher, thin and short. Curtains are sharp at their foot and fade upward, coloured from
 the gas's low colour to its high one.
+
+**How high.** On the Earth an aurora's foot stands about 100 km up, where the electrons have gone through as much
+air as lies over it; its red tops reach 300 km and more. edworld puts the foot where as much of the kind's air lies
+over it: the scale height H = R T / (M g) from the gas, the surface's temperature and the gravity, and the surface
+pressure, z = H ln(p0 / p100), p100 the Earth's 0.032 Pa scaled by the gravity. edworld reads only the radius, so it
+takes the kind's typical planet (the medians of 1843 scanned planets; the gravity over the radius is nearly the same
+within a kind) and the air as at the surface's temperature all the way up (the Earth itself comes out at 126 km so).
+The foot stays within 20 km .. 1000 km and half the radius, where this model fails (a small warm planet's air would
+reach thousands of km), and over the clouds' top; the ceiling is three times as high. The game draws every
+atmosphere's shell about 95 km high whatever the planet (measured on 53 planets), so the aurora of a cold neon world
+(about 40 km, over its clouds) stands in the game's sky, and that of a small carbon dioxide or ammonia world (200-500
+km) far over it.
+
+| kind | the foot on the typical planet |
+|---|---|
+| Neon, NeonRich | 20-60 km, mostly over the clouds' top |
+| SulphurDioxide, Argon, Nitrogen, ArgonRich, Helium, MethaneRich | 80-110 km |
+| CarbonDioxideRich, Oxygen, CarbonDioxide (large) | 115-160 km |
+| CarbonDioxide (small), Ammonia, Methane, Water | 200 km up to half the radius |
 
 **Where on the planet.** The oval lies about the magnetic pole, whose dipole leans 0-12° off the axis the planet
 turns on on nine planets of ten and 15-60° on the tenth (as Uranus); it turns with the planet, so the oval sways in
