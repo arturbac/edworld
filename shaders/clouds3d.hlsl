@@ -513,20 +513,49 @@ float aurora_star_wind()
   return activity * clamp(sqrt(max(star.g, 0.f) / 468.f), 0.5f, 2.f);
   }
 
-// one arc of curtains at magnetic latitude north, its own brightness here 0..1: a bright part comes from more and harder
-// particles, which go deeper, light the curtain higher and spread it wider; a faint one stands higher, short and thin
-float aurora_arc(float north, float centre, float thick, float thick_least, float h, float bright)
+// one arc of curtains, across degrees from its middle (aurora_across), its own brightness here 0..1: a bright part
+// comes from more and harder particles, which go deeper, light the curtain higher and spread it wider; a faint one
+// stands higher, short and thin
+float aurora_arc(float across, float thick, float thick_least, float h, float bright)
   {
   float wide = max(thick * (0.7f + 0.6f * bright), thick_least);
   float above = h - 0.08f * (1.f - bright);
-  return exp(-pow((north - centre) / wide, 2.f)) * saturate(above / 0.04f) * exp(-max(above, 0.f) / (0.28f * (0.7f + 0.6f * bright)));
+  return exp(-pow(across / wide, 2.f)) * saturate(above / 0.04f) * exp(-max(above, 0.f) / (0.28f * (0.7f + 0.6f * bright)));
+  }
+
+// how far across an arc whose middle lies at magnetic latitude centre the point at north is, degrees, with the arc's
+// own local folds, each arc its own (seed): a fine wiggle across it, about 40 along the oval, changing in about a
+// second and drifting along it, 1.5 times the arc's thickness at most; and curls, where the arc winds into an S about
+// a vortex: one of 24 cells round the oval holds one at a time, about a third of them in a quiet sky to 70% in a
+// substorm, each growing and fading over 8 seconds, at most 2.5 radians round within twice the arc's thickness. dance
+// 0 keeps the arc still
+float aurora_across(float north, float centre, float angle, float seed, float thick, float time, float dance)
+  {
+  float n = north - centre;
+  if(dance <= 0.f)
+    return n;
+  float amount = 0.5f + 0.5f * saturate(dance);
+  n -= amount * 1.5f * thick * (noise(float3(angle * 6.4f - time * 0.5f, seed, time * 0.8f)) * 2.f - 1.f);
+  float c = angle * 3.8197f + seed;
+  float cell = floor(c);
+  float when = time / 8.f + hash(float3(cell, seed, 3.f));
+  float3 k = float3(cell, floor(when), seed);
+  if(hash(k) > 0.25f + 0.45f * saturate(dance))
+    return n;
+  // the vortex's middle along the cell and across the arc; along in degrees on the sphere at the arc's colatitude
+  float middle = (hash(k + 2.f) - 0.5f) * thick;
+  float2 p = float2((c - cell - 0.3f - 0.4f * hash(k + 1.f)) / 3.8197f * sin(radians(90.f - centre)) * 57.29578f, n - middle);
+  float r = 2.f * thick;
+  float turn = (hash(k + 3.f) > 0.5f ? 1.f : -1.f) * (1.f + 1.5f * saturate(dance)) * amount * sin(3.14159f * frac(when))
+               * exp(-dot(p, p) / (r * r));
+  return p.x * sin(turn) + p.y * cos(turn) + middle;
   }
 
 // where along the oval an arc lights at all, 0..1: parts of it go dark, more of them as gaps is higher (0.38 about a
 // quarter, 0.52 about a half); each arc its own (seed), drifting over minutes, faster in a substorm
 float aurora_lit(float2 circle, float seed, float gaps, float time, float dance)
   {
-  return smoothstep(gaps, gaps + 0.12f, noise(float3(circle * 6.f + seed, time * (0.02f + 0.1f * dance))));
+  return smoothstep(gaps, gaps + 0.12f, noise(float3(circle * 3.f + seed, time * (0.02f + 0.1f * dance))));
   }
 
 // the aurora's light at dir (the planet's frame, unit) and h (0 the shell's floor .. 1 its ceiling): the oval about the
@@ -568,7 +597,7 @@ float3 aurora_glow(float3 dir, float h, float level, float3 sun_model, float tim
   float diffuse = 0.04f * exp(-pow((north - (boundary + width * 0.5f)) / (width * 0.6f), 2.f));
   // far from every arc: no noise to work out
   float off = north - centre;
-  float reach = 3.f * max(thick * 1.3f, thick_least) + abs(fold);
+  float reach = 3.f * max(thick * 1.3f, thick_least) + abs(fold) + 4.f * thick;
   if((off < -reach || off > reach + width * (third > 0.f ? 0.85f : 0.45f)) && diffuse < 0.002f)
     return 0.f;
   // the waves of brightness running along the arc, a few times as bright here and less there; the aurora as a whole
@@ -581,9 +610,13 @@ float3 aurora_glow(float3 dir, float h, float level, float3 sun_model, float tim
   float lit1 = aurora_lit(circle, 0.f, gaps, time, dance);
   float lit2 = second > 0.f ? aurora_lit(circle, 23.f, gaps, time, dance) : 0.f;
   float lit3 = third > 0.f ? aurora_lit(circle, 47.f, gaps, time, dance) : 0.f;
-  float arc = lit1 * aurora_arc(north, centre, thick, thick_least, h, saturate(lit1 * waves / 2.f))
-              + second * lit2 * aurora_arc(north, centre + width * 0.45f + 0.5f * fold, thick * 1.3f, thick_least, h, saturate(lit2 * waves / 2.f))
-              + third * lit3 * aurora_arc(north, centre + width * 0.85f + 0.7f * fold, thick * 1.1f, thick_least, h, saturate(lit3 * waves / 2.f));
+  float arc = 0.f;
+  if(lit1 > 0.f)
+    arc += lit1 * aurora_arc(aurora_across(north, centre, angle, 0.f, thick, time, dance), thick, thick_least, h, saturate(lit1 * waves / 2.f));
+  if(lit2 > 0.f)
+    arc += second * lit2 * aurora_arc(aurora_across(north, centre + width * 0.45f + 0.5f * fold, angle, 23.f, thick * 1.3f, time, dance), thick * 1.3f, thick_least, h, saturate(lit2 * waves / 2.f));
+  if(lit3 > 0.f)
+    arc += third * lit3 * aurora_arc(aurora_across(north, centre + width * 0.85f + 0.7f * fold, angle, 47.f, thick * 1.1f, time, dance), thick * 1.1f, thick_least, h, saturate(lit3 * waves / 2.f));
   if(arc < 0.002f && diffuse < 0.002f)
     return 0.f;
   // the rays along the arc, moving faster and lighting up in a substorm

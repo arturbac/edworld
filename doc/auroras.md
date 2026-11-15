@@ -29,7 +29,7 @@ channel 1, so the kinds' different yields are not shown. Nitrogen's pink edge is
 | whether a planet has a field | a dynamo needs a large, turning, warm inside | the reason physics, the chances a choice |
 | how active a star is for its class | convective envelopes: M most, hot stars little | the order physics, the numbers a choice |
 | how high the shell is | - | a choice: the planet's gravity is not known, so not its scale height |
-| how much the curtains dance, the gaps along an arc | substorms, Alfvén waves | how fast and how much a choice |
+| how much the curtains dance, the gaps along an arc, the local wiggles and curls | substorms, Alfvén waves, the instabilities of the sheet of current (on the Earth curls of 5-10 km, folds of 20-50 km) | how fast and how much a choice |
 
 ## Colours by atmosphere
 
@@ -84,10 +84,14 @@ what moves in seconds is local:
 
 - waves of brightness running along the arcs, three times as bright here and a third there;
 - curtains folding and swaying by a degree or two;
+- each arc wiggling across itself on its own, in bumps a fortieth of the oval long that change in about a second and
+  drift along it, by up to 1.5 times its thickness (half that in a quiet sky);
+- curls: here and there an arc winds into an S about a small vortex that grows and fades over 8 seconds, in about a third
+  of the oval's 24 parts at a time in a quiet sky, up to 70% in a substorm;
 - rays moving along the arc and lighting up for a moment;
 - small patches flickering about 8 times a second, at most 15% (`aurora_flicker = 0` turns this off).
 
-`aurora_dance` scales all of it (`0` = a still aurora); a weak storm dances less, three quarters at level 4.
+`aurora_dance` scales all of it (`0` = a still aurora, without wiggles and curls); a weak storm dances less, three quarters at level 4.
 
 **The arcs.** One arc in a quiet sky; a second one poleward of it from level 3; a third further poleward while a
 substorm expands from level 6 (by the time alone about 7.5% of the time is at level 6 or more, and the expansion is a

@@ -447,7 +447,9 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   the planet stands between), 32 steps near, 16 far, ending at the scene; `aurora_glow` the oval about the dipole
   with the angle from midnight (the seam of what is noised along it falls at noon), up to three arcs (`aurora_arc`:
   width, foot and height by the arc's brightness there; the second from level 3, the third while the dance is over
-  0.7 from level 6), each lit where its own noise (`aurora_lit`) passes the gaps' threshold, the curtains no thinner than half
+  0.7 from level 6), each lit where its own noise (`aurora_lit`, about 10-20 parts round the oval) passes the gaps' threshold, each
+  with its own local folds (`aurora_across`: a fine wiggle across the arc and curls, a vortex in some of 24 cells that
+  turns the arc's local frame by up to 2.5 radians within twice its thickness), the curtains no thinner than half
   a step, the night side only, from under the floor only while the eye's own sky is dark. Its light is 120 times
   `frame_rows[90].y` (40 was faint at an F star, 2026-11-15), scaled by `aurora_gain`.
 - (both builds, `clouds_cyclones`, 2026-11-10) Storms. The planet's day is read off the shell's object
