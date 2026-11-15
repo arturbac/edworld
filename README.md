@@ -31,7 +31,7 @@ strong ones towering, and each kind's clouds have a colour of their own.
 
 ![A methane world's cloud deck under the star, seen from the ground](doc/images/clouds-weather.jpg)
 
-How the clouds follow the physics, and where to look for cyclones: [doc/clouds.md](doc/clouds.md).
+How the clouds follow the physics, and where to look for cyclones: [doc/clouds.md](doc/clouds.md). The aurora, its colours and how often each shows: [doc/auroras.md](doc/auroras.md).
 
 ## Navballs, testers wanted
 
