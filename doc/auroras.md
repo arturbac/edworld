@@ -108,26 +108,27 @@ whatever the guess; `0` = never).
 
 ## Examples
 
-Landable planets with the best chance of a field in each kind, from the author's scans (radius, the star class read
-as edworld reads it, left out for hotter or unknown stars, the chance). Whether a given one has a field is still the draw from its seed.
+Landable planets in the Bubble (within 250 ly of Sol) with the best chance of a field in each kind, from the
+author's scans (radius, the star class read as edworld reads it, left out for hotter or unknown stars, the chance).
+Whether a given one has a field is still the draw from its seed.
 
 | kind | planets |
 |---|---|
-| CarbonDioxide | Gludgae LD-K d8-48 3 (7073 km, F, 70%); Leamue HI-B d13-1194 5 (6830 km, 70%); Hegoae JR-W d1-3 A 6 (6822 km, 70%) |
-| Neon | Eoch Pruae YZ-P e5-2822 13 a (7555 km, brown dwarf, 91%); Bleia Eohn UC-C b33-2 A 9 (6929 km, M, 91%); Gludgae OC-P b33-1 5 (6893 km, M, 91%) |
-| SulphurDioxide | Spoihee QJ-Q e5-415 6 h (4122 km, brown dwarf, 70%); Spoihee QZ-O e6-466 D 4 (3786 km, G, 70%); Hegai BF-Q d5-6 2 (3613 km, F, 70%) |
-| Argon | Leamue DS-B d13-953 AB 1 f (4456 km, brown dwarf, 70%); Spoihee IU-D d13-135 AB 8 a (4278 km, 70%); Blanco 1 Sector IH-V d2-2 11 h (3983 km, F, 70%) |
-| Ammonia | HIP 81259 B 9 a (2480 km, F, 40%); Gludgai QM-W d1-33 C 4 (2431 km, brown dwarf, 40%); Dryoea Flyoo TA-L d9-116 A 2 (2284 km, 40%) |
-| NeonRich | Dryoea Flyoo PI-B e428 B 4 (10768 km, M, 70%); Fedgau TW-U c19-0 7 (10749 km, G, 70%); Spoihee SX-J c25-64 10 (7823 km, K, 70%) |
-| Methane | Pru Theia HC-E c27-0 2 (3962 km, K, 70%); Aurai 1 a (1017 km, M, 40%) |
-| Nitrogen | Col 285 Sector QO-N b21-5 B 6 (4973 km, M, 70%); Ploea Eurl VN-S d4-1 B 9 a (4451 km, K, 70%); Nyeajeau UA-L b9-0 1 (4332 km, M, 70%) |
-| ArgonRich | Leamue FN-B d13-455 B 5 and B 6 (4793 and 4679 km, M, 70%); Spoihee KP-D d13-22 C 5 a (4657 km, K, 70%) |
-| CarbonDioxideRich | Col 359 Sector MM-U d3-47 4 (6486 km, F, 70%); Fedgau ZD-A d1-2 4 a (4119 km, F, 70%) |
-| Helium | Gludgai PN-K d8-6 8 and 9 (9256 and 9265 km, F, 70%); Scorpii Sector SO-R b4-11 A 1 (8626 km, M, 70%) |
-| MethaneRich | Fedgau HE-S c20-1 6 (3942 km, G, 70%); Pru Theia WO-W c16-0 A 5 (3901 km, K, 70%) |
-| Water | none likely: all small (under 500 km), 4% |
-| Oxygen | Leamue II-B d13-1715 9 a (3068 km, F, 70%) |
-| SilicateVapour | NGC 2546 Sector OI-A d1-8 A 1 (4330 km, F, 70%) |
+| CarbonDioxide | Ngardinja 4 (3512 km, F, 70%); MCC 515 CD 3 (3217 km, 70%); Marsinatani A 3 (3018 km, G, 70%) |
+| Neon | Col 285 Sector BH-I b24-10 6 (6466 km, M, 91%); Trianguli Sector EM-L a8-0 1 (6223 km, brown dwarf, 91%); Col 285 Sector RX-Q a48-3 1 (6131 km, brown dwarf, 91%) |
+| SulphurDioxide | Ngardinja 1 (2985 km, F, 40%); HIP 10050 A 6 (2924 km, 40%); HIP 90112 2 (2568 km, K, 40%) |
+| Argon | Jimatch 7 a (3783 km, brown dwarf, 70%); Col 285 Sector FD-F b26-0 3 a (3710 km, M, 70%); Col 285 Sector AR-C c13-35 3 (3645 km, K, 70%) |
+| Ammonia | Xinca 5 a (1540 km, F, 40%); Pawilatal 3 d (2565 km, K, 12%); Njunmin B 6 (1684 km, brown dwarf, 12%) |
+| NeonRich | Harermid B 7 (7172 km, brown dwarf, 70%); LTT 74 4 (6997 km, K, 70%); Col 285 Sector CA-E b13-1 A 8 (6762 km, M, 70%) |
+| Methane | Aurai 1 a (1017 km, M, 40%); LP 385-58 A 2 d (715 km, M, 4%); Jolapa 6 a (677 km, K, 4%) |
+| Nitrogen | Col 285 Sector QO-N b21-5 B 6 (4973 km, M, 70%); Col 285 Sector TS-Q a48-1 1 (3743 km, M, 70%); Tangkan A 2 (3582 km, M, 70%) |
+| ArgonRich | Col 285 Sector MZ-C b27-6 1 (4425 km, M, 70%); Col 285 Sector CA-E b13-1 A 3 (4312 km, M, 70%); Alrai Sector CL-X b1-5 2 (3370 km, M, 70%) |
+| CarbonDioxideRich | Yer Tanri 2 (3798 km, G, 21%) |
+| Helium | Scorpii Sector SO-R b4-11 A 1 (8626 km, M, 70%); Col 285 Sector YW-G b25-6 9 (7952 km, M, 70%) |
+| MethaneRich | none in the Bubble in the author's scans |
+| Water | Col 285 Sector IS-A c14-4 C 3 (428 km, brown dwarf, 4%) |
+| Oxygen | MCC 515 CD 4 (3070 km, 21%) |
+| SilicateVapour | none in the Bubble in the author's scans |
 
 ## What is not modelled
 
