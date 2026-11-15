@@ -519,15 +519,15 @@ float aurora_star_wind()
 // it fades upward slowly, as the particles light the air all the way down to where they stop. Its edges frayed, each
 // arc its own (seed), along it by u (the rays' scale, about 3 km a unit): the foot by a small, fast noise at the
 // rays' scale and four times finer, about 3% of the shell up or down; the top by how far each ray reaches (0.4..1.6,
-// slower, at the rays' scale and three times coarser) and by holes and wisps cut by a noise along the arc and up,
-// none low, most at the top
+// changing in about a second, at the rays' scale and three times coarser) and by holes and wisps cut by a noise along
+// the arc and up that changes its shape in about a second, drifting up a little, none low, most at the top
 float aurora_arc(float across, float thick, float thick_least, float h, float bright, float u, float seed, float time)
   {
   float wide = max(thick * (0.7f + 0.6f * bright), thick_least);
   float fray = noise(float3(u + seed, time * 3.f, 1.7f)) - 0.5f + 0.5f * (noise(float3(u * 4.f + seed, time * 5.f, 4.1f)) - 0.5f);
   float above = h - 0.08f * (1.f - bright) - 0.04f * fray;
-  float reach = 0.4f + 1.2f * saturate(0.6f * noise(float3(u + seed, 2.3f, time * 0.3f)) + 0.6f * noise(float3(u / 3.f + seed, 6.1f, time * 0.15f)) - 0.1f);
-  float wisps = lerp(1.f, smoothstep(0.35f, 0.65f, noise(float3(u * 2.f + seed, h * 12.f - time * 0.5f, 8.3f))), smoothstep(0.f, 0.9f, h));
+  float reach = 0.4f + 1.2f * saturate(0.6f * noise(float3(u + seed, 2.3f, time * 1.5f)) + 0.6f * noise(float3(u / 3.f + seed, 6.1f, time * 0.75f)) - 0.1f);
+  float wisps = lerp(1.f, smoothstep(0.35f, 0.65f, noise(float3(u * 2.f + seed, h * 12.f - time * 0.15f, time * 1.2f + 8.3f))), smoothstep(0.f, 0.9f, h));
   return exp(-pow(across / wide, 2.f)) * saturate(above / 0.04f) * exp(-max(above, 0.f) / (0.6f * (0.7f + 0.6f * bright) * reach)) * wisps;
   }
 
@@ -560,10 +560,13 @@ float aurora_across(float north, float centre, float angle, float seed, float sw
   }
 
 // where along the oval an arc lights at all, 0..1: parts of it go dark, more of them as gaps is higher (0.38 about a
-// quarter, 0.52 about a half); each arc its own (seed), drifting over minutes, faster in a substorm
-float aurora_lit(float2 circle, float seed, float gaps, float time, float dance)
+// quarter, 0.52 about a half); each arc its own (seed), drifting over minutes, faster in a substorm. And locally, by u
+// (the rays' scale): stretches of about 25 km light and go dark on their own in about 0.3..2 seconds, some 20% of the
+// arc dark at a time, the change never quicker than about 0.3 s
+float aurora_lit(float2 circle, float seed, float gaps, float time, float dance, float u)
   {
-  return smoothstep(gaps, gaps + 0.12f, noise(float3(circle * 3.f + seed, time * (0.02f + 0.1f * dance))));
+  return smoothstep(gaps, gaps + 0.12f, noise(float3(circle * 3.f + seed, time * (0.02f + 0.1f * dance))))
+         * smoothstep(0.35f, 0.5f, noise(float3(u / 8.f + seed, time * 1.5f, 11.3f)));
   }
 
 // the aurora's light at dir (the planet's frame, unit) and h (0 the shell's floor .. 1 its ceiling): the oval about the
@@ -619,12 +622,12 @@ float3 aurora_glow(float3 dir, float h, float level, float3 sun_model, float tim
   // (the oval still pushed poleward, the dance fading)
   float recovering = saturate(aurora_shift / 3.f) * saturate(1.f - dance);
   float gaps = 0.52f - 0.14f * saturate((level - 2.f) / 5.f) + 0.1f * recovering;
-  float lit1 = aurora_lit(circle, 0.f, gaps, time, dance);
-  float lit2 = second > 0.f ? aurora_lit(circle, 23.f, gaps, time, dance) : 0.f;
-  float lit3 = third > 0.f ? aurora_lit(circle, 47.f, gaps, time, dance) : 0.f;
   // the rays about 3 km wide: the angle's length along the arc at its colatitude
   float ray_scale = planet * sin(radians(90.f - centre)) / 3000.f;
   float u = angle * ray_scale;
+  float lit1 = aurora_lit(circle, 0.f, gaps, time, dance, u);
+  float lit2 = second > 0.f ? aurora_lit(circle, 23.f, gaps, time, dance, u) : 0.f;
+  float lit3 = third > 0.f ? aurora_lit(circle, 47.f, gaps, time, dance, u) : 0.f;
   float arc = 0.f;
   if(lit1 > 0.f)
     arc += lit1 * aurora_arc(aurora_across(north, centre, angle, 0.f, sway, time, dance), thick, thick_least, h, saturate(lit1 * waves / 2.f), u, 0.f, time);

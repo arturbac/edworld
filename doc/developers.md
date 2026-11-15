@@ -448,7 +448,8 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   the planet stands between), 32 steps near, 16 far, ending at the scene; `aurora_glow` the oval about the dipole
   with the angle from midnight (the seam of what is noised along it falls at noon), up to three arcs (`aurora_arc`:
   width, foot and height by the arc's brightness there; the second from level 3, the third while the dance is over
-  0.7 from level 6), each lit where its own noise (`aurora_lit`, about 10-20 parts round the oval) passes the gaps' threshold, each
+  0.7 from level 6), each lit where its own noise (`aurora_lit`, about 10-20 parts round the oval) passes the gaps' threshold, times
+  a fast local one (stretches of about 25 km, 0.3-2 s), each
   with its own local folds (`aurora_across`: a fine wiggle across the arc and curls, a vortex in some of 24 cells that
   turns the arc's local frame by up to 2.5 radians within twice the sway, the old arcs' 0.35-0.5°), the curtains 4 km
   thin (`thick` from the planet's radius, 2026-11-16) and no thinner than half a step, fading upward over 0.6 of the
