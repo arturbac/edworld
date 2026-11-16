@@ -12,6 +12,8 @@
   (`compass_hide_game` 1, was 0); it returns whenever edworld is not there.
 - **The pads' disc turns yellow and red later:** green up to 15 degrees of tilt, red from 35 (`pad_tilt_green_deg`,
   `pad_tilt_red_deg`, were 10 and 20).
+- **A whole-frame dump also on the galaxy map** (edworld_dump_all, EHT's F10): without panels drawn a frame begins at
+  any draw after a gap; before, the dump waited for the next panel.
 
 ## 1.2.0-beta.12
 

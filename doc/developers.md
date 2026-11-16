@@ -101,7 +101,9 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   (`<stamp>_g<draw>_<what>.bin`, the draw's arguments in the log); `tools/geometry_dump.py <log> <dir>` says which
   rectangle of its surface each draw shows and where its corners land.
 - On request, dumps a whole frame: an empty file `edworld_dump_all` in the log folder, or (edworld_eht) a change of
-  the file `dump` in `shm_dir`, which the data source writes when its key for it is pressed (EHT: F10). Every draw of
+  the file `dump` in `shm_dir`, which the data source writes when its key for it is pressed (EHT: F10). A frame begins
+  at a panel draw after a gap of `frame_gap_us`; with no panel drawn for 200 ms (the galaxy map) and a whole-frame dump
+  asked, at any draw of the immediate context after such a gap since the end of the draw before. Every draw of
   the next frame on the immediate context gets a line `a<draw> <kind> vs <hash> count .. inst .. vp .. rt <w>x<h> f<fmt> at <id>` (the
   target's low 32 address bits, as the pixel shader's textures are listed) in
   `<stamp>_draws.txt` and the first 1024 bytes of its VS constant buffers 0..3 as `<stamp>_a<draw>_cb<slot>.bin`, up

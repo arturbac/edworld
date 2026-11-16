@@ -262,6 +262,7 @@ namespace edworld
     int recording{-1};
     std::uint64_t frame{};
     LONGLONG last_draw_qpc{};
+    LONGLONG last_any_draw_qpc{};  ///< the end of the immediate context's last draw, for frames without panels
     LONGLONG qpc_frequency{1};
 
     // ---- statistics for the log ----
@@ -1852,7 +1853,7 @@ namespace edworld
 
     auto full_trigger_path() -> std::wstring { return settings().dir + L"\\edworld_dump_all"; }
 
-    auto check_full(LONGLONG now) noexcept -> void
+    auto check_full(LONGLONG now, bool panels) noexcept -> void
       {
       if(full_armed)
         {
@@ -1879,7 +1880,7 @@ namespace edworld
           std::uint32_t contexts{};
           for(std::atomic<ID3D11DeviceContext *> const & slot: full_other)
             contexts += slot.load(std::memory_order_relaxed) ? 1u : 0u;
-          log_line("dump: the frame ended %.2f ms after arming, at a panel draw after a gap of %lld us (frame_gap_us %u); "
+          log_line("dump: the frame ended %.2f ms after arming, at a draw after a gap of %lld us (frame_gap_us %u); "
                    "draws of other contexts meanwhile %u in %u context(s)%s (not recorded)",
                    static_cast<double>(now - full_armed_qpc) * 1000.0 / static_cast<double>(qpc_frequency),
                    frame_gap_qpc * 1000000 / qpc_frequency, settings().frame_gap_us, full_other_draws.load(), contexts,
@@ -1895,8 +1896,9 @@ namespace edworld
         }
       if(not asked)
         return;
-      // the surfaces of the same frame, as edworld_dump makes them (unless that dump is armed already)
-      if(not dump_armed)
+      // the surfaces of the same frame, as edworld_dump makes them (unless that dump is armed already; not in a frame
+      // without panels, which has none)
+      if(panels and not dump_armed)
         {
         dump_armed = true;
         dump_frame = frame;
@@ -1927,7 +1929,9 @@ namespace edworld
 
     auto holo_end_laying_over() noexcept -> void;
 
-    auto begin_frame(LONGLONG now) noexcept -> void
+    ///\brief panels: a panel draw began the frame; without (frame_without_panels) a surface dump is not armed or closed
+    /// there, it waits for a frame with panels
+    auto begin_frame(LONGLONG now, bool panels = true) noexcept -> void
       {
       if(recording >= 0 and ring[recording].count)
         ring[recording].filled = true;
@@ -1949,8 +1953,9 @@ namespace edworld
       if(pending_buffer_count)
         write_buffers(now);
       guarded_atmo_drain(now);
-      check_trigger(now);
-      check_full(now);
+      if(panels)
+        check_trigger(now);
+      check_full(now, panels);
       if(full_done_waiting and not full_armed and pending_count == 0 and pending_buffer_count == 0)
         finish_full();
       if constexpr(not with_eht)
@@ -2313,6 +2318,57 @@ namespace edworld
         {
         note_fault();
         }
+      }
+
+    // without panels (the galaxy map, 2026-11-16: F10 there dumped nothing) no panel draw begins a frame: once none came
+    // for panel_less_ms, while a whole-frame dump is asked or under way, a draw of the immediate context after a gap of
+    // frame_gap_us since the end of the one before begins one, so the dump still comes (only then: a surface dump still
+    // waits for a frame with panels)
+    constexpr LONGLONG panel_less_ms{200};
+    LONGLONG last_panel_less_check{};
+
+    auto full_dump_wanted(LONGLONG now) noexcept -> bool
+      {
+      if(full_armed or full_done_waiting or pending_count or pending_buffer_count or full_dump_request.load(std::memory_order_relaxed))
+        return true;
+      if((now - last_panel_less_check) * 1000 / qpc_frequency < 500)
+        return false;
+      last_panel_less_check = now;
+      return GetFileAttributesW(full_trigger_path().c_str()) != INVALID_FILE_ATTRIBUTES;
+      }
+
+    auto frame_without_panels(ID3D11DeviceContext * ctx) noexcept -> void
+      {
+      if(ctx != immediate.load(std::memory_order_relaxed))
+        return;
+      LONGLONG const now{qpc_now()};
+      if((now - last_draw_qpc) * 1000 / qpc_frequency < panel_less_ms or not full_dump_wanted(now))
+        return;
+      if((now - last_any_draw_qpc) * 1000000 / qpc_frequency > settings().frame_gap_us)
+        {
+        frame_gap_qpc = now - last_any_draw_qpc;
+        begin_frame(now, false);
+        }
+      }
+
+    auto guarded_frame_without_panels(ID3D11DeviceContext * ctx) noexcept -> void
+      {
+      __try
+        {
+        frame_without_panels(ctx);
+        }
+      __except(EXCEPTION_EXECUTE_HANDLER)
+        {
+        note_fault();
+        }
+      }
+
+    ///\brief the end of a draw of the immediate context (after edworld's own work in it, a dump's copies: no gap of the
+    /// game's)
+    auto note_draw_end(ID3D11DeviceContext * ctx) noexcept -> void
+      {
+      if(ctx == immediate.load(std::memory_order_relaxed))
+        last_any_draw_qpc = qpc_now();
       }
 
     // the list under the jump panel, right after the game's draw of it; SEH as around the observation
@@ -4742,6 +4798,8 @@ namespace edworld
     void STDMETHODCALLTYPE hook_draw_indexed(ID3D11DeviceContext * self, UINT index_count, UINT start_index, INT base_vertex)
       {
       census_note(self);
+      if(not disabled.load(std::memory_order_relaxed))
+        guarded_frame_without_panels(self);
       if(full_armed)
         {
         if(self == immediate.load(std::memory_order_relaxed))
@@ -4769,11 +4827,14 @@ namespace edworld
         guarded_full_after(self);
       if(watched)
         guarded_after(self, index_count, start_index, base_vertex, 0);
+      note_draw_end(self);
       }
 
     void STDMETHODCALLTYPE hook_draw(ID3D11DeviceContext * self, UINT vertex_count, UINT start_vertex)
       {
       census_note(self);
+      if(not disabled.load(std::memory_order_relaxed))
+        guarded_frame_without_panels(self);
       if(full_armed)
         {
         if(self == immediate.load(std::memory_order_relaxed))
@@ -4793,6 +4854,7 @@ namespace edworld
       orig_draw(self, vertex_count, start_vertex);
       if(full_after_draw and self == immediate.load(std::memory_order_relaxed))
         guarded_full_after(self);
+      note_draw_end(self);
       }
 
     void STDMETHODCALLTYPE hook_draw_indexed_instanced(
@@ -4805,6 +4867,8 @@ namespace edworld
     )
       {
       census_note(self);
+      if(not disabled.load(std::memory_order_relaxed))
+        guarded_frame_without_panels(self);
       if(current_shell and census_on.load(std::memory_order_relaxed))
         census_add(census_shell);
       if(full_armed)
@@ -4840,6 +4904,7 @@ namespace edworld
         guarded_full_after(self);
       if(watched)
         guarded_after(self, index_count, start_index, base_vertex, start_instance);
+      note_draw_end(self);
       }
 
     void STDMETHODCALLTYPE hook_draw_instanced(
@@ -4851,6 +4916,8 @@ namespace edworld
     )
       {
       census_note(self);
+      if(not disabled.load(std::memory_order_relaxed))
+        guarded_frame_without_panels(self);
       if(full_armed)
         {
         if(self == immediate.load(std::memory_order_relaxed))
@@ -4870,6 +4937,7 @@ namespace edworld
       orig_draw_instanced(self, vertex_count, instance_count, start_vertex, start_instance);
       if(full_after_draw and self == immediate.load(std::memory_order_relaxed))
         guarded_full_after(self);
+      note_draw_end(self);
       }
 
     void STDMETHODCALLTYPE hook_draw_indexed_instanced_indirect(ID3D11DeviceContext * self, ID3D11Buffer * args, UINT offset)
