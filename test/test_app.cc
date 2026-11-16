@@ -1024,6 +1024,10 @@ int main()
           not edworld::compass_plausible(
             edworld::compass_reading_t{.x = 1.f, .y = 1.f, .pixels = 1234u, .found = true, .filled = false}),
         "compass: a few lit pixels or the whole disc lit is no dot");
+  // an EDHM theme's hollow dot: 25-58 pixels (both commanders' logs, 2026-11-10..16)
+  check(edworld::compass_plausible(edworld::compass_reading_t{.x = 1.f, .y = 1.f, .pixels = 26u, .found = true, .filled = false}) and
+          not edworld::compass_plausible(edworld::compass_reading_t{.x = 1.f, .y = 1.f, .pixels = 15u, .found = true, .filled = false}),
+        "compass: an EDHM theme's hollow dot of 26 pixels is the dot, 15 is not");
   clear();
   check(not edworld::read_compass(area.data(), w * 4u, w, h, cx, cy, radius * 1.25f).found, "compass: no dot on a bare disc");
   check(filled.dot_hue < 0.f and filled.disc_hue > 200.f and filled.disc_hue < 240.f, "compass: a white dot has no hue, the disc its blue");

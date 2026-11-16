@@ -5,6 +5,9 @@
 - **Argon known at more planets.** edworld took a hue for a kind only within 0.004 of the kind's, which the closest
   two kinds need; an Argon planet 0.005 off was left without its kind, so without its clouds and its aurora. Now each
   kind may lie as far off as half the way to the nearest other kind, from 0.004 to 0.010.
+- **The target behind read in an EDHM theme.** An EDHM theme draws the hollow dot (the target behind) with 25 to 58
+  pixels, the game's own HUD with about 111; edworld took a hollow dot only from 60 pixels, so in an EDHM theme the
+  navballs said `NO DOT` with the target behind. `compass_hollow_min` is now 20 by default (was 60).
 
 ## 1.2.0-beta.12
 

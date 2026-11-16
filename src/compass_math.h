@@ -34,7 +34,7 @@ namespace edworld
     ///\brief the dot's hue (degrees), -1 when it is white or grey (an EDHM theme's dot)
     float dot_hue;
     ///\brief the dot's pixels (since the game's update of 2026-10-20 a filled dot ~176-206, a hollow ring ~111 on the
-    /// 2200x1800 surface; before it, in an EDHM theme, ~137 and ~25)
+    /// 2200x1800 surface; in an EDHM theme, before and since, ~137-178 and ~25-58)
     std::uint32_t pixels;
     bool found;
     ///\brief the dot's middle is lit (target ahead); a hollow ring (target behind) leaves it dark
@@ -174,8 +174,9 @@ namespace edworld
     std::uint32_t filled_min, filled_max, hollow_min, hollow_max;
     };
 
-  ///\brief the game's dot since its update of 2026-10-20 (2200x1800, a Kestrel): filled 176-206, hollow 111, with room
-  inline constexpr compass_limits_t compass_default_limits{120u, 320u, 60u, 180u};
+  ///\brief the game's dot since its update of 2026-10-20 (2200x1800, a Kestrel): filled 176-206, hollow 111; in an EDHM
+  /// theme filled 136-178, hollow 25-58 (both commanders' logs, 2026-11-10..16); with room
+  inline constexpr compass_limits_t compass_default_limits{120u, 320u, 20u, 180u};
 
   ///\brief a reading worth showing: a handful of pixels (the dot half drawn, a flash entering an atmosphere) or many
   /// (the whole disc lit) is not the dot

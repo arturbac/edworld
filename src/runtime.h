@@ -304,7 +304,7 @@ namespace edworld
     ///\brief a plausible dot's pixels, filled and hollow (compass_math.h compass_default_limits)
     std::uint32_t compass_filled_min{120};
     std::uint32_t compass_filled_max{320};
-    std::uint32_t compass_hollow_min{60};
+    std::uint32_t compass_hollow_min{20};
     std::uint32_t compass_hollow_max{180};
     ///\brief the gates down to a place (PoC, not drawn yet; src/gate_math.h approach_path): the dive, degrees below the
     /// planet's visible edge (both recorded dives 2026-10-11 started at 16-18), the dive point's height in planet radii

@@ -131,7 +131,7 @@ None.
 | `compass_max_rate_dps` | `0` | 0 and more | a dot further from the last one than the ship can turn in the time between (degrees a second, plus 5) is not taken; `0` = no such check |
 | `compass_filled_min` | `120` | up to compass_filled_max | a filled dot's pixels on the HUD surface at least; fewer is not the dot |
 | `compass_filled_max` | `320` |  | a filled dot's pixels at most; more is not the dot |
-| `compass_hollow_min` | `60` | up to compass_hollow_max | a hollow dot's (the target behind) pixels at least |
+| `compass_hollow_min` | `20` | up to compass_hollow_max | a hollow dot's (the target behind) pixels at least |
 | `compass_hollow_max` | `180` |  | a hollow dot's pixels at most |
 | `compass_log_ms` | `1000` | 0 and more | a line of the compass's reading in the log at most this often, in milliseconds; `0` = never |
 | `gate_dive` | `17` | 0..90 | (PoC, not drawn yet) the gates down to a place: the dive, in degrees below the planet's visible edge |
