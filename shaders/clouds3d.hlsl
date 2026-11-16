@@ -522,7 +522,11 @@ float aurora_star_wind()
 // above its foot it fades up and ends softly. Between them a faint sheet low down, as strong as the group
 float aurora_arc(float across, float thick, float thick_least, float h, float bright, float u, float seed, float time)
   {
-  float wide = max(thick * (0.7f + 0.6f * bright), thick_least);
+  // widened to the step across it (or a ray would miss it), it is as much dimmer: its light stays a thin curtain's
+  // (before 2026-11-16 a far one gave tens of times too much, a bright smooth band seen from orbit)
+  float sheet_thick = thick * (0.7f + 0.6f * bright);
+  float wide = max(sheet_thick, thick_least);
+  float conserve = sheet_thick / wide;
   float sheet_across = exp(-pow(across / wide, 2.f));
   if(sheet_across < 0.002f)
     return 0.f;
@@ -561,7 +565,7 @@ float aurora_arc(float across, float thick, float thick_least, float h, float br
       }
     }
   float sheet = saturate((h - base) / 0.03f) * exp(-max(h - base, 0.f) / 0.1f) * 0.12f * group;
-  return sheet_across * (light * 0.45f + sheet);
+  return conserve * sheet_across * (light * 0.45f + sheet);
   }
 
 // how far across an arc whose middle lies at magnetic latitude centre the point at north is, degrees, with the arc's

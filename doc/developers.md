@@ -455,7 +455,7 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   0.7 from level 6; `aurora_lit` and the rays only where the point is within 2.5 times the arc's widest of it), each lit where its own noise (`aurora_lit`, about 10-20 parts round the oval) passes the gaps' threshold, each
   with its own local folds (`aurora_across`: a fine wiggle across the arc, about 20 round the oval, and curls, a vortex in some of 12 cells, 16 s each, that
   turns the arc's local frame by up to 2.5 radians within twice the sway, the old arcs' 0.35-0.5°), the curtains 4 km
-  thin (`thick` from the planet's radius, 2026-11-16) and no thinner than half a step, fading upward over 0.6 of the
+  thin (`thick` from the planet's radius, 2026-11-16) and no thinner than half a step (as much dimmer when widened, so its light stays a thin curtain's), fading upward over 0.6 of the
   shell (`u`: the angle scaled by the arc's length, about 3 km a unit), discrete rays in two lattices (3 and 1.2 cells
   a unit, weights 1 and 0.6, the three nearest cells of each), each ray's middle, width, foot jitter and rate from
   one `hash` of its cell (the others by `frac` of multiples of it), its strength from two hashes of its cell along the
