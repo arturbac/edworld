@@ -2498,9 +2498,9 @@ namespace edworld
     std::atomic<void *> galmap_vs{};
     bool current_galmap{};
 
-    constexpr std::uint32_t galmap_max_draws{64};
-    constexpr std::uint32_t galmap_ib_bytes{256u * 1024u};
-    constexpr std::uint32_t galmap_vb_bytes{2u * 1024u * 1024u};
+    constexpr std::uint32_t galmap_max_draws{256};  // 64 were met with more systems shown (2026-11-16)
+    constexpr std::uint32_t galmap_ib_bytes{512u * 1024u};
+    constexpr std::uint32_t galmap_vb_bytes{4u * 1024u * 1024u};
     constexpr std::uint32_t galmap_stride{24};  // x, y, ?, ?, u, v as floats (the dumps of 2026-11-16)
     constexpr LONGLONG galmap_collect_ms{20};   // the map's text draws come together at a frame's start
     constexpr LONGLONG galmap_font_ms{5000};    // the font is a cache the game fills: copied again this often
@@ -2527,6 +2527,8 @@ namespace edworld
       std::uint32_t font_width{}, font_height{};
       LONGLONG font_copied{};
       bool font_pending{};
+      bool font_fresh{};  ///< the font was read back in this round: a glyph not known in it is not known
+      bool font_wanted{}; ///< a glyph was not known in an older copy: copy it again in the next round
       std::vector<std::uint8_t> font_pixels;
       std::vector<std::pair<std::uint64_t, char>> chars;  ///< a glyph's rectangle in the font and its character
       std::vector<std::uint64_t> unknown_logged;
@@ -2646,8 +2648,9 @@ namespace edworld
       res->Release();
       if(not tex)
         return;
-      if(tex != g.font_source or (now - g.font_copied) * 1000 / qpc_frequency >= galmap_font_ms)
+      if(tex != g.font_source or g.font_wanted or (now - g.font_copied) * 1000 / qpc_frequency >= galmap_font_ms)
         {
+        g.font_wanted = false;
         D3D11_TEXTURE2D_DESC d{};
         tex->GetDesc(&d);
         if((d.Format == DXGI_FORMAT_A8_UNORM or d.Format == DXGI_FORMAT_R8_UNORM) and d.ArraySize == 1u and d.SampleDesc.Count == 1u)
@@ -2724,7 +2727,9 @@ namespace edworld
       }
 
     ///\brief a glyph's character by its rectangle in the font, worked out once a rectangle (the font copied again
-    /// forgets them); a shape no template knows is '?' and logged once with its zones, to be named
+    /// forgets them); a shape no template knows is '?'. In a copy of the font older than this round the glyph may not
+    /// be there yet (the game adds glyphs as it needs them): then '?' is not kept, and the font is copied again in the
+    /// next round; in a fresh copy it is kept and logged once with its zones, to be named
     auto galmap_char(std::int32_t u0, std::int32_t v0, std::int32_t u1, std::int32_t v1) noexcept -> char
       {
       galmap_state_t & g{galmap_state};
@@ -2738,6 +2743,11 @@ namespace edworld
           return c;
       galmap_zones_t const zones{galmap_zones(g.font_pixels.data(), g.font_width, u0, v0, u1, v1)};
       galmap_match_t const m{galmap_match(zones)};
+      if(m.c == '?' and not g.font_fresh)
+        {
+        g.font_wanted = true;
+        return m.c;
+        }
       g.chars.emplace_back(key, m.c);
       if(m.c == '?' and std::ranges::find(g.unknown_logged, key) == g.unknown_logged.end())
         {
@@ -2769,6 +2779,7 @@ namespace edworld
                         g.font_width);
           ctx->Unmap(g.font, 0);
           g.chars.clear();
+          g.font_fresh = true;
           }
         }
       if(g.font_pixels.empty() or g.draw_count == 0u)
@@ -2916,6 +2927,7 @@ namespace edworld
         g.phase = galmap_phase_e::collecting;
         g.started = now;
         g.draw_count = g.ib_used = g.vb_used = 0;
+        g.font_fresh = false;
         galmap_font(ctx, now);
         }
       galmap_take(ctx, count, start, base);

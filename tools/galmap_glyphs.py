@@ -9,6 +9,8 @@
 # zone's mean coverage 0..255, the zone's edges at x0 + w * i / 6 (integer division, at least a pixel) - the same
 # steps and integer arithmetic as galmap.h, so a template is what edworld computes for that glyph wherever the game
 # puts it. Reads the dump only; writes the header whole.
+# Glyphs known only by the zones edworld logged for them come from tools/galmap_glyph_zones.tsv beside this script
+# (`char` and 54 hex zones a line), added as they are.
 # Usage: python3 -I tools/galmap_glyphs.py <out header> <dump dir> <stamp> <names tsv>
 #        python3 -I tools/galmap_glyphs.py --check <dump dir> <stamp> <names tsv>   (each glyph against the others:
 #        the nearest other character's distance, the least of them; a glyph of the same character apart from it)
@@ -103,10 +105,16 @@ def main():
     if missing:
         sys.exit(f"{len(missing)} glyph(s) of the dump not named in {names_path}")
     glyphs = [(names[r], zones(font, *r), r) for r in sorted(names)]
+    logged = Path(__file__).with_name("galmap_glyph_zones.tsv")
+    if logged.exists():
+        for line in logged.read_text().splitlines():
+            if line.strip() and not line.startswith("#"):
+                c, hexes = line.split("\t")
+                glyphs.append((c, [int(h, 16) for h in hexes.split()], None))
     if check:
         least = None
         for c, z, r in glyphs:
-            near = min((sum(abs(a - b) for a, b in zip(z, oz)), oc) for oc, oz, orr in glyphs if orr != r and oc != c)
+            near = min((sum(abs(a - b) for a, b in zip(z, oz)), oc) for oc, oz, orr in glyphs if (orr != r or r is None) and oc != c)
             same = [sum(abs(a - b) for a, b in zip(z, oz)) for oc, oz, orr in glyphs if orr != r and oc == c]
             print(f"{c:5} {r}  nearest other {near[1]!r} at {near[0]}" + (f", same at {min(same)}" if same else ""))
             least = near[0] if least is None else min(least, near[0])
@@ -124,7 +132,8 @@ def main():
     ]
     for c, z, r in glyphs:
         ch = "'\\0'" if c == "glow" else ("'\\''" if c == "'" else f"'{c}'")
-        lines.append(f"    {{{ch}, {{{', '.join(str(v) for v in z)}}}}},  // {r[0]},{r[1]} {r[2] - r[0]}x{r[3] - r[1]}")
+        where = f"{r[0]},{r[1]} {r[2] - r[0]}x{r[3] - r[1]}" if r else "from the log (galmap_glyph_zones.tsv)"
+        lines.append(f"    {{{ch}, {{{', '.join(str(v) for v in z)}}}}},  // {where}")
     lines += ["  };", "  }  // namespace edworld", ""]
     out.write_text("\n".join(lines))
     print(f"{len(glyphs)} glyph(s), {sum(1 for c, _, _ in glyphs if c != 'glow')} letters, to {out}")

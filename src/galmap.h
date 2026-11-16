@@ -146,7 +146,8 @@ namespace edworld
 
   ///\brief the labels of one text draw, its quads in their order: a label's glyphs run left to right in its own frame,
   /// so the next label begins where x goes back; a space where the gap is over galmap_space of the quads' height. The
-  /// blurred copies are no glyphs
+  /// game sets digits in one width (a narrow 1 stands in a digit's room), so a digit's quad counts as wide as the
+  /// label's widest digit. The blurred copies are no glyphs
   [[nodiscard]]
   inline auto galmap_labels(std::span<galmap_quad_t const> quads) -> std::vector<std::string>
     {
@@ -156,10 +157,16 @@ namespace edworld
       {
       if(label.empty())
         return;
+      float digit{};
+      for(galmap_quad_t const & q: label)
+        if(q.c >= '0' and q.c <= '9')
+          digit = std::max(digit, q.x1 - q.x0);
+      auto const right = [digit](galmap_quad_t const & q) noexcept
+        { return q.c >= '0' and q.c <= '9' ? std::max(q.x1, q.x0 + digit) : q.x1; };
       std::string text;
       for(std::size_t i{}; i != label.size(); ++i)
         {
-        if(i != 0 and label[i].x0 - label[i - 1].x1 > label[i].height * galmap_space)
+        if(i != 0 and label[i].x0 - right(label[i - 1]) > label[i].height * galmap_space)
           text += ' ';
         text += label[i].c;
         }

@@ -700,6 +700,10 @@ namespace
       {0.f, 12.f, 40.f, '\0'}, {0.f, 10.f, 30.f, 'A'}, {11.f, 21.f, 30.f, 'B'}};
     auto const labels{galmap_labels(quads)};
     check(labels.size() == 2u and labels[0] == "SP D11" and labels[1] == "AB", "galmap: labels from the text draw's quads");
+    // digits in one width: after a narrow 1 the gap to the dash is the room of a digit, no space (B31-7)
+    std::vector<galmap_quad_t> const narrow{
+      {0.f, 10.f, 30.f, 'B'}, {11.f, 21.f, 30.f, '3'}, {22.f, 27.f, 30.f, '1'}, {35.f, 40.f, 30.f, '-'}, {41.f, 51.f, 30.f, '7'}};
+    check(galmap_labels(narrow) == std::vector<std::string>{"B31-7"}, "galmap: a narrow 1 in a digit's room before a dash is no space");
     }
     check(small_float(960u, 6u) == 1.f and small_float(896u, 6u) == 0.5f and small_float(512u, 5u) == 2.f and small_float(0u, 6u) == 0.f,
           "atmosphere: the table's small floats");
