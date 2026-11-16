@@ -31,6 +31,13 @@ strong ones towering, and each kind's clouds have a colour of their own.
 
 ![A methane world's cloud deck under the star, seen from the ground](doc/images/clouds-weather.jpg)
 
+Since 1.2.0-beta.12 there is an aurora (PoC) over the night side of a planet whose atmosphere's kind is known: an oval
+of thin, tall curtains of rays around its magnetic pole, in the colours of its gas, brightening and dancing in
+substorms. How stormy follows the time, the same for every player. Seen from orbit and from the ground; `aurora = 0`
+turns it off. Its settings: [Clouds](doc/users.md#clouds).
+
+![Auroras from the ground: a neon world's orange curtains (left), an argon-rich world's violet ones (right)](doc/images/aurora.jpg)
+
 How the clouds follow the physics, and where to look for cyclones: [doc/clouds.md](doc/clouds.md). The aurora, its colours and how often each shows: [doc/auroras.md](doc/auroras.md).
 
 ## Navballs, testers wanted

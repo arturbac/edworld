@@ -7,6 +7,8 @@ wind and no storms, so most of what makes an aurora is a guess, the same planet 
 everyone. This page says what is read, what is physics carried over from the Earth, and what is a choice, then
 which colours there are and how often you will meet each.
 
+![Auroras from the ground: a neon world's orange curtains (left), an argon-rich world's violet ones (right)](images/aurora.jpg)
+
 ![The aurora's colours by kind](images/aurora-colours.png)
 
 *A curtain of each kind from its foot (bottom) to the shell's ceiling (top), as the shader mixes them; the brightest
