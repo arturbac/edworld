@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Argon known at more planets.** edworld took a hue for a kind only within 0.004 of the kind's, which the closest
+  two kinds need; an Argon planet 0.005 off was left without its kind, so without its clouds and its aurora. Now each
+  kind may lie as far off as half the way to the nearest other kind, from 0.004 to 0.010.
+
 ## 1.2.0-beta.12
 
 - **Aurora (PoC).** On the night side of a planet whose atmosphere's kind is known, an oval of curtains around its

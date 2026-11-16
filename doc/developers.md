@@ -393,8 +393,10 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   the table's upper half where its green is over half its brightest, the median of red over green and of blue over
   green. Measured on 24 planets, all 15 kinds the journal names on landable planets: one hue per kind at every star
   (Argon at K6, G9 and M7 stars alike to 0.001), following the kind the journal names, not the mix of gases; the kinds
-  stand 0.010 or more apart (CarbonDioxide and Methane the nearest). A hue within 0.004 of a kind's in both ratios is
-  that kind (the nearest), otherwise `unknown`. The kind is read on every read-back (not only for a record) and the
+  stand 0.010 or more apart (CarbonDioxide and Methane the nearest). A hue within its kind's tolerance in both ratios is
+  that kind (the nearest), otherwise `unknown`: half the distance from the kind's print to the nearest other kind's,
+  from 0.004 to 0.010 (CarbonDioxide and Methane 0.0054, MethaneRich 0.0069, the rest 0.010; one Argon planet lies
+  0.005 off Argon's print). The kind is read on every read-back (not only for a record) and the
   clouds with depth take it (below). Since 1.2.0-beta.9 both builds read the shell, every `clouds_kind_read_s`
   seconds (`atmo_period_s`: in edworld_eht the shorter of it and `atmo_record_s`), for the kind and the day; only
   edworld_eht keeps the fingerprint (`atmo_record_s` apart, once a session per planet and band).

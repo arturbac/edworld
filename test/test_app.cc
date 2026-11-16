@@ -652,16 +652,20 @@ namespace
         {
         auto const & a{atmosphere_prints[i]};
         auto const & b{atmosphere_prints[j]};
-        apart = apart and std::max(std::fabs(a.r_g - b.r_g), std::fabs(a.b_g - b.b_g)) > 2.f * atmosphere_tolerance;
+        apart = apart and (a.kind == b.kind or std::max(std::fabs(a.r_g - b.r_g), std::fabs(a.b_g - b.b_g)) > 2.f * atmosphere_tolerance_least);
         }
-    check(apart, "atmosphere: the kinds stand further apart than twice the tolerance");
+    check(apart, "atmosphere: the kinds stand further apart than twice the least tolerance");
     bool itself{true};
     for(auto const & k: atmosphere_prints)
       {
       auto const * found{atmosphere_kind_of({true, k.r_g + 0.003f, k.b_g - 0.003f})};
-      itself = itself and found == &k and not atmosphere_kind_of({true, k.r_g, k.b_g + 0.005f});
+      itself = itself and found == &k and atmosphere_kind_of({true, k.r_g, k.b_g + atmosphere_tolerance_of(k) + 0.001f}) != &k;
       }
-    check(itself, "atmosphere: a hue near a kind's is that kind, one past the tolerance none");
+    check(itself, "atmosphere: a hue near a kind's is that kind, one past its tolerance not that kind");
+    auto const * argon_off{atmosphere_kind_of({true, 0.3980f, 2.5051f})};
+    check(argon_off and argon_off->name == "Argon", "atmosphere: Argon 0.005 off its print (Bleia Eohn DS-D c15-2 4) is Argon");
+    auto const * towards{atmosphere_kind_of({true, 0.6199f, 1.9400f})};
+    check(towards and towards->name == "CarbonDioxide", "atmosphere: CarbonDioxide 0.005 towards Methane is CarbonDioxide");
     auto const * argon{atmosphere_kind_of({true, 0.3980f, 2.5000f})};
     check(argon and argon->name == "Argon" and not atmosphere_kind_of({}), "atmosphere: Argon at an M7 star; no hue, no kind");
     auto const * volcanic{atmosphere_kind_of({true, 1.3109f, 0.9524f})};

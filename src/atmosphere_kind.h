@@ -79,9 +79,10 @@ namespace edworld
     {atmosphere_kind_e::water, "Water", 0.8268f, 1.4177f},
   }};
 
-  /// the farthest a hue may lie from its kind's, in either ratio: four times the spread within a kind, under half the
-  /// nearest two kinds' distance
-  inline constexpr float atmosphere_tolerance{0.004f};
+  /// the least and the most a hue may lie from its kind's, in either ratio (atmosphere_tolerance_of): four times the
+  /// spread within a kind, and a bound that keeps a table never seen from being taken for a kind far from it
+  inline constexpr float atmosphere_tolerance_least{0.004f};
+  inline constexpr float atmosphere_tolerance_most{0.010f};
 
   inline constexpr std::uint32_t dxgi_r11g11b10_float{26u};
 
@@ -378,10 +379,26 @@ namespace edworld
     return set;
     }
 
-  ///\brief the kind whose hue is nearest, when within the tolerance in both ratios; unknown otherwise
+  ///\brief how far a hue may lie from this print, in either ratio: half the distance to the nearest print of another
+  /// kind, within atmosphere_tolerance_least..most (2026-11-16: an Argon planet 0.005 off Argon's print, which stands
+  /// 0.28 from any other kind; CarbonDioxide and Methane, 0.011 apart, get 0.0054 each)
   [[nodiscard]]
-  constexpr auto atmosphere_kind_of(atmosphere_hue_t const & hue, float tolerance = atmosphere_tolerance) noexcept
-    -> atmosphere_print_t const *
+  constexpr auto atmosphere_tolerance_of(atmosphere_print_t const & p) noexcept -> float
+    {
+    float nearest{1.e9f};
+    for(atmosphere_print_t const & o: atmosphere_prints)
+      if(o.kind != p.kind)
+        {
+        float const dr{o.r_g > p.r_g ? o.r_g - p.r_g : p.r_g - o.r_g};
+        float const db{o.b_g > p.b_g ? o.b_g - p.b_g : p.b_g - o.b_g};
+        nearest = std::min(nearest, dr > db ? dr : db);
+        }
+    return std::clamp(nearest * 0.5f, atmosphere_tolerance_least, atmosphere_tolerance_most);
+    }
+
+  ///\brief the kind whose hue is nearest, when within its print's tolerance in both ratios; unknown otherwise
+  [[nodiscard]]
+  constexpr auto atmosphere_kind_of(atmosphere_hue_t const & hue) noexcept -> atmosphere_print_t const *
     {
     if(not hue.ok)
       return nullptr;
@@ -392,7 +409,7 @@ namespace edworld
       float const dr{hue.r_g > p.r_g ? hue.r_g - p.r_g : p.r_g - hue.r_g};
       float const db{hue.b_g > p.b_g ? hue.b_g - p.b_g : p.b_g - hue.b_g};
       float const d{dr > db ? dr : db};
-      if(d <= tolerance and (not best or d < best_d))
+      if(d <= atmosphere_tolerance_of(p) and (not best or d < best_d))
         {
         best = &p;
         best_d = d;
