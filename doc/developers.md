@@ -448,13 +448,14 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   the planet stands between), 32 steps near, 16 far, ending at the scene; `aurora_glow` the oval about the dipole
   with the angle from midnight (the seam of what is noised along it falls at noon), up to three arcs (`aurora_arc`:
   width, foot and height by the arc's brightness there; the second from level 3, the third while the dance is over
-  0.7 from level 6), each lit where its own noise (`aurora_lit`, about 10-20 parts round the oval) passes the gaps' threshold, each
+  0.7 from level 6; `aurora_lit` and the rays only where the point is within 2.5 times the arc's widest of it), each lit where its own noise (`aurora_lit`, about 10-20 parts round the oval) passes the gaps' threshold, each
   with its own local folds (`aurora_across`: a fine wiggle across the arc, about 20 round the oval, and curls, a vortex in some of 12 cells, 16 s each, that
   turns the arc's local frame by up to 2.5 radians within twice the sway, the old arcs' 0.35-0.5°), the curtains 4 km
   thin (`thick` from the planet's radius, 2026-11-16) and no thinner than half a step, fading upward over 0.6 of the
   shell (`u`: the angle scaled by the arc's length, about 3 km a unit), discrete rays in two lattices (3 and 1.2 cells
   a unit, weights 1 and 0.6, the three nearest cells of each), each ray's middle, width, foot jitter and rate from
-  `hash` of its cell, its strength from `noise` of its cell in time (2..6 s) and a group envelope (`u` 0.35, time
+  one `hash` of its cell (the others by `frac` of multiples of it), its strength from two hashes of its cell along the
+  time (2..6 s; the value noise at a whole cell and seed, without the other six) and a group envelope (`u` 0.35, time
   0.15), setting its light (0.1 + strength), its foot (0.07 lower at full) and its length (0.15..1.25 times 0.6 of the
   shell by the arc's brightness), plus a faint low sheet by the envelope; 64 steps from in or near
   the shell, the night side only, from under the floor only while the eye's own sky is dark. Its light is 120 times

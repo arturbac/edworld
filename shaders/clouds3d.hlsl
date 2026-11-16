@@ -542,11 +542,18 @@ float aurora_arc(float across, float thick, float thick_least, float h, float br
     for(int d = -1; d != 2; ++d)
       {
       float cell = first_cell + d;
-      float rate = 0.17f + 0.33f * hash(float3(cell, own, 5.f));
-      float strength = saturate(0.6f * saturate((noise(float3(cell, own + 7.f, time * rate)) - 0.3f) * 2.2f) + 0.65f * group - 0.1f);
-      float middle = cell + 0.2f + 0.6f * hash(float3(cell, own, 1.f));
-      float width = 0.4f + 0.3f * hash(float3(cell, own, 2.f));
-      float foot = base - 0.07f * strength + 0.04f * (hash(float3(cell, own, 3.f)) - 0.5f);
+      // one hash for the cell, its other values drawn from it
+      float drawn = hash(float3(cell, own, 1.f));
+      float rate = 0.17f + 0.33f * frac(drawn * 7.13f);
+      // the noise at a whole cell and seed: only along the time, between two of its values
+      float when = time * rate;
+      float at = floor(when);
+      float f = when - at;
+      float changing = lerp(hash(float3(cell, own + 7.f, at)), hash(float3(cell, own + 7.f, at + 1.f)), f * f * (3.f - 2.f * f));
+      float strength = saturate(0.6f * saturate((changing - 0.3f) * 2.2f) + 0.65f * group - 0.1f);
+      float middle = cell + 0.2f + 0.6f * drawn;
+      float width = 0.4f + 0.3f * frac(drawn * 13.71f);
+      float foot = base - 0.07f * strength + 0.04f * (frac(drawn * 29.37f) - 0.5f);
       float reach = length_scale * (0.15f + 1.1f * strength);
       float above = h - foot;
       float along = saturate(above / 0.02f) * exp(-max(above, 0.f) / (0.5f * reach)) * saturate((foot + reach - h) / (0.3f * reach));
@@ -648,16 +655,36 @@ float3 aurora_glow(float3 dir, float h, float level, float3 sun_model, float tim
   // the rays' scale, about 3 km a unit: the angle's length along the arc at its colatitude
   float ray_scale = planet * sin(radians(90.f - centre)) / 3000.f;
   float u = angle * ray_scale;
-  float lit1 = aurora_lit(circle, 0.f, gaps, time, dance);
-  float lit2 = second > 0.f ? aurora_lit(circle, 23.f, gaps, time, dance) : 0.f;
-  float lit3 = third > 0.f ? aurora_lit(circle, 47.f, gaps, time, dance) : 0.f;
+  // each arc: first how far across it the point is, and only near it (2.5 times its widest, where its curtain is
+  // 0.002 of its middle) whether it lights there and its rays
   float arc = 0.f;
-  if(lit1 > 0.f)
-    arc += lit1 * aurora_arc(aurora_across(north, centre, angle, 0.f, sway, time, dance), thick, thick_least, h, saturate(lit1 * waves / 2.f), u, 0.f, time);
-  if(lit2 > 0.f)
-    arc += second * lit2 * aurora_arc(aurora_across(north, centre + width * 0.45f + 0.5f * fold, angle, 23.f, sway * 1.3f, time, dance), thick * 1.3f, thick_least, h, saturate(lit2 * waves / 2.f), u, 23.f, time);
-  if(lit3 > 0.f)
-    arc += third * lit3 * aurora_arc(aurora_across(north, centre + width * 0.85f + 0.7f * fold, angle, 47.f, sway * 1.1f, time, dance), thick * 1.1f, thick_least, h, saturate(lit3 * waves / 2.f), u, 47.f, time);
+  float across1 = aurora_across(north, centre, angle, 0.f, sway, time, dance);
+  if(abs(across1) < 2.5f * max(thick * 1.3f, thick_least))
+    {
+    float lit1 = aurora_lit(circle, 0.f, gaps, time, dance);
+    if(lit1 > 0.f)
+      arc += lit1 * aurora_arc(across1, thick, thick_least, h, saturate(lit1 * waves / 2.f), u, 0.f, time);
+    }
+  if(second > 0.f)
+    {
+    float across2 = aurora_across(north, centre + width * 0.45f + 0.5f * fold, angle, 23.f, sway * 1.3f, time, dance);
+    if(abs(across2) < 2.5f * max(thick * 1.69f, thick_least))
+      {
+      float lit2 = aurora_lit(circle, 23.f, gaps, time, dance);
+      if(lit2 > 0.f)
+        arc += second * lit2 * aurora_arc(across2, thick * 1.3f, thick_least, h, saturate(lit2 * waves / 2.f), u, 23.f, time);
+      }
+    }
+  if(third > 0.f)
+    {
+    float across3 = aurora_across(north, centre + width * 0.85f + 0.7f * fold, angle, 47.f, sway * 1.1f, time, dance);
+    if(abs(across3) < 2.5f * max(thick * 1.43f, thick_least))
+      {
+      float lit3 = aurora_lit(circle, 47.f, gaps, time, dance);
+      if(lit3 > 0.f)
+        arc += third * lit3 * aurora_arc(across3, thick * 1.1f, thick_least, h, saturate(lit3 * waves / 2.f), u, 47.f, time);
+      }
+    }
   if(arc < 0.002f && diffuse < 0.002f)
     return 0.f;
   float flicker = 1.f;

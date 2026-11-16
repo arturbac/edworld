@@ -13,7 +13,8 @@
   cold, thin neon worlds, hundreds of km up over small carbon dioxide and ammonia worlds. Its curtains are thin, tall
   sheets, a few km thick, of dense rays about a km apart, each growing and fading on its own over a few seconds: a
   strong ray bright, tall and coming down deeper, a weak one faint and short, so the curtain is ragged at its foot
-  and at its top, and only the tall rays reach the high colour. Its wiggles and curls are slow and few. Settings `aurora`, `aurora_gain`, `aurora_activity`,
+  and at its top, and only the tall rays reach the high colour. Its wiggles and curls are slow and few. It costs the
+  GPU less where much of it is in view: its rays and gaps are worked out only near each arc. Settings `aurora`, `aurora_gain`, `aurora_activity`,
   `aurora_dance`, `aurora_flicker`, and for a look on any planet `aurora_field`; doc/auroras.md says how, which colours there are and how often.
 - **A second ammonia.** The game draws some ammonia atmospheres in a colour of their own, so edworld did not know
   such a planet and gave it the default clouds. Now it is ammonia too.
