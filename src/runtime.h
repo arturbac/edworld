@@ -279,7 +279,7 @@ namespace edworld
     std::uint32_t compass_text{0};
     ///\brief 1: the game's own compass cleared off the HUD surface once read (its square made transparent), the left
     /// sphere standing in for it; the game's returns whenever edworld is not there
-    std::uint32_t compass_hide_game{0};
+    std::uint32_t compass_hide_game{1};
     float compass_sphere_gain{1.f};
     ///\brief the approach view (PoC): in normal flight (not supercruise, not gliding, neither docked nor landed) with the
     /// target this many degrees or more below the wings' plane, the left sphere shows the target from above (straight
@@ -320,9 +320,10 @@ namespace edworld
     std::uint32_t station_axes{1};
     ///\brief the pad's plane (PoC, with station_axes): after the tower gives a pad where the hologram shows the pads, a
     /// translucent disc of their plane in the right sphere, green while the ship's tilt to it is at most this many degrees,
-    /// then through yellow to red, red from pad_tilt_red_deg on (Artur 2026-10-21: a picture, not numbers)
-    float pad_tilt_green_deg{10.f};
-    float pad_tilt_red_deg{20.f};
+    /// then through yellow to red, red from pad_tilt_red_deg on (Artur 2026-10-21: a picture, not numbers; 15 and 35 as
+    /// flown since then)
+    float pad_tilt_green_deg{15.f};
+    float pad_tilt_red_deg{35.f};
     ///\brief the pad's text (PoC, 2026-10-21): 1 = each time the tower's box ("PROCEED TO LANDING PAD n - m:ss", in the
     /// game's language) shows on the 2200x1800 HUD surface, and each time its text changes (the box carries the HUD's other
     /// notices too), its area is written to edworld_padtext as a sample for learning the digits, with a log line; 0 = off

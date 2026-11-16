@@ -110,7 +110,7 @@ None.
 | `compass_anchor_c_dx` | `1.22` |  | the right sphere's centre from the speed readout, in compass diameters, x to the right |
 | `compass_anchor_c_dy` | `0.83` |  | the right sphere's centre from the speed readout, y up |
 | `compass_text` | `0` | 0, 1 | `1` = the angles also written above the radar; `0` = the spheres carry them |
-| `compass_hide_game` | `0` | 0, 1 | `1` = the game's own compass hidden once read, the left sphere stands in for it; it returns whenever edworld is not there |
+| `compass_hide_game` | `1` | 0, 1 | `1` = the game's own compass hidden once read, the left sphere stands in for it; it returns whenever edworld is not there |
 | `compass_colour_disc` | `101214` | RRGGBB | the disc behind a sphere, at its rim; its middle is mixed towards `compass_colour_rim` |
 | `compass_colour_grid` | `5A6068` | RRGGBB | the rings at 30 and 60 degrees and the meridians |
 | `compass_colour_rim` | `A8AEB5` | RRGGBB | the left sphere's rim and the wings' plane on the right one |
@@ -139,8 +139,8 @@ None.
 | `gate_arc` | `30` | 0..180 | (PoC) the gates: the largest turn, in degrees, onto the flat line before the dive |
 | `gate_dive_steepest` | `73` | 0..90 | (PoC) the gates: the steepest dive, in degrees below the local horizontal; a straight line steeper than this sets up the approach instead |
 | `station_axes` | `1` | 0, 1 | (test) `1` = the target's axes in the right sphere: the X, Y and Z of the model the game shows as the target's hologram; `0` = off |
-| `pad_tilt_green_deg` | `10` | 0..pad_tilt_red_deg | (test, with `station_axes`) after the tower gives a pad, a disc of the pads' plane in the right sphere: green while the ship is tilted to the pads by at most this many degrees, then through yellow to red |
-| `pad_tilt_red_deg` | `20` | over pad_tilt_green_deg | (test) the pads' disc red from this many degrees of tilt on |
+| `pad_tilt_green_deg` | `15` | 0..pad_tilt_red_deg | (test, with `station_axes`) after the tower gives a pad, a disc of the pads' plane in the right sphere: green while the ship is tilted to the pads by at most this many degrees, then through yellow to red |
+| `pad_tilt_red_deg` | `35` | over pad_tilt_green_deg | (test) the pads' disc red from this many degrees of tilt on |
 | `pad_text_samples` | `0` | 0, 1 | (test) `1` = each time the HUD's notice box shows or changes its text, its area is written to `edworld_padtext` beside the log as a sample for learning the pad's digits; `0` = off |
 | `pad_text_read` | `1` | 0, 1 | `1` = the pad's number and the grant's time read from the tower's notice on the HUD: edworld takes them as the pad given, edworld_eht logs whether they agree with EHT's; `0` = off |
 | `pad_text_unsure_sample` | `1` | 0, 1 | a notice whose pad number cannot be read sure gives no pad and a log line; `1` also keeps its picture once in `edworld_padtext` beside the log for learning the digits; `0` = the log line only |

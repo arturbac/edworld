@@ -8,6 +8,10 @@
 - **The target behind read in an EDHM theme.** An EDHM theme draws the hollow dot (the target behind) with 25 to 58
   pixels, the game's own HUD with about 111; edworld took a hollow dot only from 60 pixels, so in an EDHM theme the
   navballs said `NO DOT` with the target behind. `compass_hollow_min` is now 20 by default (was 60).
+- **The game's own compass hidden by default** once the dot is read, the left sphere standing in for it
+  (`compass_hide_game` 1, was 0); it returns whenever edworld is not there.
+- **The pads' disc turns yellow and red later:** green up to 15 degrees of tilt, red from 35 (`pad_tilt_green_deg`,
+  `pad_tilt_red_deg`, were 10 and 20).
 
 ## 1.2.0-beta.12
 
