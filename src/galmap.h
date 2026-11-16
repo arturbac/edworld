@@ -20,9 +20,12 @@ namespace edworld
 
   inline constexpr std::int32_t galmap_zones_x{6}, galmap_zones_y{9};
 
+  ///\brief a font pixel over this is ink
+  inline constexpr std::uint8_t galmap_ink{60};
+
   ///\brief a glyph whose zones lie closer than this to a template (the sum of the zones' differences) is the template's;
-  /// the closest two characters, C and O, lie 830 apart (2026-11-16)
-  inline constexpr std::uint32_t galmap_glyph_sure{400};
+  /// the closest two characters, O and 0, lie 554 apart (2026-11-16); the same glyph is drawn the same each time
+  inline constexpr std::uint32_t galmap_glyph_sure{250};
 
   ///\brief a template: its character ('\0' the blurred copy the game draws under a letter) and its zones
   struct galmap_glyph_t
@@ -38,14 +41,56 @@ namespace edworld
   {
   using galmap_zones_t = std::array<std::uint8_t, galmap_zones_x * galmap_zones_y>;
 
-  ///\brief a glyph's zones: its rectangle [u0, u1) x [v0, v1) of the font (one byte a pixel, pitch bytes a row) cut into
-  /// galmap_zones_x x galmap_zones_y zones, each zone's mean; the zone's edges at u0 + w * i / zones (integer division,
-  /// at least a pixel), as tools/galmap_glyphs.py makes the templates
+  ///\brief a glyph's zones: the box of its ink in its rectangle [u0, u1) x [v0, v1) of the font (one byte a pixel, pitch
+  /// bytes a row) - of the rows with ink the longest run without a gap (a bit of a neighbour's glyph over or under it
+  /// left out), the columns with ink in those rows - cut into galmap_zones_x x galmap_zones_y zones, each zone's mean;
+  /// the zone's edges at x0 + w * i / zones (integer division, at least a pixel), as tools/galmap_glyphs.py makes the
+  /// templates. So the margins the game leaves about a glyph in its font change nothing
   [[nodiscard]]
   inline auto galmap_zones(std::uint8_t const * font, std::uint32_t pitch, std::int32_t u0, std::int32_t v0, std::int32_t u1,
                            std::int32_t v1) noexcept -> galmap_zones_t
     {
     galmap_zones_t out{};
+    auto const at = [&](std::int32_t x, std::int32_t y) noexcept
+      { return font[static_cast<std::size_t>(y) * pitch + static_cast<std::size_t>(x)]; };
+    auto const row_lit = [&](std::int32_t y) noexcept
+      {
+      for(std::int32_t x{u0}; x != u1; ++x)
+        if(at(x, y) > galmap_ink)
+          return true;
+      return false;
+      };
+    std::int32_t best_from{}, best_to{}, from{-1};
+    for(std::int32_t y{v0}; y <= v1; ++y)
+      {
+      bool const lit{y != v1 and row_lit(y)};
+      if(lit and from < 0)
+        from = y;
+      else if(not lit and from >= 0)
+        {
+        if(y - from > best_to - best_from)
+          {
+          best_from = from;
+          best_to = y;
+          }
+        from = -1;
+        }
+      }
+    if(best_to == best_from)
+      return out;
+    std::int32_t left{u1}, right{u0};
+    for(std::int32_t x{u0}; x != u1; ++x)
+      for(std::int32_t y{best_from}; y != best_to; ++y)
+        if(at(x, y) > galmap_ink)
+          {
+          left = std::min(left, x);
+          right = std::max(right, x + 1);
+          break;
+          }
+    u0 = left;
+    u1 = right;
+    v0 = best_from;
+    v1 = best_to;
     std::int32_t const w{u1 - u0}, h{v1 - v0};
     for(std::int32_t zy{}; zy != galmap_zones_y; ++zy)
       {
@@ -58,7 +103,7 @@ namespace edworld
         std::uint32_t total{};
         for(std::int32_t y{y0}; y != y1; ++y)
           for(std::int32_t x{x0}; x != x1; ++x)
-            total += font[static_cast<std::size_t>(y) * pitch + static_cast<std::size_t>(x)];
+            total += at(x, y);
         out[static_cast<std::size_t>(zy * galmap_zones_x + zx)] = static_cast<std::uint8_t>(total / static_cast<std::uint32_t>((y1 - y0) * (x1 - x0)));
         }
       }

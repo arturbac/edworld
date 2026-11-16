@@ -2,9 +2,13 @@
 # The glyphs' templates of src/galmap.h: from a whole-frame dump on the galaxy map with the HUD text's VS in dump_vs
 # (its draws' vertex buffer 0, stride 24: x, y, ?, ?, u, v as floats, and the font at PS t1, 2048x2048 A8), each glyph's
 # rectangle in the font named by a file of `u0 v0 u1 v1 char` lines (font pixels; `glow` for the blurred copy drawn
-# under a letter). A glyph: its rectangle cut into 6 x 9 zones, each zone's mean coverage 0..255, the zone's edges at
-# u0 + w * i / 6 (integer division, at least a pixel) - the same steps and integer arithmetic as galmap.h, so a
-# template is what edworld computes for that glyph. Reads the dump only; writes the header whole.
+# under a letter). The file may name more rectangles than the dump's draws use: glyphs of the same font and size the
+# game put in its font for other text (a letter no label showed yet), cut out of the font by hand. A glyph: the box
+# of its ink within its rectangle (pixels over 60; of the rows with ink the longest run without a gap, so a bit of a
+# neighbour's glyph over or under it is left out; the columns with ink in those rows), cut into 6 x 9 zones, each
+# zone's mean coverage 0..255, the zone's edges at x0 + w * i / 6 (integer division, at least a pixel) - the same
+# steps and integer arithmetic as galmap.h, so a template is what edworld computes for that glyph wherever the game
+# puts it. Reads the dump only; writes the header whole.
 # Usage: python3 -I tools/galmap_glyphs.py <out header> <dump dir> <stamp> <names tsv>
 #        python3 -I tools/galmap_glyphs.py --check <dump dir> <stamp> <names tsv>   (each glyph against the others:
 #        the nearest other character's distance, the least of them; a glyph of the same character apart from it)
@@ -13,6 +17,7 @@ import sys
 from pathlib import Path
 
 ZX, ZY = 6, 9  # galmap_zones_x, galmap_zones_y
+INK = 60       # galmap_ink
 FONT = 2048
 
 
@@ -23,7 +28,28 @@ def font_of(d, stamp):
     return files[0].read_bytes()
 
 
+def ink_box(font, u0, v0, u1, v1):
+    rows = [any(font[y * FONT + x] > INK for x in range(u0, u1)) for y in range(v0, v1)]
+    best, start = (0, 0), None
+    for i, lit in enumerate(rows + [False]):
+        if lit and start is None:
+            start = i
+        elif not lit and start is not None:
+            if i - start > best[1] - best[0]:
+                best = (start, i)
+            start = None
+    if best[1] == best[0]:
+        return None
+    y0, y1 = v0 + best[0], v0 + best[1]
+    cols = [x for x in range(u0, u1) if any(font[y * FONT + x] > INK for y in range(y0, y1))]
+    return cols[0], y0, cols[-1] + 1, y1
+
+
 def zones(font, u0, v0, u1, v1):
+    box = ink_box(font, u0, v0, u1, v1)
+    if box is None:
+        return [0] * (ZX * ZY)
+    u0, v0, u1, v1 = box
     w, h = u1 - u0, v1 - v0
     out = []
     for zy in range(ZY):
@@ -76,7 +102,7 @@ def main():
     missing = used - set(names)
     if missing:
         sys.exit(f"{len(missing)} glyph(s) of the dump not named in {names_path}")
-    glyphs = [(names[r], zones(font, *r), r) for r in sorted(used)]
+    glyphs = [(names[r], zones(font, *r), r) for r in sorted(names)]
     if check:
         least = None
         for c, z, r in glyphs:

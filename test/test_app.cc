@@ -681,13 +681,19 @@ namespace
     nothing.fill(255);
     check(galmap_match(own).c == galmap_glyphs[1].c and galmap_match(own).distance == 0u and galmap_match(nothing).c == '?',
           "galmap: a glyph by its shape; a shape no template has is '?'");
-    // a font of one glyph: its zones from the pixels are the mean of each zone
-    std::vector<std::uint8_t> font(12u * 18u, 0u);
-    for(std::size_t y{}; y != 18u; ++y)
-      for(std::size_t x{}; x != 6u; ++x)
-        font[y * 12u + x] = 200u;
-    galmap_zones_t const half{galmap_zones(font.data(), 12u, 0, 0, 12, 18)};
-    check(half[0] == 200u and half[2] == 200u and half[3] == 0u and half[5] == 0u, "galmap: a glyph's zones are its pixels' means");
+    // a font of one glyph, an L: its zones come from the box of its ink, whatever the margins about it; a neighbour's
+    // bit under it, past an empty row, is no part of it
+    std::vector<std::uint8_t> font(16u * 24u, 0u);
+    for(std::size_t y{2}; y != 20u; ++y)
+      for(std::size_t x{4}; x != 6u; ++x)
+        font[y * 16u + x] = 200u;
+    for(std::size_t x{4}; x != 10u; ++x)
+      font[19u * 16u + x] = 200u;
+    font[22u * 16u + 5u] = 255u;
+    galmap_zones_t const tight{galmap_zones(font.data(), 16u, 4, 2, 10, 20)};
+    galmap_zones_t const loose{galmap_zones(font.data(), 16u, 0, 0, 16, 24)};
+    check(tight == loose and tight[0] == 200u and tight[5] == 0u and tight[53] == 100u,
+          "galmap: a glyph's zones from the box of its ink, the margins and a neighbour's bit left out");
     // labels: x goes back for the next one, a gap over 0.4 of the height is a space, blurred copies are no glyphs
     std::vector<galmap_quad_t> const quads{
       {0.f, 10.f, 30.f, 'S'}, {11.f, 21.f, 30.f, 'P'}, {36.f, 46.f, 30.f, 'D'}, {47.f, 52.f, 30.f, '1'}, {58.f, 68.f, 30.f, '1'},

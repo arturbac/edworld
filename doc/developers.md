@@ -54,14 +54,16 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   and four vertices a quad from the base vertex (VB0, stride 24: x, y, ?, ?, u, v), and the font they read (PS t1, A8,
   2048x2048), again when it is another texture or every 5 s (the font is a cache the game fills as it needs glyphs, so
   where a glyph lies changes between sessions). Read back without waiting a frame or more later. A glyph is told by its
-  shape: its rectangle in the font cut into 6 x 9 zones, each zone's mean, against `src/galmap_glyphs_generated.h`
-  (`tools/galmap_glyphs.py` from a whole-frame dump and `tools/galmap_glyph_names.tsv`, the glyphs named by eye); under
-  400 apart (C and O lie 830) it is that character, `'\0'` the blurred copy drawn under a letter, else `?` and a log line
+  shape: the box of its ink in its rectangle of the font (pixels over 60; of the rows with ink the longest run, so a
+  neighbour's bit over or under it is left out) cut into 6 x 9 zones, each zone's mean, against
+  `src/galmap_glyphs_generated.h` (`tools/galmap_glyphs.py` from a whole-frame dump and `tools/galmap_glyph_names.tsv`:
+  the glyphs named by eye, and letters of the same font the labels did not use, cut out of the font); under 250 apart
+  (O and 0 lie 554) it is that character, `'\0'` the blurred copy drawn under a letter, else `?` and a log line
   with its zones, once a shape. A label's glyphs run left to right in its own frame: a new label where x goes back, a
   space where a gap is over 0.4 of the quads' height. Published to `galmap` in `shm_dir` (seqlock; up to 256 names of 47
   characters, upper case as the map writes them, and how many glyphs were `?`); a log line when the names change, at
-  most every 10 s. Letters seen so far (2026-11-16): `0-9 - , : *` and `B C D E F H I J K L M O P Q R S T U V X`; any
-  other is `?` until a dump names it.
+  most every 10 s. Letters known (2026-11-16): `0-9 - , : *` and every capital but `W` and `Z` (not in the font
+  in the labels' size yet); any other is `?` until a dump names it.
 - **Jump panel patch** (`patch = 1`): while `Status.json` says a jump charges (Flags2 bit 19, and Flags bit 30 not yet set: that bit comes with
   StartJump, when the panel is gone, while bit 19 stays until FSDJump), at the draw that
   composites the panel's surface (3072x660) into the cockpit, paints the panel's black and the destination's

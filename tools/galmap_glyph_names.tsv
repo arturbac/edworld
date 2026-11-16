@@ -82,3 +82,9 @@
 1235	289	1279	335	glow
 1330	289	1379	335	glow
 1281	289	1328	333	*
+# letters of the same font and size the dump's labels did not use, cut out of its font by hand (the word DEPLOYING and
+# HATSK of the game's menu text, whose other letters are the labels' own glyphs; 2026-11-16)
+266	241	291	270	Y
+301	241	326	270	N
+328	241	352	270	G
+380	241	406	270	A
