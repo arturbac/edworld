@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.0-beta.12
 
 - **Aurora (PoC).** On the night side of a planet whose atmosphere's kind is known, an oval of curtains around its
   pole, over the clouds, in its gas's colours: oxygen green low and red high, nitrogen violet with a pink lower edge,
