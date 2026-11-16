@@ -12,6 +12,7 @@
 #include "aurora.h"
 #include "blue_noise.h"
 #include "compass_math.h"
+#include "galmap.h"
 #include "edworld_share.h"
 #include "gpu_timing.h"
 #include "game_state.h"
@@ -2489,6 +2490,450 @@ namespace edworld
              or surface_scale(1024u, 1534u, w, h);
       }
 
+#if defined(EDWORLD_EHT)
+    // ---- the galaxy map's names (src/galmap.h), edworld_eht: a few times a second, while no panel is drawn, the HUD
+    // text shader's draws into a target taller than wide (the map's picture of its labels) are copied - their index
+    // ranges and their quads' vertices - with the font they read; read back a frame or more later without waiting,
+    // the glyphs told by their shape, the labels published to `galmap` in shm_dir ----
+    std::atomic<void *> galmap_vs{};
+    bool current_galmap{};
+
+    constexpr std::uint32_t galmap_max_draws{64};
+    constexpr std::uint32_t galmap_ib_bytes{256u * 1024u};
+    constexpr std::uint32_t galmap_vb_bytes{2u * 1024u * 1024u};
+    constexpr std::uint32_t galmap_stride{24};  // x, y, ?, ?, u, v as floats (the dumps of 2026-11-16)
+    constexpr LONGLONG galmap_collect_ms{20};   // the map's text draws come together at a frame's start
+    constexpr LONGLONG galmap_font_ms{5000};    // the font is a cache the game fills: copied again this often
+
+    struct galmap_draw_t
+      {
+      std::uint32_t ib_at, index_count, vb_at, vertex_count;
+      bool wide_index;
+      };
+
+    enum struct galmap_phase_e : std::uint8_t
+      {
+      idle,
+      collecting,
+      waiting
+      };
+
+    struct galmap_state_t
+      {
+      ID3D11Buffer * ib{};
+      ID3D11Buffer * vb{};
+      ID3D11Texture2D * font{};
+      void * font_source{};  ///< the game's font texture copied last, by its address only
+      std::uint32_t font_width{}, font_height{};
+      LONGLONG font_copied{};
+      bool font_pending{};
+      std::vector<std::uint8_t> font_pixels;
+      std::vector<std::pair<std::uint64_t, char>> chars;  ///< a glyph's rectangle in the font and its character
+      std::vector<std::uint64_t> unknown_logged;
+      galmap_draw_t draws[galmap_max_draws]{};
+      std::uint32_t draw_count{}, ib_used{}, vb_used{};
+      galmap_phase_e phase{};
+      LONGLONG started{}, last{};
+      galmap_t * share{};
+      bool share_failed{}, staging_failed{};
+      std::uint64_t logged_hash{};
+      LONGLONG logged_at{};
+      };
+    galmap_state_t galmap_state;
+
+    template<typename T>
+    auto galmap_release(T *& p) noexcept -> void
+      {
+      if(p)
+        p->Release();
+      p = nullptr;
+      }
+
+    auto galmap_buffer(std::uint32_t bytes) noexcept -> ID3D11Buffer *
+      {
+      D3D11_BUFFER_DESC d{};
+      d.ByteWidth = bytes;
+      d.Usage = D3D11_USAGE_STAGING;
+      d.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+      ID3D11Buffer * b{};
+      if(FAILED(device->CreateBuffer(&d, nullptr, &b)))
+        return nullptr;
+      return b;
+      }
+
+    auto galmap_open() noexcept -> galmap_t *
+      {
+      galmap_state_t & g{galmap_state};
+      if(g.share or g.share_failed)
+        return g.share;
+      g.share_failed = true;
+      std::wstring const & dir{settings().shm_dir};
+      if(dir.empty())
+        return nullptr;
+      CreateDirectoryW(dir.c_str(), nullptr);
+      std::wstring const path{dir + L"\\galmap"};
+      HANDLE const file{CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                    nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr)};
+      if(file == INVALID_HANDLE_VALUE)
+        {
+        log_line("galmap: cannot open %S (error %lu); not publishing", path.c_str(), GetLastError());
+        return nullptr;
+        }
+      HANDLE const mapping{CreateFileMappingW(file, nullptr, PAGE_READWRITE, 0, sizeof(galmap_t), nullptr)};
+      CloseHandle(file);
+      if(not mapping)
+        {
+        log_line("galmap: cannot map %S (error %lu); not publishing", path.c_str(), GetLastError());
+        return nullptr;
+        }
+      auto * const view{static_cast<galmap_t *>(MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(galmap_t)))};
+      CloseHandle(mapping);
+      if(not view)
+        {
+        log_line("galmap: cannot view %S (error %lu); not publishing", path.c_str(), GetLastError());
+        return nullptr;
+        }
+      std::memset(view, 0, sizeof(galmap_t));
+      view->magic = galmap_magic;
+      view->version = galmap_version;
+      view->size = sizeof(galmap_t);
+      g.share = view;
+      g.share_failed = false;
+      log_line("galmap: publishing the galaxy map's names to %S (%zu bytes)", path.c_str(), sizeof(galmap_t));
+      return view;
+      }
+
+    ///\brief the draw writes into the map's picture of its labels: a target taller than wide, no panel's surface
+    auto galmap_target(ID3D11DeviceContext * ctx) noexcept -> bool
+      {
+      ID3D11RenderTargetView * rtv{};
+      ctx->OMGetRenderTargets(1, &rtv, nullptr);
+      if(not rtv)
+        return false;
+      ID3D11Resource * res{};
+      rtv->GetResource(&res);
+      rtv->Release();
+      if(not res)
+        return false;
+      bool labels{};
+      ID3D11Texture2D * tex{};
+      if(SUCCEEDED(res->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void **>(&tex))) and tex)
+        {
+        D3D11_TEXTURE2D_DESC d{};
+        tex->GetDesc(&d);
+        labels = d.Height > d.Width and d.Width >= 1024u and not panel_sized(d.Width, d.Height);
+        tex->Release();
+        }
+      res->Release();
+      return labels;
+      }
+
+    ///\brief the font the text draw reads (PS t1, one byte a pixel), copied when it is another or not since galmap_font_ms
+    auto galmap_font(ID3D11DeviceContext * ctx, LONGLONG now) noexcept -> void
+      {
+      galmap_state_t & g{galmap_state};
+      ID3D11ShaderResourceView * srv{};
+      ctx->PSGetShaderResources(1, 1, &srv);
+      if(not srv)
+        return;
+      ID3D11Resource * res{};
+      srv->GetResource(&res);
+      srv->Release();
+      if(not res)
+        return;
+      ID3D11Texture2D * tex{};
+      res->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void **>(&tex));
+      res->Release();
+      if(not tex)
+        return;
+      if(tex != g.font_source or (now - g.font_copied) * 1000 / qpc_frequency >= galmap_font_ms)
+        {
+        D3D11_TEXTURE2D_DESC d{};
+        tex->GetDesc(&d);
+        if((d.Format == DXGI_FORMAT_A8_UNORM or d.Format == DXGI_FORMAT_R8_UNORM) and d.ArraySize == 1u and d.SampleDesc.Count == 1u)
+          {
+          if(not g.font or g.font_width != d.Width or g.font_height != d.Height)
+            {
+            galmap_release(g.font);
+            D3D11_TEXTURE2D_DESC c{};
+            c.Width = d.Width;
+            c.Height = d.Height;
+            c.MipLevels = c.ArraySize = 1;
+            c.Format = d.Format;
+            c.SampleDesc.Count = 1;
+            c.Usage = D3D11_USAGE_STAGING;
+            c.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+            if(FAILED(device->CreateTexture2D(&c, nullptr, &g.font)))
+              g.font = nullptr;
+            g.font_width = d.Width;
+            g.font_height = d.Height;
+            }
+          if(g.font)
+            {
+            ctx->CopySubresourceRegion(g.font, 0, 0, 0, 0, tex, 0, nullptr);
+            g.font_source = tex;
+            g.font_copied = now;
+            g.font_pending = true;
+            }
+          }
+        }
+      tex->Release();
+      }
+
+    ///\brief one text draw's indices and its quads' vertices (four a quad, from its base vertex) into the staging buffers
+    auto galmap_take(ID3D11DeviceContext * ctx, std::uint32_t count, std::uint32_t start, std::int32_t base) noexcept -> void
+      {
+      galmap_state_t & g{galmap_state};
+      if(g.draw_count == galmap_max_draws or count < 6u or base < 0)
+        return;
+      ID3D11Buffer * ib{};
+      DXGI_FORMAT format{};
+      UINT ib_offset{};
+      ctx->IAGetIndexBuffer(&ib, &format, &ib_offset);
+      ID3D11Buffer * vb{};
+      UINT stride{}, vb_offset{};
+      ctx->IAGetVertexBuffers(0, 1, &vb, &stride, &vb_offset);
+      if(ib and vb and stride == galmap_stride)
+        {
+        bool const wide{format == DXGI_FORMAT_R32_UINT};
+        std::uint32_t const index_size{wide ? 4u : 2u};
+        std::uint32_t const ib_bytes{count * index_size};
+        std::uint32_t const vertices{count / 6u * 4u};
+        std::uint32_t const vb_bytes{vertices * galmap_stride};
+        D3D11_BUFFER_DESC ibd{}, vbd{};
+        ib->GetDesc(&ibd);
+        vb->GetDesc(&vbd);
+        std::uint64_t const ib_from{ib_offset + std::uint64_t{start} * index_size};
+        std::uint64_t const vb_from{vb_offset + static_cast<std::uint64_t>(base) * galmap_stride};
+        if(g.ib_used + ib_bytes <= galmap_ib_bytes and g.vb_used + vb_bytes <= galmap_vb_bytes and ib_from + ib_bytes <= ibd.ByteWidth
+           and vb_from + vb_bytes <= vbd.ByteWidth)
+          {
+          D3D11_BOX const ibox{static_cast<UINT>(ib_from), 0, 0, static_cast<UINT>(ib_from + ib_bytes), 1, 1};
+          ctx->CopySubresourceRegion(g.ib, 0, g.ib_used, 0, 0, ib, 0, &ibox);
+          D3D11_BOX const vbox{static_cast<UINT>(vb_from), 0, 0, static_cast<UINT>(vb_from + vb_bytes), 1, 1};
+          ctx->CopySubresourceRegion(g.vb, 0, g.vb_used, 0, 0, vb, 0, &vbox);
+          g.draws[g.draw_count++] = galmap_draw_t{g.ib_used, count, g.vb_used, vertices, wide};
+          g.ib_used += ib_bytes;
+          g.vb_used += vb_bytes;
+          }
+        }
+      if(ib)
+        ib->Release();
+      if(vb)
+        vb->Release();
+      }
+
+    ///\brief a glyph's character by its rectangle in the font, worked out once a rectangle (the font copied again
+    /// forgets them); a shape no template knows is '?' and logged once with its zones, to be named
+    auto galmap_char(std::int32_t u0, std::int32_t v0, std::int32_t u1, std::int32_t v1) noexcept -> char
+      {
+      galmap_state_t & g{galmap_state};
+      auto const w{static_cast<std::int32_t>(g.font_width)}, h{static_cast<std::int32_t>(g.font_height)};
+      if(u0 < 0 or v0 < 0 or u1 > w or v1 > h or u1 <= u0 or v1 <= v0)
+        return '?';
+      std::uint64_t const key{static_cast<std::uint64_t>(u0) | static_cast<std::uint64_t>(v0) << 16 | static_cast<std::uint64_t>(u1) << 32
+                              | static_cast<std::uint64_t>(v1) << 48};
+      for(auto const & [k, c]: g.chars)
+        if(k == key)
+          return c;
+      galmap_zones_t const zones{galmap_zones(g.font_pixels.data(), g.font_width, u0, v0, u1, v1)};
+      galmap_match_t const m{galmap_match(zones)};
+      g.chars.emplace_back(key, m.c);
+      if(m.c == '?' and std::ranges::find(g.unknown_logged, key) == g.unknown_logged.end())
+        {
+        g.unknown_logged.push_back(key);
+        char hex[galmap_zones_x * galmap_zones_y * 3 + 1]{};
+        for(std::size_t i{}; i != zones.size(); ++i)
+          std::snprintf(hex + i * 3, 4, "%02x ", zones[i]);
+        log_line("galmap: a glyph not known yet at %d,%d %dx%d (nearest %u apart): %s", u0, v0, u1 - u0, v1 - v0, m.distance, hex);
+        }
+      return m.c;
+      }
+
+    ///\brief the copies read back, if the GPU is done with them: true once done (published, or nothing to read)
+    auto galmap_read(ID3D11DeviceContext * ctx) noexcept -> bool
+      {
+      galmap_state_t & g{galmap_state};
+      if(g.font_pending)
+        {
+        D3D11_MAPPED_SUBRESOURCE m{};
+        HRESULT const hr{ctx->Map(g.font, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &m)};
+        if(hr == DXGI_ERROR_WAS_STILL_DRAWING)
+          return false;
+        g.font_pending = false;
+        if(SUCCEEDED(hr) and m.pData)
+          {
+          g.font_pixels.resize(static_cast<std::size_t>(g.font_width) * g.font_height);
+          for(std::uint32_t y{}; y != g.font_height; ++y)
+            std::memcpy(g.font_pixels.data() + static_cast<std::size_t>(y) * g.font_width, static_cast<std::uint8_t const *>(m.pData) + static_cast<std::size_t>(y) * m.RowPitch,
+                        g.font_width);
+          ctx->Unmap(g.font, 0);
+          g.chars.clear();
+          }
+        }
+      if(g.font_pixels.empty() or g.draw_count == 0u)
+        return true;
+      D3D11_MAPPED_SUBRESOURCE mi{}, mv{};
+      HRESULT hr{ctx->Map(g.ib, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mi)};
+      if(hr == DXGI_ERROR_WAS_STILL_DRAWING)
+        return false;
+      if(FAILED(hr) or not mi.pData)
+        return true;
+      hr = ctx->Map(g.vb, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mv);
+      if(hr == DXGI_ERROR_WAS_STILL_DRAWING or FAILED(hr) or not mv.pData)
+        {
+        ctx->Unmap(g.ib, 0);
+        return hr != DXGI_ERROR_WAS_STILL_DRAWING;
+        }
+      float const fw{static_cast<float>(g.font_width)}, fh{static_cast<float>(g.font_height)};
+      std::vector<std::string> names;
+      std::vector<galmap_quad_t> quads;
+      for(std::uint32_t d{}; d != g.draw_count; ++d)
+        {
+        galmap_draw_t const & draw{g.draws[d]};
+        auto const * const indices{static_cast<std::uint8_t const *>(mi.pData) + draw.ib_at};
+        auto const * const vertices{static_cast<std::uint8_t const *>(mv.pData) + draw.vb_at};
+        quads.clear();
+        for(std::uint32_t q{}; q != draw.index_count / 6u; ++q)
+          {
+          float x0{1e30f}, x1{-1e30f}, y0{1e30f}, y1{-1e30f}, u0{1e30f}, u1{-1e30f}, v0{1e30f}, v1{-1e30f};
+          bool inside{true};
+          for(std::uint32_t k{}; k != 6u; ++k)
+            {
+            std::uint32_t index{};
+            if(draw.wide_index)
+              std::memcpy(&index, indices + (q * 6u + k) * 4u, 4);
+            else
+              {
+              std::uint16_t i16{};
+              std::memcpy(&i16, indices + (q * 6u + k) * 2u, 2);
+              index = i16;
+              }
+            if(index >= draw.vertex_count)
+              {
+              inside = false;
+              break;
+              }
+            float v[6];
+            std::memcpy(v, vertices + static_cast<std::size_t>(index) * galmap_stride, sizeof v);
+            x0 = std::min(x0, v[0]);
+            x1 = std::max(x1, v[0]);
+            y0 = std::min(y0, v[1]);
+            y1 = std::max(y1, v[1]);
+            u0 = std::min(u0, v[4]);
+            u1 = std::max(u1, v[4]);
+            v0 = std::min(v0, v[5]);
+            v1 = std::max(v1, v[5]);
+            }
+          if(not inside)
+            continue;
+          char const c{galmap_char(static_cast<std::int32_t>(std::lround(u0 * fw)), static_cast<std::int32_t>(std::lround(v0 * fh)),
+                                   static_cast<std::int32_t>(std::lround(u1 * fw)), static_cast<std::int32_t>(std::lround(v1 * fh)))};
+          quads.push_back(galmap_quad_t{x0, x1, y1 - y0, c});
+          }
+        for(std::string & name: galmap_labels(quads))
+          if(not name.empty())
+            names.push_back(std::move(name));
+        }
+      ctx->Unmap(g.vb, 0);
+      ctx->Unmap(g.ib, 0);
+
+      std::uint32_t unknown{};
+      std::uint64_t hash{1469598103934665603ull};
+      for(std::string const & name: names)
+        for(char const c: name)
+          {
+          unknown += c == '?' ? 1u : 0u;
+          hash = (hash ^ static_cast<std::uint8_t>(c)) * 1099511628211ull;
+          }
+      if(galmap_t * const share{galmap_open()}; share)
+        {
+        std::atomic_ref<std::uint32_t> sequence{share->sequence};
+        sequence.fetch_add(1u, std::memory_order_acq_rel);  // odd: inside
+        share->unix_ms = unix_ms_now();
+        auto const n{static_cast<std::uint32_t>(std::min<std::size_t>(names.size(), max_galmap_names))};
+        for(std::uint32_t i{}; i != n; ++i)
+          {
+          std::memset(share->names[i].name, 0, sizeof share->names[i].name);
+          std::memcpy(share->names[i].name, names[i].data(), std::min(names[i].size(), sizeof share->names[i].name - 1u));
+          }
+        share->count = n;
+        share->unknown = unknown;
+        sequence.fetch_add(1u, std::memory_order_acq_rel);  // even: done
+        }
+      // the log: when the names change, at most every 10 s
+      LONGLONG const now{qpc_now()};
+      if(hash != g.logged_hash and (now - g.logged_at) * 1000 / qpc_frequency >= 10000)
+        {
+        g.logged_hash = hash;
+        g.logged_at = now;
+        std::string first;
+        for(std::size_t i{}; i != std::min<std::size_t>(names.size(), 4u); ++i)
+          first += (i ? ", " : "") + names[i];
+        log_line("galmap: %zu name(s) from %u text draw(s), %u glyph(s) not known yet: %s%s", names.size(), g.draw_count, unknown,
+                 first.c_str(), names.size() > 4u ? ", ..." : "");
+        }
+      return true;
+      }
+
+    ///\brief a draw of the HUD's text shader: while no panel is drawn, its part of the galaxy map's names
+    auto galmap_draw(ID3D11DeviceContext * ctx, std::uint32_t count, std::uint32_t start, std::int32_t base) noexcept -> void
+      {
+      LONGLONG const now{qpc_now()};
+      if((now - last_draw_qpc) * 1000 / qpc_frequency < panel_less_ms)
+        return;
+      galmap_state_t & g{galmap_state};
+      if(g.phase == galmap_phase_e::waiting)
+        {
+        if(galmap_read(ctx))
+          {
+          g.phase = galmap_phase_e::idle;
+          g.last = now;
+          }
+        return;
+        }
+      if(g.phase == galmap_phase_e::collecting and (now - g.started) * 1000 / qpc_frequency >= galmap_collect_ms)
+        {
+        g.phase = galmap_phase_e::waiting;
+        return;
+        }
+      if(not galmap_target(ctx))
+        return;
+      if(g.phase == galmap_phase_e::idle)
+        {
+        if((now - g.last) * 1000 / qpc_frequency < std::max<LONGLONG>(100, settings().galmap_interval_ms) or g.staging_failed)
+          return;
+        if(not g.ib)
+          g.ib = galmap_buffer(galmap_ib_bytes);
+        if(not g.vb)
+          g.vb = galmap_buffer(galmap_vb_bytes);
+        if(not g.ib or not g.vb)
+          {
+          g.staging_failed = true;
+          log_line("galmap: no staging buffers; the galaxy map's names are not read");
+          return;
+          }
+        g.phase = galmap_phase_e::collecting;
+        g.started = now;
+        g.draw_count = g.ib_used = g.vb_used = 0;
+        galmap_font(ctx, now);
+        }
+      galmap_take(ctx, count, start, base);
+      }
+
+    auto guarded_galmap(ID3D11DeviceContext * ctx, std::uint32_t count, std::uint32_t start, std::int32_t base) noexcept -> void
+      {
+      __try
+        {
+        galmap_draw(ctx, count, start, base);
+        }
+      __except(EXCEPTION_EXECUTE_HANDLER)
+        {
+        note_fault();
+        }
+      }
+#endif
+
     auto panel_surface_at(ID3D11DeviceContext * ctx, std::uint32_t & slot, std::uint32_t & w, std::uint32_t & h) noexcept -> bool
       {
       ID3D11ShaderResourceView * srvs[2]{};
@@ -3670,6 +4115,14 @@ namespace edworld
               log_line("vs %016llX kept for dumps (%zu bytes)", static_cast<unsigned long long>(hash), static_cast<std::size_t>(length));
               }
         }
+#if defined(EDWORLD_EHT)
+      if(hash == galmap_text_vs and not creating_own.load())
+        {
+        static_cast<IUnknown *>(*shader)->AddRef();  // pinned, as the watched ones
+        if(galmap_vs.exchange(*shader, std::memory_order_relaxed) == nullptr)
+          log_line("galmap: the game made the text shader the galaxy map's names are read from");
+        }
+#endif
       if(hash == atmosphere_shell_vs and not creating_own.load())
         {
         static_cast<IUnknown *>(*shader)->AddRef();  // pinned, as the watched ones
@@ -3821,6 +4274,9 @@ namespace edworld
           }
         current_watched = found;
         current_shell = shader != nullptr and shader == shell_vs.load(std::memory_order_relaxed);
+#if defined(EDWORLD_EHT)
+        current_galmap = shader != nullptr and shader == galmap_vs.load(std::memory_order_relaxed);
+#endif
         current_pending = pending;
         current_holo = holo;
         }
@@ -4822,6 +5278,10 @@ namespace edworld
         if(probe_request.load(std::memory_order_relaxed))
           guarded_probe(self, index_count, 1);
         }
+#if defined(EDWORLD_EHT)
+      if(current_galmap and settings().galmap and self == immediate.load(std::memory_order_relaxed) and not disabled.load(std::memory_order_relaxed))
+        guarded_galmap(self, index_count, start_index, base_vertex);
+#endif
       orig_draw_indexed(self, index_count, start_index, base_vertex);
       if(full_after_draw and self == immediate.load(std::memory_order_relaxed))
         guarded_full_after(self);
@@ -4893,6 +5353,10 @@ namespace edworld
         if(probe_request.load(std::memory_order_relaxed))
           guarded_probe(self, index_count, instance_count);
         }
+#if defined(EDWORLD_EHT)
+      if(current_galmap and settings().galmap and self == immediate.load(std::memory_order_relaxed) and not disabled.load(std::memory_order_relaxed))
+        guarded_galmap(self, index_count, start_index, base_vertex);
+#endif
       orig_draw_indexed_instanced(self, index_count, instance_count, start_index, base_vertex, start_instance);
       if(current_shell and atmo_period_s() and not disabled.load(std::memory_order_relaxed)
          and self == immediate.load(std::memory_order_relaxed))

@@ -84,6 +84,9 @@ the folder EHT writes to (`edworld.dir` in EHT's `eht_settings.json`), as seen f
 `/dev/shm/eht-sjona` is `Z:\dev\shm\eht-sjona` for the game under Proton. Give each commander's EHT a folder of its
 own: two tools writing one folder replace each other's destination.
 
+While the galaxy map is open, `edworld_eht.dll` also reads the names the map shows (`galmap`) and puts them there for
+EHT. Letters it has not learned yet come out as `?`.
+
 ## Settings
 
 In `edworld.ini` (or `edworld_eht.ini`), beside the dll or in `edloader\config`; whole lines, `;` or `#` starts a
@@ -149,6 +152,8 @@ the values that make sense, and whether a change shows while the game runs or ne
 | `list_rows` | `7` | factions listed at most |
 | `edsm` | `1` | `0` = never ask EDSM (no list then without EHT) |
 | `shm_dir` | `Z:\dev\shm\eht` | `edworld_eht.dll` only: the folder EHT writes to |
+| `galmap` | `1` | `edworld_eht.dll` only: the names the galaxy map shows, read while it is open and put in `galmap` there for EHT; `0` = off |
+| `galmap_interval_ms` | `500` | how often, at most, those names are read (milliseconds) |
 | `shader_catalog` | `1` | `edworld_eht.dll` only: `1` keeps each shader the game creates, once per build of the game, in `edworld_shaders` beside the log (a few seconds after loading; costs nothing while flying); `0` none |
 | `compass` | `1` | `0` = no navballs; the game's compass is then not read at all |
 | `compass_spheres` | `1` | `0` = no spheres |

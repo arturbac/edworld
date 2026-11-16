@@ -12,6 +12,9 @@
   (`compass_hide_game` 1, was 0); it returns whenever edworld is not there.
 - **The pads' disc turns yellow and red later:** green up to 15 degrees of tilt, red from 35 (`pad_tilt_green_deg`,
   `pad_tilt_red_deg`, were 10 and 20).
+- **edworld_eht: the galaxy map's names for EHT** (`galmap`, `galmap_interval_ms`). While the map is open, a few times a
+  second, the names it shows are read off its text draws, each glyph by its shape in the game's font, and put in
+  `galmap` in `shm_dir`. Letters not learned yet are `?`.
 - **The aurora seen from afar no brighter than it is.** A curtain thinner than the step a far ray samples is widened
   to that step so the ray meets it; it kept its brightness, so from orbit its light grew as many times (tens of
   times on a small planet, a bright smooth band). Now it is as much dimmer: its light stays a thin curtain's.

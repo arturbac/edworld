@@ -329,6 +329,11 @@ namespace edworld
     /// notices too), its area is written to edworld_padtext as a sample for learning the digits, with a log line; 0 = off
     /// (src/panel_math.h pad_box_*)
     std::uint32_t pad_text_samples{0};
+    ///\brief edworld_eht: the names the galaxy map shows, read off its text draws (src/galmap.h) and published to
+    /// `galmap` in shm_dir; 0 = off
+    std::uint32_t galmap{1};
+    ///\brief how often, at most, they are read (milliseconds)
+    std::uint32_t galmap_interval_ms{500};
     ///\brief the pad's text read (2026-10-24, src/pad_text_read.h): 1 = the tower's notice in that box gives the pad and
     /// the grant's time - edworld alone takes them as the pad given, edworld_eht logs whether they agree with the data
     /// source's; 0 = off
