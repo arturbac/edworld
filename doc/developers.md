@@ -448,14 +448,15 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   the planet stands between), 32 steps near, 16 far, ending at the scene; `aurora_glow` the oval about the dipole
   with the angle from midnight (the seam of what is noised along it falls at noon), up to three arcs (`aurora_arc`:
   width, foot and height by the arc's brightness there; the second from level 3, the third while the dance is over
-  0.7 from level 6), each lit where its own noise (`aurora_lit`, about 10-20 parts round the oval) passes the gaps' threshold, times
-  a local one (stretches of about 25 km, about 1.25 s from dark to full), the local mask, each ray's reach and the
-  wisps taken at `late` = the time - 3 s times the height in the shell, each
-  with its own local folds (`aurora_across`: a fine wiggle across the arc and curls, a vortex in some of 24 cells that
+  0.7 from level 6), each lit where its own noise (`aurora_lit`, about 10-20 parts round the oval) passes the gaps' threshold, each
+  with its own local folds (`aurora_across`: a fine wiggle across the arc, about 20 round the oval, and curls, a vortex in some of 12 cells, 16 s each, that
   turns the arc's local frame by up to 2.5 radians within twice the sway, the old arcs' 0.35-0.5°), the curtains 4 km
   thin (`thick` from the planet's radius, 2026-11-16) and no thinner than half a step, fading upward over 0.6 of the
-  shell, the rays about 3 km wide (the angle scaled by the arc's length, `u`), the foot frayed by a small fast noise
-  and the top by each ray's reach (0.4..1.6) and a mask of wisps growing with the height, 64 steps from in or near
+  shell (`u`: the angle scaled by the arc's length, about 3 km a unit), discrete rays in two lattices (3 and 1.2 cells
+  a unit, weights 1 and 0.6, the three nearest cells of each), each ray's middle, width, foot jitter and rate from
+  `hash` of its cell, its strength from `noise` of its cell in time (2..6 s) and a group envelope (`u` 0.35, time
+  0.15), setting its light (0.1 + strength), its foot (0.07 lower at full) and its length (0.15..1.25 times 0.6 of the
+  shell by the arc's brightness), plus a faint low sheet by the envelope; 64 steps from in or near
   the shell, the night side only, from under the floor only while the eye's own sky is dark. Its light is 120 times
   `frame_rows[90].y` (40 was faint at an F star, 2026-11-15), scaled by `aurora_gain`.
 - (both builds, `clouds_cyclones`, 2026-11-10) Storms. The planet's day is read off the shell's object

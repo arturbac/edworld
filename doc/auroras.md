@@ -84,11 +84,11 @@ what moves in seconds is local:
 
 - waves of brightness running along the arcs, three times as bright here and a third there;
 - curtains folding and swaying by a degree or two;
-- each arc wiggling across itself on its own, in bumps a fortieth of the oval long that change in about a second and
+- each arc wiggling across itself on its own, in bumps a twentieth of the oval long that change in about two seconds and
   drift along it, by up to 1.5 times its thickness (half that in a quiet sky);
-- curls: here and there an arc winds into an S about a small vortex that grows and fades over 8 seconds, in about a third
-  of the oval's 24 parts at a time in a quiet sky, up to 70% in a substorm;
-- rays moving along the arc and lighting up for a moment;
+- curls: here and there an arc winds into an S about a small vortex that grows and fades over 16 seconds, in about a third
+  of the oval's 12 parts at a time in a quiet sky, up to 70% in a substorm;
+- rays growing and fading, each on its own over 2-6 seconds, in groups about 10 km long;
 - small patches flickering about 8 times a second, at most 15% (`aurora_flicker = 0` turns this off).
 
 `aurora_dance` scales all of it (`0` = a still aurora, without wiggles and curls); a weak storm dances less, three quarters at level 4.
@@ -97,16 +97,16 @@ what moves in seconds is local:
 substorm expands from level 6 (by the time alone about 7.5% of the time is at level 6 or more, and the expansion is a
 fifth of each substorm, so the third arc is rare). No arc runs all round: each has its own dark gaps, drifting over
 minutes, about half of it dark in a quiet sky, a quarter in a strong storm, more again as a substorm recovers, so in
-one place there may be none, one, two or three. Besides, stretches of about 25 km light and go dark on their own,
-from dark to full in about 1.25 s (0.75-5 s), about a quarter of an arc dark at a time. The gas higher up shows a
-change later (oxygen's green low in about 0.7 s, its red high in about 110 s): the curtain's top follows its foot
-3 s behind, so a stretch lights from the foot up and goes dark at the foot first. Where an arc is bright it is wider, its foot lower and its rays
-taller; a faint part stands higher, thin and short. Each curtain is a thin, tall sheet, as the particles come down
+one place there may be none, one, two or three. Where an arc is bright it is wider and its foot lower; a faint part
+stands higher, thin and short. Each curtain is a thin, tall sheet, as the particles come down
 along the field's lines, nearly upright near the pole, in sheets a few km thin: about 4 km thick (2.8-5.2 by its
 brightness), sharp at its foot and fading slowly upward over most of the shell, coloured from the gas's low colour
-to its high one, with rays about 3 km wide. Its edges are frayed: the foot a little, by about 3% of the shell up
-or down, changing fast; the top much more, each ray reaching from 0.4 to 1.7 times as high (nine rays of ten) and
-broken into wisps and holes the higher it goes, all of it changing within about a second; the faint diffuse glow beside the arcs is half as bright as before. The
+to its high one by the height. It is made of dense rays, one about each km and a wider one about each 2.5 km, each
+with a strength of its own that changes smoothly over 2-6 s and is alike in its neighbours (groups about 10 km long,
+changing in about 6 s). A strong ray is bright, reaches high and comes down deeper, as harder particles do; a weak one
+is faint and short. So the curtain's foot and top are both uneven, and only the long rays reach the high colour (for
+oxygen the red), the short ones stay in the low one; a faint sheet glows low between the rays. The faint diffuse glow
+beside the arcs is half as bright as before. The
 lines lean 10-15° on the Earth; edworld draws the curtains upright.
 
 **How high.** On the Earth an aurora's foot stands about 100 km up, where the electrons have gone through as much
