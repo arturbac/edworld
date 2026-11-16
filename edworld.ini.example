@@ -120,7 +120,7 @@
 ; (test) how stormy: -1 = by the time, 0..9 = always this, as the Kp index
 ;aurora_activity = -1
 
-; how much the aurora moves in seconds in a substorm: 1 = as designed, 0 = still, 2 = twice as much
+; how much the aurora moves in seconds in a substorm: 1 = as designed, 0 = none (its rays still change), 2 = twice as much
 ;aurora_dance = 1
 
 ; 1 = small patches of the aurora flicker a few times a second in a substorm, 0 = none

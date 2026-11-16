@@ -26,6 +26,7 @@ channel 1, so the kinds' different yields are not shown. Nitrogen's pink edge is
 | substorms every 1.5-3 hours: growth, breakup, expansion, recovery | the Earth's | physics, carried over |
 | the colours | the gases' emission lines (below) | physics, except methane, ammonia and silicate vapour (only to tell them apart) |
 | a bright part of an arc wider, lower at its foot and taller | more and harder particles go deeper | physics, the amounts a choice |
+| the rays: a strong one bright, long and coming down deeper; the colour by the height, the high colour only at the tops of the long ones | harder particles go deeper; each gas's lines by height (oxygen green low, red high) | physics, the rays' sizes and times a choice |
 | whether a planet has a field | a dynamo needs a large, turning, warm inside | the reason physics, the chances a choice |
 | how active a star is for its class | convective envelopes: M most, hot stars little | the order physics, the numbers a choice |
 | how high it stands | where the air thins as the Earth's over 100 km: the scale height from the gas, the temperature and the gravity, and the surface pressure | physics with the kind's typical planet (the radius read off the render), the air taken as at the surface's temperature all the way up; the bounds a choice |
@@ -88,10 +89,11 @@ what moves in seconds is local:
   drift along it, by up to 1.5 times its thickness (half that in a quiet sky);
 - curls: here and there an arc winds into an S about a small vortex that grows and fades over 16 seconds, in about a third
   of the oval's 12 parts at a time in a quiet sky, up to 70% in a substorm;
-- rays growing and fading, each on its own over 2-6 seconds, in groups about 10 km long;
 - small patches flickering about 8 times a second, at most 15% (`aurora_flicker = 0` turns this off).
 
-`aurora_dance` scales all of it (`0` = a still aurora, without wiggles and curls); a weak storm dances less, three quarters at level 4.
+Besides, its rays grow and fade, each on its own over 2-6 seconds, in groups about 10 km long, in a quiet sky too.
+
+`aurora_dance` scales all of it (`0` = without the waves, the fast folds, the wiggles, the curls and the flicker; the rays still grow and fade); a weak storm dances less, three quarters at level 4.
 
 **The arcs.** One arc in a quiet sky; a second one poleward of it from level 3; a third further poleward while a
 substorm expands from level 6 (by the time alone about 7.5% of the time is at level 6 or more, and the expansion is a
@@ -105,8 +107,7 @@ to its high one by the height. It is made of dense rays, one about each km and a
 with a strength of its own that changes smoothly over 2-6 s and is alike in its neighbours (groups about 10 km long,
 changing in about 6 s). A strong ray is bright, reaches high and comes down deeper, as harder particles do; a weak one
 is faint and short. So the curtain's foot and top are both uneven, and only the long rays reach the high colour (for
-oxygen the red), the short ones stay in the low one; a faint sheet glows low between the rays. The faint diffuse glow
-beside the arcs is half as bright as before. The
+oxygen the red), the short ones stay in the low one; a faint sheet glows low between the rays. A faint diffuse glow lies beside the arcs. The
 lines lean 10-15° on the Earth; edworld draws the curtains upright.
 
 **How high.** On the Earth an aurora's foot stands about 100 km up, where the electrons have gone through as much

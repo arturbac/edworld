@@ -141,7 +141,7 @@ the values that make sense, and whether a change shows while the game runs or ne
 | `aurora` | `1` | (PoC) `1` = an aurora over the night side of a planet whose atmosphere's kind is known, as [clouds.md](clouds.md#aurora) gives, `0` = none; this and the four below read again while the game runs |
 | `aurora_gain` | `1` | how bright the aurora is, `0`..`3` |
 | `aurora_activity` | `-1` | (test) how stormy: `-1` = by the time, each 3 hours its own and the same for everyone; `0`..`9` = always this, as the Kp index (`7` for a picture of a strong one) |
-| `aurora_dance` | `1` | how much the aurora moves in seconds in a substorm: `1` = as designed, `0` = a still aurora, `2` = twice as much |
+| `aurora_dance` | `1` | how much the aurora moves in seconds in a substorm (waves, folds, wiggles, curls): `1` = as designed, `0` = none of these (its rays still grow and fade), `2` = twice as much |
 | `aurora_flicker` | `1` | `1` = small patches of the aurora flicker a few times a second in a substorm, `0` = none |
 | `aurora_field` | `-1` | (test) whether the planet has a magnetic field of its own: `-1` = as guessed from its size and turn, `1` = always (the whole aurora on any planet whose kind is known), `0` = never (a faint glow only) |
 | `clouds_haze` | `0.05` | from under the clouds with depth and in them, a cloud this far away covers e times less, so they fade into the haze at the horizon instead of ending in a sharp line; a part of the planet's radius, `0` = never less; from orbit they stay as they are |
