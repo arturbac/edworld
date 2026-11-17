@@ -16,6 +16,9 @@
   methane planet, crystals of its own gas fall near you under the clouds, streaking past as you fly (`snow_bench`, a
   test, measures the cost of its parts); a cold ammonia planet (its second colour) snows steadily and glints a little in a
   clear sky. From the render and Status.json alone. See doc/clouds.md.
+- **edworld_eht: the atmosphere's print for EHT** (`atmosphere` in `shm_dir`). Each read of a planet's atmosphere
+  off the render puts its radius, its print and whether edworld knows that print (its kind, a second print of the
+  kind) where EHT reads it, so EHT can say when an atmosphere is a case never seen.
 - **edworld_eht: the galaxy map's names for EHT** (`galmap`, `galmap_interval_ms`). While the map is open, a few times a
   second, the names it shows are read off its text draws, each glyph by its shape in the game's font, and put in
   `galmap` in `shm_dir`. Letters not learned yet are `?`.

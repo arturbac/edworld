@@ -79,6 +79,16 @@ namespace edworld
     {atmosphere_kind_e::water, "Water", 0.8268f, 1.4177f},
   }};
 
+  ///\brief a print after the first of its kind in the table: neon's volcanic one, ammonia's cold one
+  [[nodiscard]]
+  constexpr auto atmosphere_second_print(atmosphere_print_t const & print) noexcept -> bool
+    {
+    for(atmosphere_print_t const & p: atmosphere_prints)
+      if(p.kind == print.kind)
+        return &p != &print;
+    return false;
+    }
+
   /// the least and the most a hue may lie from its kind's, in either ratio (atmosphere_tolerance_of): four times the
   /// spread within a kind, and a bound that keeps a table never seen from being taken for a kind far from it
   inline constexpr float atmosphere_tolerance_least{0.004f};

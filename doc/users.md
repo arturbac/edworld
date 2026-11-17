@@ -87,6 +87,10 @@ own: two tools writing one folder replace each other's destination.
 While the galaxy map is open, `edworld_eht.dll` also reads the names the map shows (`galmap`) and puts them there for
 EHT. Letters it has not learned yet come out as `?`.
 
+Each time it reads a planet's atmosphere off the render, `edworld_eht.dll` also puts that planet's print there
+(`atmosphere`): its radius, the hue of the game's table of its air and whether that is one of the prints edworld knows
+(its kind) or a new one, so EHT can tell you when a planet's atmosphere is a case never seen.
+
 ## Settings
 
 In `edworld.ini` (or `edworld_eht.ini`), beside the dll or in `edloader\config`; whole lines, `;` or `#` starts a

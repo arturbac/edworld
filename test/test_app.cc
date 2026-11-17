@@ -705,6 +705,18 @@ namespace
     std::vector<galmap_quad_t> const narrow{
       {0.f, 10.f, 30.f, 'B'}, {11.f, 21.f, 30.f, '3'}, {22.f, 27.f, 30.f, '1'}, {35.f, 40.f, 30.f, '-'}, {41.f, 51.f, 30.f, '7'}};
     check(galmap_labels(narrow) == std::vector<std::string>{"B31-7"}, "galmap: a narrow 1 in a digit's room before a dash is no space");
+    // the atmosphere's print for EHT: the second print of a kind told apart from its first
+    {
+    auto const second_of{[](float r_g) -> bool
+                         {
+                           for(atmosphere_print_t const & p: atmosphere_prints)
+                             if(std::fabs(p.r_g - r_g) < 1e-4f)
+                               return atmosphere_second_print(p);
+                           return false;
+                         }};
+    check(second_of(1.3109f) and second_of(0.8800f) and not second_of(0.8035f) and not second_of(0.4897f) and not second_of(0.6953f),
+          "atmosphere: neon's volcanic and ammonia's cold prints are second ones, the first ones and nitrogen's not");
+    }
     // the snow: by the kind and ammonia's cold colour; on foot outdoors or in a craft; the fall by the gravity; the way
     check(snow_of(atmosphere_kind_e::ammonia, false).under_clouds == 0.5f and snow_of(atmosphere_kind_e::ammonia, true).clear > 0.f
             and snow_of(atmosphere_kind_e::methane, false).under_clouds > 0.f and snow_of(atmosphere_kind_e::carbon_dioxide, false).under_clouds == 0.f

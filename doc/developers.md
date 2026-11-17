@@ -70,6 +70,11 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   (found by 6 halvings against the scene's depth, 1.5 km for the sky) laid in front of the clouds; 12 samples; lit by the star (`frame_rows[293]`), more towards it, none under the horizon.
   The number under the clouds follows `weather_at` over the eye (the clouds' weather, now a function of its own) with
   the kind's cover.
+- (edworld_eht only) **The atmosphere's print for EHT** (`atmosphere_t` in `src/edworld_share.h`): every read of
+  the shell's table (`atmo_publish` in `src/hooks.cc`) writes to `atmosphere` in `shm_dir` (seqlock, 80 bytes): when,
+  the planet's radius (the journal's `Radius`) and the camera's distance, the hue (r/g, b/g), whether it is one of
+  `atmosphere_prints` (`known`, the kind as the journal's `AtmosphereType`) and whether that is its kind's second print
+  (`atmosphere_second_print`: neon's volcanic, ammonia's cold one).
 - (edworld_eht only, `galmap = 1`) **The galaxy map's names** (`src/galmap.h`): the map writes its labels (the systems'
   names, the grid's coordinates) with the HUD's text VS `1012E00B3CB44469`, a quad a glyph, into a picture of its labels
   (4680x5468 at 9000x2160), which its scene then shows. With no panel drawn for 200 ms, every `galmap_interval_ms`

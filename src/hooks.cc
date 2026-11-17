@@ -1187,6 +1187,77 @@ namespace edworld
                double(hue.b_g));
       }
 
+#if defined(EDWORLD_EHT)
+    // ---- the atmosphere last read, published to `atmosphere` in shm_dir for EHT: is its print known ----
+    atmosphere_t * atmo_share{};
+    bool atmo_share_failed{};
+
+    auto atmo_share_open() noexcept -> atmosphere_t *
+      {
+      if(atmo_share or atmo_share_failed)
+        return atmo_share;
+      atmo_share_failed = true;
+      std::wstring const & dir{settings().shm_dir};
+      if(dir.empty())
+        return nullptr;
+      CreateDirectoryW(dir.c_str(), nullptr);
+      std::wstring const path{dir + L"\\atmosphere"};
+      HANDLE const file{CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                    nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr)};
+      if(file == INVALID_HANDLE_VALUE)
+        {
+        log_line("atmo: cannot open %S (error %lu); not publishing", path.c_str(), GetLastError());
+        return nullptr;
+        }
+      HANDLE const mapping{CreateFileMappingW(file, nullptr, PAGE_READWRITE, 0, sizeof(atmosphere_t), nullptr)};
+      CloseHandle(file);
+      if(not mapping)
+        {
+        log_line("atmo: cannot map %S (error %lu); not publishing", path.c_str(), GetLastError());
+        return nullptr;
+        }
+      auto * const view{static_cast<atmosphere_t *>(MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(atmosphere_t)))};
+      CloseHandle(mapping);
+      if(not view)
+        {
+        log_line("atmo: cannot view %S (error %lu); not publishing", path.c_str(), GetLastError());
+        return nullptr;
+        }
+      std::memset(view, 0, sizeof(atmosphere_t));
+      view->magic = atmosphere_magic;
+      view->version = atmosphere_version;
+      view->size = sizeof(atmosphere_t);
+      atmo_share = view;
+      atmo_share_failed = false;
+      log_line("atmo: publishing each read's print to %S (%zu bytes)", path.c_str(), sizeof(atmosphere_t));
+      return view;
+      }
+
+    ///\brief every read: the planet, its print and whether it is one edworld knows
+    auto atmo_publish(float radius, float distance, atmosphere_hue_t const & hue) noexcept -> void
+      {
+      atmosphere_t * const share{atmo_share_open()};
+      if(not share)
+        return;
+      atmosphere_print_t const * found{hue.ok ? atmosphere_kind_of(hue) : nullptr};
+      std::atomic_ref<std::uint32_t> sequence{share->sequence};
+      sequence.fetch_add(1u, std::memory_order_acq_rel);  // odd: inside
+      share->unix_ms = unix_ms_now();
+      share->radius = radius;
+      share->distance = distance;
+      share->r_g = hue.r_g;
+      share->b_g = hue.b_g;
+      share->ok = hue.ok ? 1u : 0u;
+      share->known = found ? 1u : 0u;
+      share->second = found and atmosphere_second_print(*found) ? 1u : 0u;
+      std::memset(share->kind, 0, sizeof share->kind);
+      if(found)
+        std::memcpy(share->kind, found->name.data(), std::min(found->name.size(), sizeof share->kind - 1u));
+      ++share->reads;
+      sequence.fetch_add(1u, std::memory_order_acq_rel);  // even: done
+      }
+#endif
+
     // why the shell's reads do not get through (2026-11-12: none in a settlement after logging in, and no word why),
     // counted while none does and logged at most once a minute; the camera too far from the planet is not counted
     struct atmo_misses_t
@@ -1691,6 +1762,7 @@ namespace edworld
       atmo_note_turn(radius, turn_rows, p.qpc);
 
 #if defined(EDWORLD_EHT)
+      atmo_publish(radius, distance, hue);
       // the fingerprint: at most every atmo_record_s seconds, once a session per planet and band
       std::uint32_t const band{over < 1.f ? 0u : static_cast<std::uint32_t>(std::floor(std::log2(over)))};
       std::uint64_t const key{(static_cast<std::uint64_t>(std::llround(radius)) << 8) | band};
