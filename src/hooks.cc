@@ -3752,9 +3752,12 @@ namespace edworld
             }
           else
             std::memcpy(&at, indices + i * 4u, 4);
-          top = std::max(top, at);
+          if(at != 0xFFFFFFFFu)  // a strip cut, no vertex
+            top = std::max(top, at);
           }
-        queue_write(name, vertices, std::min(holo_sample.vb_bytes, (top + 1u) * vertex_stride));
+        // in 64 bits: a large index times the stride must not wrap to a short file
+        std::uint64_t const wanted{(std::uint64_t{top} + 1u) * vertex_stride};
+        queue_write(name, vertices, static_cast<std::uint32_t>(std::min<std::uint64_t>(holo_sample.vb_bytes, wanted)));
         // the game's files at the sample (Status.json, the journal's place), read by the writer thread
         char sample[96];
         int const length{std::snprintf(sample, sizeof sample, "%s_%s_%u", holo_build(), holo_sample.stamp, holo_sample.count)};
@@ -5892,6 +5895,10 @@ namespace edworld
     recording = -1;
     device = dev;
     attach_qpc = qpc_now();
+    // the gaps are measured from here: zero would make the first draw's gap the machine's uptime, which overflows
+    // when turned to microseconds after some 10 days
+    last_draw_qpc = attach_qpc;
+    last_any_draw_qpc = attach_qpc;
     immediate1 = ctx1;
     immediate.store(ctx);  // the latest device wins; its context stays referenced for the process lifetime
     if(std::uint32_t const order{census_attached.fetch_add(1)}; order < census_contexts)

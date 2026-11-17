@@ -1053,9 +1053,10 @@ namespace edworld
     // (the box's alpha also gates what is drawn beside the panel: the shader reads it at the patch's centre)
     {
     float const left{s.patch_x - s.patch_width / 2.f}, top{centre_y - s.patch_height / 2.f};
-    UINT const x0{left > 0.f ? static_cast<UINT>(left) : 0u}, y0{top > 0.f ? static_cast<UINT>(top) : 0u};
-    UINT const x1{static_cast<UINT>(s.patch_x + s.patch_width / 2.f) + 1u}, y1{static_cast<UINT>(centre_y + s.patch_height / 2.f) + 1u};
-    D3D11_BOX const area{x0, y0, 0, x1 < d.Width ? x1 : d.Width, y1 < d.Height ? y1 : d.Height, 1};
+    UINT const x0{to_pixel(left, d.Width)}, y0{to_pixel(top, d.Height)};
+    UINT const x1{std::min(to_pixel(s.patch_x + s.patch_width / 2.f, d.Width) + 1u, d.Width)};
+    UINT const y1{std::min(to_pixel(centre_y + s.patch_height / 2.f, d.Height) + 1u, d.Height)};
+    D3D11_BOX const area{x0, y0, 0, x1, y1, 1};
     if(area.left < area.right and area.top < area.bottom)
       ctx->CopySubresourceRegion(r.mask, 0, area.left, area.top, 0, tex, 0, &area);
     D3D11_MAPPED_SUBRESOURCE m{};
@@ -2704,7 +2705,7 @@ namespace edworld
       tex->Release();
       return;
       }
-    auto const gx{static_cast<UINT>(disc_x + disc_radius)}, gy{static_cast<UINT>(disc_y)};
+    auto const gx{to_pixel(disc_x + disc_radius, d.Width)}, gy{to_pixel(disc_y, d.Height)};
     if(gx + 1u < d.Width and gy + 1u < d.Height)
       {
       D3D11_BOX const g{gx, gy, 0, gx + 1u, gy + 1u, 1};

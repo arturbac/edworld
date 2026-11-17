@@ -34,7 +34,7 @@ ini_cases() {  # $1 = edworld | edworld_eht; in the run directory
   mv "$ini" "$ini.session"
   set +e
   ini_run
-  grep -q '^;clouds_alpha = 0.45$' "$ini" && grep -q '^;clouds_volume = 1$' "$ini" && grep -qE '^;status_file = .+Status\.json' "$ini" && grep -q '^;dump_vs = ' "$ini" && ! grep -qvE '^(;.*)?\r?$' "$ini"
+  grep -q '^;clouds_alpha = 0.45$' "$ini" && grep -q '^;clouds_volume = 1$' "$ini" && grep -qE '^;status_file =$' "$ini" && grep -q '^;dump_vs = ' "$ini" && ! grep -qvE '^(;.*)?\r?$' "$ini"
   ini_check "made when there is none, all comments" $?
   before=$(sha256sum "$ini")
   ini_run
@@ -90,6 +90,20 @@ fault_case() {  # $1 = edworld | edworld_eht; a fault in a guard and in a thread
   done
   set -e
 }
+bad_values_case() {  # $1 = edworld | edworld_eht; what the ini says wrong is said in the log, the defaults kept
+  local ini=$1.ini
+  set +e
+  printf 'clouds_alpha = 0,45\nclouds = 1 ; on\naurora_gain = nan\ncluds = 1\nlog_interval_ms = 99999999999\n' > "$ini"
+  ini_run
+  grep -q "settings: line 1: 'clouds_alpha = 0,45' cannot be read" "$1.log" \
+    && grep -q "settings: line 3: 'aurora_gain = nan' cannot be read" "$1.log" \
+    && grep -q "settings: line 4: no setting 'cluds' (a typo?)" "$1.log" \
+    && grep -q "settings: line 5: 'log_interval_ms = 99999999999' cannot be read" "$1.log" \
+    && ! grep -q "settings: line 2" "$1.log"
+  ini_check "bad values said in the log, a comment after a value taken off" $?
+  : > "$ini"
+  set -e
+}
 second_device_case() {  # $1 = edworld | edworld_eht; a second device of the game is not followed, and said so
   set +e
   : > "$1.ini"
@@ -142,6 +156,7 @@ run_variant() {  # $1 = edworld | edworld_eht; sets rc on failure
   creator_case "$V"
   fault_case "$V"
   second_device_case "$V"
+  bad_values_case "$V"
   [[ $V != edworld_eht ]] || doc_case
   popd >/dev/null
 }

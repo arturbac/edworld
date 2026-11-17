@@ -108,7 +108,10 @@ comment line. Every setting has a default. At its first start edworld makes the 
 setting as a comment holding the value it runs on (`;clouds_alpha = 0.45`), and at each start it adds the settings
 the file does not name yet, a new version's too, at the end; it never changes a line that is there. To change a
 setting, take the `;` off its line; a line left as a comment follows edworld's default, also when a new version
-changes it. Where the file cannot be written, edworld says so in its log and runs on. `edworld.ini.example` in the
+changes it. Where the file cannot be written, edworld says so in its log and runs on. A value edworld cannot read (a
+decimal comma, `0,45`; a word where a number goes; a name with a typo) keeps its default, and the log says which line
+(`settings: line ...`); a comment may follow a value after a space (`clouds = 1 ; on`). `status_file` is left empty in
+the file edworld writes: empty means the Saved Games folder, and the file then holds no Windows user name. `edworld.ini.example` in the
 zip is the same start, by hand.
 
 [settings.md](settings.md) lists every setting by its topic (clouds, navballs, jump panel, other) with its default,

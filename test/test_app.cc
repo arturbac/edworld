@@ -1070,6 +1070,13 @@ int main()
           std::fabs(edworld::list_height(seven_edsm, 58.f, 15.f) - 494.f) < 0.01f,
         "list: the box as high as its rows");
   }
+  // a pixel from the settings: negative, NaN and past the surface held to it
+  {
+  using edworld::to_pixel;
+  check(to_pixel(-500.f, 3072u) == 0u and to_pixel(std::nanf(""), 3072u) == 0u and to_pixel(12.7f, 3072u) == 12u
+          and to_pixel(1e20f, 3072u) == 3072u,
+        "to_pixel: held to the surface, NaN to 0");
+  }
   // build_info: the corners clockwise from the top left; a value out of range as the bottom right
   {
   auto const at = [](std::uint32_t corner, float x, float y) -> bool

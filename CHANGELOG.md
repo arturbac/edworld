@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **The ini says what it cannot read.** A value edworld cannot read (`0,45`, a word, NaN, a number too large) keeps
+  its default and the log names the line; an unknown name (a typo) is logged too; a comment after a value
+  (`clouds = 1 ; on`) is taken off. The ini edworld writes leaves `status_file` empty (the Saved Games folder), so it
+  holds no Windows user name.
 - **The game's state kept whole around edworld's drawing:** constant buffers with their offsets, the pixel shader's
   UAVs and the hull, domain and compute shaders are put back as the game had them. edworld follows only the game's
   first device (a second is logged, not followed). A surface's size is read anew at each draw.

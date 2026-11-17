@@ -7,11 +7,13 @@
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
+#include <cmath>
 #include <cstdarg>
 #include <cstdio>
 #include <cwchar>
 #include <exception>
 #include <iterator>
+#include <optional>
 #include <cstdlib>
 #include <stdexcept>
 #include <string>
@@ -59,25 +61,31 @@ namespace edworld
       return w;
       }
 
-    auto to_uint(std::string_view s, std::uint32_t fallback) -> std::uint32_t
+    ///\brief digits only, no more than fit 32 bits; none otherwise
+    auto to_uint(std::string_view s) -> std::optional<std::uint32_t>
       {
-      std::uint32_t v{};
+      std::uint64_t v{};
       if(s.empty())
-        return fallback;
+        return std::nullopt;
       for(char const c: s)
         {
         if(c < '0' or c > '9')
-          return fallback;
-        v = v * 10u + static_cast<std::uint32_t>(c - '0');
+          return std::nullopt;
+        v = v * 10u + static_cast<std::uint64_t>(c - '0');
+        if(v > 0xFFFFFFFFull)
+          return std::nullopt;
         }
-      return v;
+      return static_cast<std::uint32_t>(v);
       }
-    auto to_float(std::string_view s, float fallback) -> float
+    ///\brief a whole finite number (a dot for the decimals); none for anything after it (`0,45`), NaN or infinity
+    auto to_float(std::string_view s) -> std::optional<float>
       {
       std::string const text{s};
       char * end{};
       float const v{std::strtof(text.c_str(), &end)};
-      return end and end != text.c_str() ? v : fallback;
+      if(text.empty() or end != text.c_str() + text.size() or not std::isfinite(v))
+        return std::nullopt;
+      return v;
       }
 
     auto narrow(std::wstring_view s) -> std::string
@@ -162,7 +170,7 @@ namespace edworld
       {"next", &settings_t::next, g::other, r::at_start, "a dll's name or empty", "the next d3d11 mod in the chain (`d3d11_edhm.dll`, a mod's dll renamed); empty = the system's own, under edloader the next on its list", "Where edworld goes on to, the next d3d11 mod. Through edloader leave it empty: edworld goes on down edloader.txt. On its own: a mod's dll you renamed, d3d11_edhm.dll; empty = the system's own"},
       {"creator_pass", &settings_t::creator_pass, g::other, r::at_start, "dll names by commas, or empty", "dlls passed over when edworld tells who asks for a device: a program that puts itself in the game's own call (an antivirus's hooks; `bdhkm64.dll`, seen in a player's log, by default); without it a device asked through such a dll is taken for an overlay's and not followed, and edworld draws nothing. The log's `not followed` line names the dll"},
       {"build_info", &settings_t::build_info, g::other, r::at_start, "0..4", "edworld's name and version, small and grey, in a corner of the picture (the swap chain's back buffer, after the game's own drawing of it): `1` top left, `2` top right, `3` bottom right, `4` bottom left; `0` = none. The log's `build_info:` line says where it went, or that no back buffer was seen", "edworld's version in a corner of the screen: 1 top left, 2 top right, 3 bottom right, 4 bottom left, 0 = none"},
-      {"status_file", &settings_t::status_file, g::other, r::at_start, "a path or empty", "the game's `Status.json`, the journals beside it; empty = in Saved Games; for a game whose Saved Games lie elsewhere", "The game's Status.json, the journals beside it; change it only if edworld looks in the wrong place"},
+      {"status_file", &settings_t::status_file, g::other, r::at_start, "a path or empty", "the game's `Status.json`, the journals beside it; empty = in Saved Games; for a game whose Saved Games lie elsewhere", "The game's Status.json, the journals beside it; empty = the Saved Games folder; change it only if edworld looks in the wrong place"},
       {"clouds", &settings_t::clouds, g::clouds, r::at_start, "0, 1", "clouds over a planet with an atmosphere that the game draws without any; `0` = none, and then nothing of the clouds is read again while the game runs", "Clouds over planets with an atmosphere: 0 = none"},
       {"clouds_height", &settings_t::clouds_height, g::clouds, r::at_start, "0..0.05", "the flat layer's height over the surface, as a part of the planet's radius", "the layer's height over the surface, as a part of the planet's radius"},
       {"clouds_alpha", &settings_t::clouds_alpha, g::clouds, r::at_start, "0..1", "how much the flat layer covers what is under it, `0` nothing to `1` all", "how much they cover what is under them, 0 to 1"},
@@ -320,19 +328,49 @@ namespace edworld
       using functions_t::operator()...;
       };
 
-    auto read_value(settings_t & s, field_t const & field, std::string_view value) -> void
+    ///\brief the value read into its field; false when it cannot be read, the field kept as it was
+    auto read_value(settings_t & s, field_t const & field, std::string_view value) -> bool
       {
+      bool ok{true};
       std::visit(
         overloaded_t{
-          [&](bool settings_t::* f) { s.*f = value == "1" or value == "true"; },
-          [&](std::uint32_t settings_t::* f) { s.*f = to_uint(value, s.*f); },
-          [&](float settings_t::* f) { s.*f = to_float(value, s.*f); },
+          [&](bool settings_t::* f)
+          {
+            if(value == "1" or value == "true")
+              s.*f = true;
+            else if(value == "0" or value == "false")
+              s.*f = false;
+            else
+              ok = false;
+          },
+          [&](std::uint32_t settings_t::* f)
+          {
+            if(auto const v{to_uint(value)})
+              s.*f = *v;
+            else
+              ok = false;
+          },
+          [&](float settings_t::* f)
+          {
+            if(auto const v{to_float(value)})
+              s.*f = *v;
+            else
+              ok = false;
+          },
           [&](std::wstring settings_t::* f) { s.*f = widen(value); },
-          [&](hash_field_t f) { s.*f.field = parse_hash(value).value_or(0); },
+          [&](hash_field_t f)
+          {
+            if(auto const v{parse_hash(value)})
+              s.*f.field = *v;
+            else
+              ok = false;
+          },
           [&](colour_field_t f)
           {
             if(auto const v{parse_hash(value)}; v and *v <= 0xffffffu)
               s.*f.field = static_cast<std::uint32_t>(*v);
+            else
+              ok = false;
           },
           [&](list_field_t f)
           {
@@ -342,8 +380,10 @@ namespace edworld
             while(not rest.empty())
               {
               auto const comma{rest.find(',')};
-              if(auto const h{parse_hash(rest.substr(0, comma))}; h)
+              if(auto const h{parse_hash(trim(rest.substr(0, comma)))}; h)
                 list.push_back(*h);
+              else if(not trim(rest.substr(0, comma)).empty())
+                ok = false;  // the other hashes are kept
               if(comma == std::string_view::npos)
                 break;
               rest.remove_prefix(comma + 1);
@@ -352,14 +392,20 @@ namespace edworld
           [&](surface_field_t f)
           {
             auto const x{value.find('x')};
-            if(x == std::string_view::npos)
-              return;
-            s.*f.width = to_uint(trim(value.substr(0, x)), s.*f.width);
-            s.*f.height = to_uint(trim(value.substr(x + 1)), s.*f.height);
+            auto const w{x == std::string_view::npos ? std::nullopt : to_uint(trim(value.substr(0, x)))};
+            auto const h{x == std::string_view::npos ? std::nullopt : to_uint(trim(value.substr(x + 1)))};
+            if(w and h)
+              {
+              s.*f.width = *w;
+              s.*f.height = *h;
+              }
+            else
+              ok = false;
           }
         },
         field
       );
+      return ok;
       }
 
     auto value_text(settings_t const & s, field_t const & field) -> std::string
@@ -445,8 +491,9 @@ namespace edworld
           continue;
         if(key.note)
           (lines += "\n; ") += key.note, lines += '\n';
-        ((lines += ';') += key.name) += " = ";
-        lines += value_text(s, key.field);
+        std::string const value{value_text(s, key.field)};
+        ((lines += ';') += key.name) += value.empty() ? " =" : " = ";
+        lines += value;
         lines += '\n';
         ++count;
         }
@@ -530,28 +577,53 @@ namespace edworld
     {
     std::wstring ini_path;
 
-    auto read_ini(std::wstring const & path, settings_t & s) -> bool
+    ///\brief what reading the ini found wrong, said in the log: at the start once the log is open (log_open), later at once
+    std::vector<std::string> ini_notes;
+
+    auto read_ini(std::wstring const & path, settings_t & s, std::vector<std::string> & notes) -> bool
       {
       std::FILE * f{_wfopen(path.c_str(), L"rb")};
       if(not f)
         return false;
       char line[1024];
+      int number{};
       while(std::fgets(line, sizeof line, f))
         {
+        ++number;
         std::string_view const text{trim(line)};
         if(text.empty() or text.front() == ';' or text.front() == '#' or text.front() == '[')
           continue;
         auto const eq{text.find('=')};
         if(eq == std::string_view::npos)
+          {
+          notes.push_back("line " + std::to_string(number) + " has no '=': ignored");
           continue;
+          }
         std::string_view const key{trim(text.substr(0, eq))};
-        std::string_view const value{trim(text.substr(eq + 1))};
+        std::string_view value{trim(text.substr(eq + 1))};
+        // a comment after the value, `clouds = 1 ; on`: the value stops before it (a ';' or '#' after a space)
+        for(std::size_t i{1}; i < value.size(); ++i)
+          if((value[i] == ';' or value[i] == '#') and (value[i - 1] == ' ' or value[i - 1] == '\t'))
+            {
+            value = trim(value.substr(0, i));
+            break;
+            }
         auto const found{std::find_if(std::begin(keys), std::end(keys), [&](key_t const & k) { return k.name == key; })};
-        if(found != std::end(keys))
-          read_value(s, found->field, value);
+        if(found == std::end(keys))
+          notes.push_back("line " + std::to_string(number) + ": no setting '" + std::string{key} + "' (a typo?): ignored");
+        else if(not read_value(s, found->field, value))
+          notes.push_back("line " + std::to_string(number) + ": '" + std::string{key} + " = " + std::string{value} +
+                          "' cannot be read (" + (found->range and *found->range ? found->range : "any") + "); its value stays " + value_text(s, found->field));
         }
       std::fclose(f);
       return true;
+      }
+
+    auto log_notes(std::vector<std::string> & notes) noexcept -> void
+      {
+      for(std::string const & n: notes)
+        log_line("settings: %s", n.c_str());
+      notes.clear();
       }
     }  // namespace
 
@@ -561,7 +633,7 @@ namespace edworld
     ini_path = config_dir + L"\\" + plugin_name + L".ini";
     // the time first: a change made after it, before the first refresh, is read then (and not taken for this read)
     ini_written = ini_write_time(ini_path);
-    read_ini(ini_path, current);
+    read_ini(ini_path, current, ini_notes);  // its notes go to the log once it is open (log_open)
     }
 
   auto refresh_live_settings() noexcept -> void
@@ -581,8 +653,10 @@ namespace edworld
       {
       settings_t const & in_use{*live.load(std::memory_order_relaxed)};
       settings_t read{in_use};
-      if(not read_ini(ini_path, read))
+      std::vector<std::string> notes;
+      if(not read_ini(ini_path, read, notes))
         return;
+      log_notes(notes);
       settings_t & next{&in_use == &slots[0] ? slots[1] : slots[0]};
       next = in_use;
       std::string values;
@@ -613,8 +687,9 @@ namespace edworld
       {
       std::wstring const path{config_dir + L"\\" + plugin_name + L".ini"};
       std::string const ini{read_whole(path)};
-      settings_t running{current};
-      running.status_file = status_path();
+      // status_file stays empty (Saved Games): the folder's full path holds the player's Windows user name, and players
+      // share their ini
+      settings_t const & running{current};
       std::size_t count{};
       std::string const lines{missing_lines(ini, running, count)};
       if(count == 0)
@@ -700,6 +775,7 @@ namespace edworld
                            OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if(set_aside_failed)
       log_line("log: the last session's log could not be set aside (error %lu); appending to it", GetLastError());
+    log_notes(ini_notes);  // what reading the ini at the start found wrong
     }
 
   auto write_whole_file(wchar_t const * path, void const * data, std::size_t bytes) noexcept -> bool

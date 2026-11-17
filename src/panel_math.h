@@ -358,6 +358,18 @@ namespace edworld
     return static_cast<float>(l.factions + l.source) * line + 2.f * pad;
     }
 
+  ///\brief a pixel coordinate from a float of the settings, held to [0, limit]: a negative value, NaN or one past
+  /// the surface never reaches the cast (undefined for them)
+  [[nodiscard]]
+  constexpr auto to_pixel(float v, std::uint32_t limit) noexcept -> std::uint32_t
+    {
+    if(not(v > 0.f))  // NaN too
+      return 0u;
+    if(v >= static_cast<float>(limit))
+      return limit;
+    return static_cast<std::uint32_t>(v);
+    }
+
   // ---- edworld's name and version in a corner of the picture (build_info) ----
   struct corner_text_t
     {
