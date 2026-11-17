@@ -221,9 +221,13 @@ The second colour of ammonia comes with a cold planet whose air is well past sat
 Where it snows is where the clouds above have their overcast: the weather of the clouds (a slow planet's deck over
 the day side, a faster one's bands and patches) over the place you stand, together with the kind's cover. Only then
 on foot outdoors (`Status.json` Flags2: on foot, on a planet, outdoors), in a building of a settlement never. The
-crystals are specks of 1-3 mm in the 30 m before you, one in some of the cells of 0.8 m held to the ground (at most one
-cell in 20 under a full cloud), each its own size and brightness, drawn no smaller than half a pixel and as bright as
-they cover of it, with a short streak along their way. They fall as fast as the gravity and the air let: a small ice
+crystals are specks of 1-3 mm from 1.5 to 30 m before you, one in some of the cells of 0.8 m held to the ground (at
+most one cell in 20 under a full cloud), each its own size and brightness, drawn soft, no smaller than half a pixel
+and as bright as they cover of it, with a streak of one frame's way; one near enough to show its shape is a soft
+hexagonal plate at its own turn. Ice is translucent: it gives back about 15% of the star's light, in the colour of
+the kind's clouds, and flashes for a moment as it turns and a face catches the star (each its own beat, 1 to 5 times
+a second, brighter towards the star). Further off their many make a haze over the way to the ground, as dense as the
+snow: under a full cloud of a cold ammonia world you see about 1.5 km, in a lighter snow further. They fall as fast as the gravity and the air let: a small ice
 crystal falls about 0.3 m/s in the Earth's air, and for a drag growing with the square of the speed its speed goes
 with the square root of the gravity over the air's density, so in an ammonia world's thin air (about 1/600 of the
 Earth's) some 25 times faster - 2.6 m/s at 0.13 g, a slow wind only leaning it - and in methane's (1/10) 0.23 m/s at
