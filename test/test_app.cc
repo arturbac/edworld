@@ -1672,6 +1672,12 @@ int main()
       }
     ID3D11Device * device{};
     D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &device, nullptr, nullptr);
+    // tools/test.sh: a second device of the game while the first lives, which edworld does not follow
+    ID3D11Device * second{};
+    if(GetEnvironmentVariableW(L"EDWORLD_TEST_SECOND_DEVICE", nullptr, 0))
+      D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &second, nullptr, nullptr);
+    if(second)
+      second->Release();
     if(device)
       device->Release();
     return 0;

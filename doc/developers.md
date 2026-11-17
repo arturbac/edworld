@@ -555,6 +555,14 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   removed), never CRT streams: a thread killed at the game's exit must leave nothing for the CRT's closing of all
   streams at edworld's unload (0xC0000409, 2026-11-17). `EDWORLD_TEST_FAULT` (`draw-seh`, `draw-cpp`, `thread`)
   makes one such fault for `tools/test.sh`.
+- One device: edworld attaches to the first device of the game it follows; a second (a device made again after a
+  driver reset, another of the game's) is not followed, and the log says so (`attach: device ... is a second device of
+  the game`), so no object of one device ever reaches the other's context. `EDWORLD_TEST_SECOND_DEVICE` makes one in
+  `tools/test.sh`.
+- The game's state around edworld's own draws: constant buffer slots are kept and put back with the game's window into
+  the buffer (`cb_binding.h`, `*ConstantBuffers1`), and the game's buffers handed to edworld's cloud shaders keep it;
+  the kept state includes the pixel shader's UAVs (they share the targets' slots) and the hull, domain and compute
+  shaders, which ImGui's backend clears. A panel surface's size is read at each draw, not kept by address.
   One file per game session: at start, the last session's `<plugin>.log` is renamed `<plugin>.<UTC>.log` (the time it
   was last written); EHT's backup compresses those into its own directory and removes them from the game's folder.
 

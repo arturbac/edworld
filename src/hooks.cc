@@ -19,6 +19,7 @@
 #include "hologram.h"
 #include "holo_models.h"
 #include "panel_math.h"
+#include "cb_binding.h"
 #include "panel_patch.h"
 #include "runtime.h"
 #include "snow.h"
@@ -318,8 +319,6 @@ namespace edworld
       std::uint32_t width, height, format;
       };
 
-    surface_cache_t surfaces[64]{};
-    std::uint32_t surface_next{};
 
     auto qpc_now() noexcept -> LONGLONG
       {
@@ -2177,14 +2176,9 @@ namespace edworld
       srv->Release();
       if(not res)
         return false;
+      // read every time (a few panel draws a frame): a texture made again at a freed one's address (a change of
+      // resolution) must not keep the old one's size
       void * const key{res};
-      for(surface_cache_t const & c: surfaces)
-        if(c.resource == key)
-          {
-          out = c;
-          res->Release();
-          return true;
-          }
       D3D11_RESOURCE_DIMENSION dim{};
       res->GetType(&dim);
       out = {key, 0, 0, 0};
@@ -2202,7 +2196,6 @@ namespace edworld
           }
         }
       res->Release();
-      surfaces[surface_next++ % 64] = out;
       return true;
       }
 
@@ -4370,14 +4363,18 @@ namespace edworld
       if(hash == galmap_text_vs and not creating_own)
         {
         static_cast<IUnknown *>(*shader)->AddRef();  // pinned, as the watched ones
-        if(galmap_vs.exchange(*shader, std::memory_order_relaxed) == nullptr)
+        if(void * const before{galmap_vs.exchange(*shader, std::memory_order_relaxed)})
+          static_cast<IUnknown *>(before)->Release();  // made again: the old one is compared with no more
+        else
           log_line("galmap: the game made the text shader the galaxy map's names are read from");
         }
 #endif
       if(hash == atmosphere_shell_vs and not creating_own)
         {
         static_cast<IUnknown *>(*shader)->AddRef();  // pinned, as the watched ones
-        if(shell_vs.exchange(*shader, std::memory_order_relaxed) == nullptr)
+        if(void * const before{shell_vs.exchange(*shader, std::memory_order_relaxed)})
+          static_cast<IUnknown *>(before)->Release();  // made again: the old one is compared with no more
+        else
           log_line("clouds: the game made the atmosphere shell's shader");
         }
       auto const & listed{settings().watch_vs};
@@ -5266,8 +5263,8 @@ namespace edworld
     ///\brief the volume in place of the layer, with the shaders and states of the shell put back after it
     auto draw_volume(
       ID3D11DeviceContext * ctx,
-      ID3D11Buffer * object,
-      ID3D11Buffer * frame,
+      cb_binding_t const & object,
+      cb_binding_t const & frame,
       UINT index_count,
       UINT instance_count,
       UINT start_index,
@@ -5340,8 +5337,8 @@ namespace edworld
       orig_vs_set_shader(ctx, clouds.volume_vs, nullptr, 0);
       ctx->PSSetShader(clouds.volume_ps, nullptr, 0);
       ctx->VSSetConstantBuffers(4, 1, &clouds.volume_params);
-      ctx->PSSetConstantBuffers(0, 1, &object);
-      ctx->PSSetConstantBuffers(1, 1, &frame);
+      set_cb(ctx, cb_stage_e::pixel, 0, object);  // the game's VS b0/b1 with their windows
+      set_cb(ctx, cb_stage_e::pixel, 1, frame);
       ctx->PSSetConstantBuffers(4, 1, &clouds.volume_params);
       ctx->PSSetShaderResources(0, 1, &clouds.depth_view);
       ctx->PSSetShaderResources(2, 1, &clouds.blue_noise);
@@ -5410,22 +5407,19 @@ namespace edworld
       float game_factor[4]{};
       UINT game_mask{};
       ID3D11RasterizerState * game_raster{};
-      ID3D11Buffer * frame{};
-      ID3D11Buffer * game_ps_b1{};
-      ID3D11Buffer * game_ps_b0{};
-      ID3D11Buffer * object{};
-      ID3D11Buffer * game_vs_b4{};
-      ID3D11Buffer * game_ps_b4{};
       ctx->VSGetShader(&game_vs, nullptr, nullptr);
       ctx->PSGetShader(&game_ps, nullptr, nullptr);
       ctx->OMGetBlendState(&game_blend, game_factor, &game_mask);
       ctx->RSGetState(&game_raster);
-      ctx->VSGetConstantBuffers(0, 1, &object);
-      ctx->VSGetConstantBuffers(1, 1, &frame);
-      ctx->VSGetConstantBuffers(4, 1, &game_vs_b4);
-      ctx->PSGetConstantBuffers(0, 1, &game_ps_b0);
-      ctx->PSGetConstantBuffers(1, 1, &game_ps_b1);
-      ctx->PSGetConstantBuffers(4, 1, &game_ps_b4);
+      // the game's slots with their windows into the buffers (ID3D11DeviceContext1), put back as they were
+      cb_binding_t object_b{get_cb(ctx, cb_stage_e::vertex, 0)};
+      cb_binding_t frame_b{get_cb(ctx, cb_stage_e::vertex, 1)};
+      cb_binding_t game_vs_b4{get_cb(ctx, cb_stage_e::vertex, 4)};
+      cb_binding_t game_ps_b0{get_cb(ctx, cb_stage_e::pixel, 0)};
+      cb_binding_t game_ps_b1{get_cb(ctx, cb_stage_e::pixel, 1)};
+      cb_binding_t game_ps_b4{get_cb(ctx, cb_stage_e::pixel, 4)};
+      ID3D11Buffer * const object{object_b.buffer};
+      ID3D11Buffer * const frame{frame_b.buffer};
 
       if(not clouds.told)
         {
@@ -5462,15 +5456,15 @@ namespace edworld
       clouds_timing_t::slot_t * timing{volume_wanted ? start_clouds_timing(ctx) : nullptr};
       bool const volume{volume_wanted and copy_depth(ctx)};
       if(volume)
-        draw_volume(ctx, object, frame, index_count, instance_count, start_index, base_vertex, start_instance);
+        draw_volume(ctx, object_b, frame_b, index_count, instance_count, start_index, base_vertex, start_instance);
       stop_clouds_timing(ctx, timing);
       if(not volume and object and frame)
         {
         orig_vs_set_shader(ctx, clouds.vs, nullptr, 0);
         ctx->PSSetShader(clouds.ps, nullptr, 0);
         ctx->VSSetConstantBuffers(4, 1, &clouds.params);
-        ctx->PSSetConstantBuffers(0, 1, &object);
-        ctx->PSSetConstantBuffers(1, 1, &frame);
+        set_cb(ctx, cb_stage_e::pixel, 0, object_b);
+        set_cb(ctx, cb_stage_e::pixel, 1, frame_b);
         ctx->PSSetConstantBuffers(4, 1, &clouds.params);
         ctx->OMSetBlendState(clouds.blend, nullptr, 0xffffffffu);
         ctx->RSSetState(clouds.raster);
@@ -5480,19 +5474,19 @@ namespace edworld
         {
         orig_vs_set_shader(ctx, game_vs, nullptr, 0);
         ctx->PSSetShader(game_ps, nullptr, 0);
-        ctx->VSSetConstantBuffers(4, 1, &game_vs_b4);
-        ctx->PSSetConstantBuffers(0, 1, &game_ps_b0);
-        ctx->PSSetConstantBuffers(1, 1, &game_ps_b1);
-        ctx->PSSetConstantBuffers(4, 1, &game_ps_b4);
+        set_cb(ctx, cb_stage_e::vertex, 4, game_vs_b4);
+        set_cb(ctx, cb_stage_e::pixel, 0, game_ps_b0);
+        set_cb(ctx, cb_stage_e::pixel, 1, game_ps_b1);
+        set_cb(ctx, cb_stage_e::pixel, 4, game_ps_b4);
         ctx->OMSetBlendState(game_blend, game_factor, game_mask);
         ctx->RSSetState(game_raster);
         }
 
-      for(IUnknown * held: std::initializer_list<IUnknown *>{
-            game_vs, game_ps, game_blend, game_raster, frame, object, game_ps_b0, game_ps_b1, game_vs_b4, game_ps_b4
-          })
+      for(IUnknown * held: std::initializer_list<IUnknown *>{game_vs, game_ps, game_blend, game_raster})
         if(held)
           held->Release();
+      for(cb_binding_t * b: {&object_b, &frame_b, &game_ps_b0, &game_ps_b1, &game_vs_b4, &game_ps_b4})
+        b->release();
       }
 
     auto guarded_clouds(
@@ -5819,6 +5813,19 @@ namespace edworld
 
   auto attach_to_device(ID3D11Device * dev) noexcept -> void
     {
+    // One device: the first the game gets. A second (the device made again after a driver reset, or another of the
+    // game's) is not followed: edworld's objects, hooks and records belong to the first, and mixing two devices or two
+    // context tables would hand one device's objects to the other's context. Never seen in 407 sessions of two
+    // commanders (2026-11-18); the log says so if it comes.
+    static std::atomic<ID3D11Device *> first_device{};
+    ID3D11Device * expected{};
+    if(not first_device.compare_exchange_strong(expected, dev))
+      {
+      if(expected != dev)
+        log_line("attach: device %p is a second device of the game; not followed, edworld stays with the first (%p)",
+                 static_cast<void *>(dev), static_cast<void *>(expected));
+      return;
+      }
     ID3D11DeviceContext * ctx{};
     dev->GetImmediateContext(&ctx);
     if(not ctx)

@@ -21,6 +21,7 @@
 
 #include <d3d11_1.h>
 
+#include "cb_binding.h"
 #include "emblems.h"
 #include "game_state.h"
 #include "list_font.h"
@@ -94,6 +95,7 @@ namespace edworld
       ID3D11DepthStencilState * list_depth{};
       ID3D11RasterizerState * list_raster{};
       bool list_failed{};
+      bool list_tex_failed{};  ///< the list's texture could not be made (said once)
       bool failed{};
       };
 
@@ -284,7 +286,13 @@ namespace edworld
       ID3D11DepthStencilState * depth{};
       UINT stencil_ref{};
       ID3D11RenderTargetView * rtv[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT]{};
+      UINT rtvs{};  ///< targets bound (the slots after the last one may hold the pixel shader's UAVs)
       ID3D11DepthStencilView * dsv{};
+      ID3D11UnorderedAccessView * uav[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT]{};  ///< from slot `rtvs` on
+      // ImGui's backend clears these and does not put them back
+      ID3D11HullShader * hs{};
+      ID3D11DomainShader * ds{};
+      ID3D11ComputeShader * cs{};
       ID3D11ShaderResourceView * ps_srv[4]{};
       ID3D11SamplerState * ps_sampler{};
       ID3D11PixelShader * ps{};
@@ -293,8 +301,8 @@ namespace edworld
       ID3D11VertexShader * vs{};
       ID3D11ClassInstance * vs_instances[256]{};
       UINT vs_instance_count{256};
-      ID3D11Buffer * vs_cb{};
-      ID3D11Buffer * ps_cb{};
+      cb_binding_t vs_cb{};  ///< with the game's window into the buffer, put back as it was
+      cb_binding_t ps_cb{};
       D3D11_PRIMITIVE_TOPOLOGY topology{};
       ID3D11InputLayout * layout{};
       };
@@ -306,12 +314,22 @@ namespace edworld
       ctx->OMGetBlendState(&b.blend, b.blend_factor, &b.sample_mask);
       ctx->OMGetDepthStencilState(&b.depth, &b.stencil_ref);
       ctx->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, b.rtv, &b.dsv);
+      for(UINT i{}; i != D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT; ++i)
+        if(b.rtv[i])
+          b.rtvs = i + 1;
+      // the pixel shader's UAVs share the targets' slots: binding targets over them unbinds them
+      if(b.rtvs < D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT)
+        ctx->OMGetRenderTargetsAndUnorderedAccessViews(0, nullptr, nullptr, b.rtvs, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT - b.rtvs,
+                                                       b.uav + b.rtvs);
+      ctx->HSGetShader(&b.hs, nullptr, nullptr);
+      ctx->DSGetShader(&b.ds, nullptr, nullptr);
+      ctx->CSGetShader(&b.cs, nullptr, nullptr);
       ctx->PSGetShaderResources(0, 4, b.ps_srv);
       ctx->PSGetSamplers(0, 1, &b.ps_sampler);
       ctx->PSGetShader(&b.ps, b.ps_instances, &b.ps_instance_count);
       ctx->VSGetShader(&b.vs, b.vs_instances, &b.vs_instance_count);
-      ctx->VSGetConstantBuffers(0, 1, &b.vs_cb);
-      ctx->PSGetConstantBuffers(0, 1, &b.ps_cb);
+      b.vs_cb = get_cb(ctx, cb_stage_e::vertex, 0);
+      b.ps_cb = get_cb(ctx, cb_stage_e::pixel, 0);
       ctx->IAGetPrimitiveTopology(&b.topology);
       ctx->IAGetInputLayout(&b.layout);
       }
@@ -331,13 +349,23 @@ namespace edworld
       ctx->OMSetBlendState(b.blend, b.blend_factor, b.sample_mask);
       ctx->OMSetDepthStencilState(b.depth, b.stencil_ref);
       // the targets first: the surface goes back to being a shader resource only once it is no target
-      ctx->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, b.rtv, b.dsv);
+      bool any_uav{};
+      for(UINT i{b.rtvs}; i != D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT; ++i)
+        any_uav = any_uav or b.uav[i];
+      if(any_uav)
+        ctx->OMSetRenderTargetsAndUnorderedAccessViews(b.rtvs, b.rtv, b.dsv, b.rtvs, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT - b.rtvs,
+                                                       b.uav + b.rtvs, nullptr);
+      else
+        ctx->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, b.rtv, b.dsv);
+      ctx->HSSetShader(b.hs, nullptr, 0);
+      ctx->DSSetShader(b.ds, nullptr, 0);
+      ctx->CSSetShader(b.cs, nullptr, 0);
       ctx->PSSetShaderResources(0, 4, b.ps_srv);
       ctx->PSSetSamplers(0, 1, &b.ps_sampler);
       ctx->PSSetShader(b.ps, b.ps_instances, b.ps_instance_count);
       ctx->VSSetShader(b.vs, b.vs_instances, b.vs_instance_count);
-      ctx->VSSetConstantBuffers(0, 1, &b.vs_cb);
-      ctx->PSSetConstantBuffers(0, 1, &b.ps_cb);
+      set_cb(ctx, cb_stage_e::vertex, 0, b.vs_cb);
+      set_cb(ctx, cb_stage_e::pixel, 0, b.ps_cb);
       ctx->IASetPrimitiveTopology(b.topology);
       ctx->IASetInputLayout(b.layout);
       release(b.raster);
@@ -346,6 +374,11 @@ namespace edworld
       for(auto & v: b.rtv)
         release(v);
       release(b.dsv);
+      for(auto & v: b.uav)
+        release(v);
+      release(b.hs);
+      release(b.ds);
+      release(b.cs);
       for(auto & v: b.ps_srv)
         release(v);
       release(b.ps_sampler);
@@ -355,8 +388,8 @@ namespace edworld
       release(b.vs);
       for(UINT i{}; i != b.vs_instance_count; ++i)
         release(b.vs_instances[i]);
-      release(b.vs_cb);
-      release(b.ps_cb);
+      b.vs_cb.release();
+      b.ps_cb.release();
       release(b.layout);
       }
 
@@ -627,6 +660,8 @@ namespace edworld
       {
       if(r.list_tex and r.list_width == w and r.list_height == h)
         return true;
+      if(r.list_tex_failed)
+        return false;
       for(IUnknown * u: std::initializer_list<IUnknown *>{r.list_srv, r.list_rtv, r.list_tex})
         if(u)
           u->Release();
@@ -646,7 +681,19 @@ namespace edworld
       if(FAILED(r.device->CreateTexture2D(&d, nullptr, &r.list_tex)) or not r.list_tex
          or FAILED(r.device->CreateRenderTargetView(r.list_tex, nullptr, &r.list_rtv))
          or FAILED(r.device->CreateShaderResourceView(r.list_tex, nullptr, &r.list_srv)))
+        {
+        // what was made goes, and the failure is said once: not made again every frame of a charge in silence
+        for(IUnknown * u: std::initializer_list<IUnknown *>{r.list_srv, r.list_rtv, r.list_tex})
+          if(u)
+            u->Release();
+        r.list_srv = nullptr;
+        r.list_rtv = nullptr;
+        r.list_tex = nullptr;
+        if(not r.list_tex_failed)
+          log_line("list: its %ux%u texture could not be made; no list (the emblem still)", w, h);
+        r.list_tex_failed = true;
         return false;
+        }
       r.list_width = w;
       r.list_height = h;
       return true;
@@ -792,8 +839,8 @@ namespace edworld
       UINT ps_instance_count{256};
       ID3D11InputLayout * layout{};
       D3D11_PRIMITIVE_TOPOLOGY topology{};
-      ID3D11Buffer * vs_cb{};
-      ID3D11Buffer * ps_cb{};
+      cb_binding_t vs_cb{};
+      cb_binding_t ps_cb{};
       ID3D11ShaderResourceView * ps_srv[2]{};
       ID3D11SamplerState * ps_sampler{};
       ID3D11BlendState * blend{};
@@ -1233,8 +1280,8 @@ namespace edworld
     ctx->PSGetShader(&b.ps, b.ps_instances, &b.ps_instance_count);
     ctx->IAGetInputLayout(&b.layout);
     ctx->IAGetPrimitiveTopology(&b.topology);
-    ctx->VSGetConstantBuffers(list_cb_slot, 1, &b.vs_cb);
-    ctx->PSGetConstantBuffers(list_cb_slot, 1, &b.ps_cb);
+    b.vs_cb = get_cb(ctx, cb_stage_e::vertex, list_cb_slot);
+    b.ps_cb = get_cb(ctx, cb_stage_e::pixel, list_cb_slot);
     ctx->PSGetShaderResources(0, 2, b.ps_srv);
     ctx->PSGetSamplers(0, 1, &b.ps_sampler);
     ctx->OMGetBlendState(&b.blend, b.blend_factor, &b.sample_mask);
@@ -1281,14 +1328,14 @@ namespace edworld
     ctx->PSSetShader(b.ps, b.ps_instances, b.ps_instance_count);
     ctx->IASetInputLayout(b.layout);
     ctx->IASetPrimitiveTopology(b.topology);
-    ctx->VSSetConstantBuffers(list_cb_slot, 1, &b.vs_cb);
-    ctx->PSSetConstantBuffers(list_cb_slot, 1, &b.ps_cb);
+    set_cb(ctx, cb_stage_e::vertex, list_cb_slot, b.vs_cb);
+    set_cb(ctx, cb_stage_e::pixel, list_cb_slot, b.ps_cb);
     ctx->PSSetShaderResources(0, 2, b.ps_srv);
     ctx->PSSetSamplers(0, 1, &b.ps_sampler);
     ctx->OMSetBlendState(b.blend, b.blend_factor, b.sample_mask);
     ctx->OMSetDepthStencilState(b.depth, b.stencil_ref);
     ctx->RSSetState(b.raster);
-    for(IUnknown * u: std::initializer_list<IUnknown *>{b.vs, b.ps, b.layout, b.vs_cb, b.ps_cb, b.ps_srv[0], b.ps_srv[1], b.ps_sampler,
+    for(IUnknown * u: std::initializer_list<IUnknown *>{b.vs, b.ps, b.layout, b.vs_cb.buffer, b.ps_cb.buffer, b.ps_srv[0], b.ps_srv[1], b.ps_sampler,
                                                        b.blend, b.depth, b.raster})
       if(u)
         u->Release();
@@ -2840,8 +2887,8 @@ namespace edworld
       ctx->PSGetShader(&b.ps, b.ps_instances, &b.ps_instance_count);
       ctx->IAGetInputLayout(&b.layout);
       ctx->IAGetPrimitiveTopology(&b.topology);
-      ctx->VSGetConstantBuffers(list_cb_slot, 1, &b.vs_cb);
-      ctx->PSGetConstantBuffers(list_cb_slot, 1, &b.ps_cb);
+      b.vs_cb = get_cb(ctx, cb_stage_e::vertex, list_cb_slot);
+      b.ps_cb = get_cb(ctx, cb_stage_e::pixel, list_cb_slot);
       ctx->PSGetShaderResources(0, 2, b.ps_srv);
       ctx->PSGetSamplers(0, 1, &b.ps_sampler);
       ctx->OMGetBlendState(&b.blend, b.blend_factor, &b.sample_mask);
@@ -2867,14 +2914,14 @@ namespace edworld
       ctx->PSSetShader(b.ps, b.ps_instances, b.ps_instance_count);
       ctx->IASetInputLayout(b.layout);
       ctx->IASetPrimitiveTopology(b.topology);
-      ctx->VSSetConstantBuffers(list_cb_slot, 1, &b.vs_cb);
-      ctx->PSSetConstantBuffers(list_cb_slot, 1, &b.ps_cb);
+      set_cb(ctx, cb_stage_e::vertex, list_cb_slot, b.vs_cb);
+      set_cb(ctx, cb_stage_e::pixel, list_cb_slot, b.ps_cb);
       ctx->PSSetShaderResources(0, 2, b.ps_srv);
       ctx->PSSetSamplers(0, 1, &b.ps_sampler);
       ctx->OMSetBlendState(b.blend, b.blend_factor, b.sample_mask);
       ctx->OMSetDepthStencilState(b.depth, b.stencil_ref);
       ctx->RSSetState(b.raster);
-      for(IUnknown * u: std::initializer_list<IUnknown *>{b.vs, b.ps, b.layout, b.vs_cb, b.ps_cb, b.ps_srv[0], b.ps_srv[1], b.ps_sampler,
+      for(IUnknown * u: std::initializer_list<IUnknown *>{b.vs, b.ps, b.layout, b.vs_cb.buffer, b.ps_cb.buffer, b.ps_srv[0], b.ps_srv[1], b.ps_sampler,
                                                          b.blend, b.depth, b.raster})
         if(u)
           u->Release();

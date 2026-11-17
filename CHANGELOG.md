@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **The game's state kept whole around edworld's drawing:** constant buffers with their offsets, the pixel shader's
+  UAVs and the hull, domain and compute shaders are put back as the game had them. edworld follows only the game's
+  first device (a second is logged, not followed). A surface's size is read anew at each draw.
 - **No error of edworld's own takes the game down.** A C++ exception (out of memory) in edworld's work on the
   render thread now reaches its guard instead of ending the process; every fault or exception caught is logged with
   its code and place. edworld's own threads are guarded too and start again after a fault, eight times at most.

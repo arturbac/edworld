@@ -90,6 +90,14 @@ fault_case() {  # $1 = edworld | edworld_eht; a fault in a guard and in a thread
   done
   set -e
 }
+second_device_case() {  # $1 = edworld | edworld_eht; a second device of the game is not followed, and said so
+  set +e
+  : > "$1.ini"
+  EDWORLD_TEST_SECOND_DEVICE=1 ini_run
+  grep -q 'attach: device .* is a second device of the game; not followed, edworld stays with the first' "$1.log"
+  ini_check "a second device not followed, the log says so" $?
+  set -e
+}
 doc_case() {  # doc/settings.md is made by edworld_eht from its table of settings (it has every setting); in the run directory
   set +e
   EDWORLD_SETTINGS_DOC=settings.md ini_run
@@ -133,6 +141,7 @@ run_variant() {  # $1 = edworld | edworld_eht; sets rc on failure
   ini_cases "$V"
   creator_case "$V"
   fault_case "$V"
+  second_device_case "$V"
   [[ $V != edworld_eht ]] || doc_case
   popd >/dev/null
 }
