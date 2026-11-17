@@ -73,6 +73,22 @@ journal's volcanism instead). Of the landable planets with an atmosphere 18% are
 fast-turning worlds), carbon dioxide, ammonia, methane and water seldom (small or slow). Without a field only a faint
 patchy glow covers the night side, as on Mars and Venus, where the star's wind meets the air directly.
 
+**Without a field: the glow at the night edge.**
+
+![A sulphur dioxide world with no field of its own, from orbit: the glow along its night edge](images/aurora-no-field.jpg)
+
+*Spoihee OR-L c24-72 A 1, sulphur dioxide, 2542 km, no field of its own: a red band low and a green one above it
+along the edge of the night side; the light edge on the left is the game's own air on the day side.*
+
+A planet with no field of its own has no oval and no curtains. Nothing turns the star's wind aside, so it reaches the
+upper air everywhere and the whole night side glows a little - as Mars does, where the MAVEN spacecraft saw a diffuse
+aurora spread over the night side, and Venus. Looked at from above, the glowing layer is thin and faint. Looked at
+along it, at the edge of the planet's night side, the eye passes through a long way of it, so it shows as a band
+following the edge, and as a ring round the planet when its night side faces you. This is by design, not an error:
+it is there on every planet without a field (about two in three), on the night side only, from the line between day
+and night on; it is a little patchy and drifts slowly, and it is as bright in a storm as in a quiet sky. Its colours
+and its height are the kind's (the tables on this page). From the ground it is only a faint glow of the night sky.
+
 **The star** sets how strong the wind is: activity M 1, K 0.6, G 0.5, F 0.3, brown dwarfs 0.3, hotter 0.1. Neon
 worlds circle brown dwarfs (54%) and M stars (35%), argon M stars (56%), carbon dioxide and ammonia mostly F, G and K
 stars. A strong wind makes the storm up to 3 levels stronger, so an argon or nitrogen world by an M star storms more
