@@ -47,7 +47,7 @@ The ini and log names are fixed by the build, not taken from the dll's file name
 - (edworld_eht only) Reads the copies 1-3 frames later with `Map(DO_NOT_WAIT)` (never a CPU read of a mapped dynamic buffer:
   write-combined under DXVK) and publishes the latest frame to `panels` in `shm_dir` (seqlock; layout in
   `src/edworld_share.h`).
-- **Snow (PoC, `snow = 1`)** (`src/snow.h`, `snow_along` in `shaders/clouds3d.hlsl`): in the clouds' draw, values
+- **Snow (PoC, `snow = 1`, the default)** (`src/snow.h`, `snow_along` in `shaders/clouds3d.hlsl`): in the clouds' draw, values
   112..123 of its constants: under a full cloud and in a clear sky by the kind (`snow_of`: ammonia 0.5, its second
   colour 1 and 0.05, methane 0.8), 0 unless `snow_where`: `Status.json` without an altitude and Flags2 bits 0, 4 and 15
   (on foot, on a planet, outdoors), or with an altitude, Flags bit 24, 25 or 26 (ship, fighter, SRV) and neither bit 0

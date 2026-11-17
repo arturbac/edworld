@@ -201,7 +201,7 @@ what it carries over from the Earth and what it chooses, the colours of each kin
 
 ## Snow (PoC)
 
-`snow = 1` (off by default): on foot outdoors or in a ship or an SRV in the air, crystals of the air's own gas fall near
+`snow = 1` (on by default, `0` turns it off): on foot outdoors or in a ship or an SRV in the air, crystals of the air's own gas fall near
 you under the clouds, where the
 gas condenses at the planet's cold. Every landable atmosphere is thinner than its gas' triple point (ammonia's 6 kPa,
 methane's 12 kPa, and so on), so a gas that condenses makes crystals, never rain. Of the scans of two commanders (1845

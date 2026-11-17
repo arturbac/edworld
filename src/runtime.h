@@ -334,7 +334,7 @@ namespace edworld
     std::uint32_t galmap{1};
     ///\brief (PoC) crystals of the air's own gas falling near the ground on foot, under the clouds, where the kind's gas
     /// condenses (src/snow.h: ammonia, methane); 0 = none
-    std::uint32_t snow{0};
+    std::uint32_t snow{1};
     ///\brief how many of them, times the kind's own
     float snow_gain{1.f};
     ///\brief (test) the snow's cost by its parts: 1 = every 10 s the next of all, none, the haze alone, the crystals
