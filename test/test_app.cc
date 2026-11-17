@@ -742,6 +742,9 @@ namespace
             and std::fabs(between.place[0] - 300.f) < 0.01f and std::fabs(between.place[2] - 150.f) < 0.01f
             and std::fabs(between.speed[2] - 100.f) < 0.01f and std::fabs(stopped.place[0] - 200.f) < 0.01f and stopped.speed[0] == 0.f,
           "snow: the flight's way up and east, on between the fixes, held when they stop");
+    check(snow_bench_step(0u).parts == snow_parts_all and snow_bench_step(10u).parts == 0.f and snow_bench_step(25u).parts == 2.f
+            and snow_bench_step(39u).parts == 1.f and snow_bench_step(40u).parts == snow_parts_all,
+          "snow: the bench's steps of 10 s, all, none, the haze, the crystals, then again");
     }
     check(small_float(960u, 6u) == 1.f and small_float(896u, 6u) == 0.5f and small_float(512u, 5u) == 2.f and small_float(0u, 6u) == 0.f,
           "atmosphere: the table's small floats");

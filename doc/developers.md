@@ -57,7 +57,10 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   `snow_gravity`), at most one cell in 7 (`snow_most` 0.15); the eye's way up, east and north from a first fix of
   latitude, longitude and altitude (`snow_walked`; on foot no altitude; wrapped at 1024 m, a new fix past 10 km or on
   leaving or entering a craft), and its speed from the last two fixes: between fixes the eye goes on at it (by
-  `steady_clock`) for 1.5 times the last gap and 2 s at the most, then is held and the speed is 0. The shader samples 24 places along the ray from 0.4 to 30 m (spaced as a
+  `steady_clock`) for 1.5 times the last gap and 2 s at the most, then is held and the speed is 0. Value 121
+  `snow_parts`: the crystals 1, the haze 2; `snow_bench = 1` steps it every 10 s through 3, 0, 2, 1 (`snow_bench_step`)
+  and logs `snow bench: <part> from now`, so the `clouds gpu 5s` windows wholly inside a step give that part's cost
+  (the search for the ground, which the crystals need too, stays in every step but none). The shader samples 24 places along the ray from 0.4 to 30 m (spaced as a
   power, started at the pixel's blue noise), takes the crystal of each place's 0.8 m cell in the ground's frame (east
   from the planet's axis y and the up of the eye), kept by the cell's hash under the number; hidden past the scene's
   depth; from 1.5 m; 1-3 mm, drawn at least half a pixel wide and as bright as it covers, a soft (Gaussian) streak of

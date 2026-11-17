@@ -89,7 +89,7 @@ cbuffer clouds : register(b4)
   float3 aurora_edge;       // nitrogen's pink lower edge, 0 = none
   // the snow (PoC, src/snow.h) near the ground, on foot or in a craft: crystals under a full cloud and in a clear sky
   // (0 = none), how fast they fall (m/s), where the eye went up, east and north since a reference fix (metres,
-  // wrapped), then how fast it goes east, north and up (m/s)
+  // wrapped), then how fast it goes east, north and up (m/s), then the parts drawn: the crystals 1, the haze 2 (both 3)
   float snow_under;
   float snow_clear;
   float snow_fall;
@@ -99,7 +99,7 @@ cbuffer clouds : register(b4)
   float snow_v_east;
   float snow_v_north;
   float snow_v_up;
-  float snow_pad0;
+  float snow_parts;
   float snow_pad1;
   float snow_pad2;
   };
@@ -837,8 +837,10 @@ static const float snow_haze_most = 0.5f; // the haze never hides more than this
 
 float4 snow_along(ps_in input, float3 ray, float3 centre)
   {
-  if(snow_under <= 0.f && snow_clear <= 0.f)
+  if(snow_under <= 0.f && snow_clear <= 0.f || snow_parts < 0.5f)
     return 0.f;
+  bool with_crystals = fmod(snow_parts, 2.f) > 0.5f;
+  bool with_haze = snow_parts > 1.5f;
   float planet = frame_rows[126].x;
   float kind = abs(planet - cloud_kind_radius) < 4.f ? cloud_kind_weight : 0.f;
   // near that planet's ground only (Status.json says on foot outdoors or in a craft, but the planet is the one whose
@@ -897,7 +899,7 @@ float4 snow_along(ps_in input, float3 ray, float3 centre)
     }
   // snow_under at its most (src/snow.h snow_most) sees snow_see_m
   float thick = 3.f / snow_see_m * many / 0.15f;
-  float haze = snow_haze_most * (1.f - exp(-thick * way));
+  float haze = with_haze ? snow_haze_most * (1.f - exp(-thick * way)) : 0.f;
 
   // the ray in the ground's frame; the cells fall and drift with the time, and move against the eye's way
   float3 dir = float3(dot(ray_model, east), dot(ray_model, north), dot(ray_model, up));
@@ -920,7 +922,7 @@ float4 snow_along(ps_in input, float3 ray, float3 centre)
   float glow = 0.f;
   float start = blue_noise.Load(int3(uint2(input.pos.xy) & 63u, 0));
   [loop]
-  for(int i = 0; i != snow_samples; ++i)
+  for(int i = 0; i != (with_crystals ? snow_samples : 0); ++i)
     {
     float t = snow_near * pow(snow_reach / snow_near, (i + start) / snow_samples);
     if(t > way)

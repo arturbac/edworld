@@ -43,6 +43,23 @@ namespace edworld
       }
     }
 
+  ///\brief the snow's parts drawn (clouds3d.hlsl snow_parts): the crystals 1, the haze 2
+  inline constexpr float snow_parts_all{3.f};
+
+  ///\brief snow_bench: the parts of the 10 s step since a start (all, none, the haze, the crystals) and its name
+  struct snow_bench_step_t
+    {
+    float parts;
+    char const * name;
+    };
+
+  [[nodiscard]]
+  constexpr auto snow_bench_step(std::uint64_t seconds) noexcept -> snow_bench_step_t
+    {
+    constexpr snow_bench_step_t steps[4]{{3.f, "all"}, {0.f, "none"}, {2.f, "the haze alone"}, {1.f, "the crystals alone"}};
+    return steps[(seconds / 10u) % 4u];
+    }
+
   ///\brief Status.json Flags2: on foot (bit 0), on a planet (bit 4), outdoors (bit 15: 33041 on foot outside at 6 c,
   /// 2026-11-17)
   inline constexpr std::uint64_t flags2_on_foot{1ull << 0}, flags2_on_foot_on_planet{1ull << 4}, flags2_on_foot_exterior{1ull << 15};

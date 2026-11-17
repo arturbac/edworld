@@ -1286,10 +1286,14 @@ namespace edworld
 
     snow_walk_t snow_walk{};
     snow_gravity_t snow_g{};
+    ///\brief snow_bench: when it was switched on (steady seconds) and the step logged last (-1 = none)
+    double snow_bench_from{-1.0};
+    int snow_bench_logged{-1};
 
     ///\brief the snow's values 112..123 (clouds3d.hlsl, src/snow.h): under a full cloud and in a clear sky (0 = none:
     /// snow off, no kind of snow, not on foot outdoors nor in a craft in the air), how fast the crystals fall, where the
-    /// eye went east, north and up since a reference fix, then how fast it goes east, north and up
+    /// eye went east, north and up since a reference fix, then how fast it goes east, north and up, then the parts drawn
+    /// (snow_bench)
     auto atmo_snow_values(float * v) noexcept -> void
       {
       std::fill(v, v + 12, 0.f);
@@ -1313,6 +1317,27 @@ namespace edworld
       v[2] = snow_fall_speed(gravity, snow.air_density);
       // a clock finer than the tick's 16 ms: at 300 m/s a tick is 5 m of the eye's way
       double const now{std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count()};
+      v[9] = snow_parts_all;
+      if(settings().snow_bench)
+        {
+        if(snow_bench_from < 0.0)
+          snow_bench_from = now;
+        auto const seconds{static_cast<std::uint64_t>(now - snow_bench_from)};
+        snow_bench_step_t const step{snow_bench_step(seconds)};
+        v[9] = step.parts;
+        int const index{static_cast<int>(seconds / 10u)};
+        if(index != snow_bench_logged)
+          {
+          snow_bench_logged = index;
+          log_line("snow bench: %s from now, for 10 s", step.name);
+          }
+        }
+      else if(snow_bench_from >= 0.0)
+        {
+        snow_bench_from = -1.0;
+        snow_bench_logged = -1;
+        log_line("snow bench: off");
+        }
       snow_eye_t const eye{snow_walked(snow_walk, f.latitude, f.longitude, f.altitude, f.has_ground, f.planet_radius, now)};
       v[3] = eye.place[2];
       v[4] = eye.place[0];

@@ -44,6 +44,7 @@ In `edworld.ini` (or `edworld_eht.ini`), beside the dll or in `edloader\config`;
 | `aurora_field` | `-1` | -1, 0, 1 | (test) whether the planet has a magnetic field of its own: `-1` = as guessed from its size and turn, `1` = always (the whole aurora on any planet whose kind is known), `0` = never (a faint glow only) |
 | `snow` | `0` | 0, 1 | (PoC) `1` = crystals of the air's own gas falling near the ground, on foot outdoors or in a ship or an SRV in the air, under the clouds, on an ammonia or methane planet (a cold ammonia one, its second colour, also a little in a clear sky); `0` = none |
 | `snow_gain` | `1` | 0 and more | how many crystals, times the kind's own (ammonia 0.5 under a full cloud, a cold ammonia 1, methane 0.8) |
+| `snow_bench` | `0` | 0, 1 | (test) `1` = the snow's cost by its parts: every 10 s the next of all, none, the haze alone, the crystals alone, each logged as it starts (`snow bench:`), to read beside `clouds gpu 5s`; `0` = off |
 
 ### Read at the game's start (a change needs a restart)
 

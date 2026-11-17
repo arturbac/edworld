@@ -337,6 +337,9 @@ namespace edworld
     std::uint32_t snow{0};
     ///\brief how many of them, times the kind's own
     float snow_gain{1.f};
+    ///\brief (test) the snow's cost by its parts: 1 = every 10 s the next of all, none, the haze alone, the crystals
+    /// alone, each logged as it starts, for the clouds' GPU time of those seconds; 0 = off
+    std::uint32_t snow_bench{0};
     ///\brief how often, at most, they are read (milliseconds)
     std::uint32_t galmap_interval_ms{500};
     ///\brief the pad's text read (2026-10-24, src/pad_text_read.h): 1 = the tower's notice in that box gives the pad and
