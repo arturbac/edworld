@@ -471,8 +471,9 @@ namespace edworld
       ReleaseSRWLockExclusive(&flight_lock);
       }
 
-    DWORD WINAPI poll_thread(LPVOID)
+    auto poll_body(void *) -> DWORD
       {
+      test_fault("thread");  // tools/test.sh: EDWORLD_TEST_FAULT=thread
       std::wstring const path{status_path()};
       log_line("state: polling %S", path.c_str());
       std::uint64_t asked{};
@@ -629,7 +630,9 @@ namespace edworld
     {
     if(started.exchange(true))
       return;
-    if(HANDLE const t{CreateThread(nullptr, 0, &poll_thread, nullptr, 0, nullptr)})
+    // the thread is started again after a fault or an exception in it (run_guarded_thread)
+    auto const poll_thread{[](LPVOID) -> DWORD { return run_guarded_thread("state", &poll_body, nullptr); }};
+    if(HANDLE const t{CreateThread(nullptr, 0, poll_thread, nullptr, 0, nullptr)})
       CloseHandle(t);
     }
 
@@ -702,19 +705,24 @@ namespace edworld
       {
       for(wchar_t const c: newest)
         name += c < 0x80 ? static_cast<char>(c) : '?';
-      if(std::FILE * const f{_wfopen((dir + L"\\" + newest).c_str(), L"rb")})
+      // Windows' own calls, as read_file: the writer thread reading this may be killed at the game's exit
+      HANDLE const f{CreateFileW((dir + L"\\" + newest).c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                 nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr)};
+      if(f != INVALID_HANDLE_VALUE)
         {
-        _fseeki64(f, 0, SEEK_END);
-        long long const end{_ftelli64(f)};
-        long long const from{end > 65536 ? end - 65536 : 0};
-        if(end > 0)
+        LARGE_INTEGER end{};
+        if(GetFileSizeEx(f, &end) and end.QuadPart > 0)
           {
-          size = static_cast<std::uint64_t>(end);
-          _fseeki64(f, from, SEEK_SET);
-          tail.resize(static_cast<std::size_t>(end - from));
-          tail.resize(std::fread(tail.data(), 1, tail.size(), f));
+          long long const from{end.QuadPart > 65536 ? end.QuadPart - 65536 : 0};
+          size = static_cast<std::uint64_t>(end.QuadPart);
+          LARGE_INTEGER const at{.QuadPart = from};
+          DWORD got{};
+          tail.resize(static_cast<std::size_t>(end.QuadPart - from));
+          if(not SetFilePointerEx(f, at, nullptr, FILE_BEGIN) or not ReadFile(f, tail.data(), static_cast<DWORD>(tail.size()), &got, nullptr))
+            got = 0;
+          tail.resize(got);
           }
-        std::fclose(f);
+        CloseHandle(f);
         }
       }
     return sample_context_text(sample, status.empty() ? std::string{} : read_file(status), name, size, tail);

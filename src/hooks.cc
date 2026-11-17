@@ -127,7 +127,7 @@ namespace edworld
     constexpr std::uint32_t verdict_draws{64};  // draws looked at before a shader is judged no panel
     constexpr std::uint32_t slot_table_size{16384};
     std::atomic<void *> table_key[slot_table_size]{};
-    std::atomic<std::uint32_t> table_slot[slot_table_size]{};
+    std::atomic<std::uint32_t> table_slot[slot_table_size]{};  ///< slot + 1; 0 while the key is claimed but no slot written
     std::atomic<verdict_e> verdict[max_vs_seen]{};
     std::uint8_t verdict_looked[max_vs_seen]{};  // render thread only
 
@@ -143,7 +143,7 @@ namespace edworld
         void * expected{};
         if(table_key[i].compare_exchange_strong(expected, p) or expected == p)
           {
-          table_slot[i].store(slot, std::memory_order_release);  // a reused pointer takes its new shader's slot
+          table_slot[i].store(slot + 1u, std::memory_order_release);  // a reused pointer takes its new shader's slot
           return;
           }
         }
@@ -156,7 +156,11 @@ namespace edworld
         {
         void * const k{table_key[i].load(std::memory_order_acquire)};
         if(k == p)
-          return table_slot[i].load(std::memory_order_acquire);
+          {
+          // another thread may have claimed the key and not written the slot yet: unknown for this call
+          std::uint32_t const slot{table_slot[i].load(std::memory_order_acquire)};
+          return slot == 0u ? max_vs_seen : slot - 1u;
+          }
         if(not k)
           break;
         }
@@ -211,16 +215,49 @@ namespace edworld
     bool current_shell{};
     std::uint32_t current_pending{max_vs_seen};  // the bound shader's seen slot while its verdict is pending
     std::atomic<bool> disabled{false};
-    std::uint32_t faults{};
+    ///\brief edworld's own work under a guard on this thread: its own draws and shader binds (ImGui's, the state put
+    /// back) pass the hooks straight to the context, unobserved
+    thread_local int own_depth{};
+    std::atomic<std::uint32_t> faults{};  ///< from every context's thread
 
     ///\brief a fault caught in a hook; the eighth stops everything but the game, and says so
     auto note_fault() noexcept -> void
       {
-      if(++faults == 8u)
+      if(faults.fetch_add(1) + 1u == 8u)
         {
         disabled.store(true);
         log_line("hooks: 8 faults caught, the panels are left alone until the game starts again");
         }
+      }
+
+    ///\brief the guards' filter: each fault or C++ exception caught is logged (its code, where: module and offset),
+    /// the first 16 of a session; then the guard's handler counts it (note_fault)
+    auto fault_filter(EXCEPTION_POINTERS const * e) noexcept -> int
+      {
+      creating_own = false;  // a fault while edworld made its own shaders must not mark the game's as edworld's for good
+      static std::atomic<std::uint32_t> told{};
+      if(told.fetch_add(1) < 16u and e and e->ExceptionRecord)
+        {
+        EXCEPTION_RECORD const & r{*e->ExceptionRecord};
+        HMODULE m{};
+        wchar_t name[MAX_PATH]{L"?"};
+        if(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                              static_cast<LPCWSTR>(r.ExceptionAddress), &m))
+          GetModuleFileNameW(m, name, MAX_PATH);
+        wchar_t const * const file{[&]() noexcept
+                                     {
+                                       wchar_t const * f{name};
+                                       for(wchar_t const * c{name}; *c; ++c)
+                                         if(*c == L'\\' or *c == L'/')
+                                           f = c + 1;
+                                       return f;
+                                     }()};
+        log_line("hooks: a fault caught (exception 0x%08lX%s at %ls+0x%llx); fault %u of 8 before the hooks stop",
+                 static_cast<unsigned long>(r.ExceptionCode), r.ExceptionCode == 0xE06D7363u ? ", a C++ exception" : "", file,
+                 static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(r.ExceptionAddress) - reinterpret_cast<std::uintptr_t>(m)),
+                 faults.load() + 1u);
+        }
+      return EXCEPTION_EXECUTE_HANDLER;
       }
 
     constexpr std::uint32_t record_bytes{cb0_rows * 16u};
@@ -679,7 +716,7 @@ namespace edworld
         static_cast<unsigned long long>(stat_published),
         static_cast<unsigned long long>(stat_dropped),
         static_cast<unsigned long long>(stat_full),
-        faults,
+        faults.load(),
         static_cast<unsigned long long>(vs_created.load()),
         m.pool ? slot.pool_bytes : 0u
       );
@@ -793,10 +830,11 @@ namespace edworld
 
     SLIST_HEADER write_queue;
     HANDLE write_wake{};
-    std::atomic<bool> writer_started{};
+    INIT_ONCE writer_once = INIT_ONCE_STATIC_INIT;  ///< the queue made once, before any thread pushes to it
+    bool writer_running{};                          ///< the thread started; without it nothing is queued
     std::atomic<std::uint32_t> writes_queued{}, writes_done{};
 
-    DWORD WINAPI writer_thread(LPVOID)
+    auto writer_body(void *) -> DWORD
       {
       for(;;)
         {
@@ -829,20 +867,16 @@ namespace edworld
             {
             // logged above: nothing to write
             }
-          else if(std::FILE * f{_wfopen(item->path, L"wb")})
+          // Windows' own calls: not written whole, the file is removed and logged (write_whole_file), and a `.part`
+          // never replaces the finished file
+          else if(item->context ? write_whole_file(item->path, context.data(), context.size())
+                                : write_whole_file(item->path, item + 1, item->bytes))
             {
-            if(item->context)
-              std::fwrite(context.data(), 1, context.size(), f);
-            else
-              std::fwrite(reinterpret_cast<char const *>(item + 1), 1, item->bytes, f);
-            std::fclose(f);
             if(item->rename_to[0] and not MoveFileExW(item->path, item->rename_to, MOVEFILE_REPLACE_EXISTING))
               log_line("dump: %S could not replace %S (error %lu)", item->path, item->rename_to, GetLastError());
             else if(item->loud)
               log_line("dump: wrote %S", item->path);
             }
-          else
-            log_line("dump: %S cannot be written", item->path);
           _aligned_free(item);
           writes_done.fetch_add(1, std::memory_order_release);
           }
@@ -853,15 +887,27 @@ namespace edworld
     auto queue_write(wchar_t const * path, void const * data, std::uint32_t bytes, bool loud = false,
                      wchar_t const * rename_to = nullptr, bool context = false) noexcept -> bool
       {
-      if(not writer_started.exchange(true))
-        {
-        InitializeSListHead(&write_queue);
-        write_wake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-        if(HANDLE const t{CreateThread(nullptr, 0, &writer_thread, nullptr, 0, nullptr)})
-          CloseHandle(t);
-        else
-          log_line("dump: the writer thread could not start (error %lu)", GetLastError());
-        }
+      InitOnceExecuteOnce(
+        &writer_once,
+        [](PINIT_ONCE, PVOID, PVOID *) -> BOOL
+          {
+          InitializeSListHead(&write_queue);
+          write_wake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+          auto const writer_thread{[](LPVOID) -> DWORD { return run_guarded_thread("writer", &writer_body, nullptr); }};
+          if(HANDLE const t{write_wake ? CreateThread(nullptr, 0, writer_thread, nullptr, 0, nullptr) : nullptr})
+            {
+            CloseHandle(t);
+            writer_running = true;
+            }
+          else
+            log_line("dump: the writer thread could not start (error %lu); nothing is written", GetLastError());
+          return TRUE;
+          },
+        nullptr,
+        nullptr
+      );
+      if(not writer_running)
+        return false;
       auto * item{static_cast<write_item_t *>(_aligned_malloc(sizeof(write_item_t) + bytes, MEMORY_ALLOCATION_ALIGNMENT))};
       if(not item)
         {
@@ -910,7 +956,7 @@ namespace edworld
 
     auto trigger_path() -> std::wstring { return settings().dir + L"\\edworld_dump"; }
 
-    auto check_trigger(LONGLONG now) noexcept -> void
+    auto check_trigger(LONGLONG now) -> void
       {
       if(dump_armed)
         {
@@ -1578,10 +1624,10 @@ namespace edworld
       return staging;
       }
 
-    auto atmo_drain(LONGLONG now) noexcept -> void;
+    auto atmo_drain(LONGLONG now) -> void;
 
     ///\brief at the shell's draw: the copies of its table and constants, when it is time for the next
-    auto atmo_queue(ID3D11DeviceContext * ctx) noexcept -> void
+    auto atmo_queue(ID3D11DeviceContext * ctx) -> void
       {
       std::uint32_t const period{atmo_period_s()};
       if(period == 0u)
@@ -1692,7 +1738,7 @@ namespace edworld
 
     ///\brief once a frame and at the shell's draw: the copies read back once the GPU has made them, kept when the planet
     /// and band are new
-    auto atmo_drain(LONGLONG now) noexcept -> void
+    auto atmo_drain(LONGLONG now) -> void
       {
       if(not atmo_busy)
         return;
@@ -1841,26 +1887,30 @@ namespace edworld
 
     auto guarded_atmo(ID3D11DeviceContext * ctx) noexcept -> void
       {
+      ++own_depth;
       __try
         {
         atmo_queue(ctx);
         }
-      __except(EXCEPTION_EXECUTE_HANDLER)
+      __except(fault_filter(GetExceptionInformation()))
         {
         note_fault();
         }
+      --own_depth;
       }
 
     auto guarded_atmo_drain(LONGLONG now) noexcept -> void
       {
+      ++own_depth;
       __try
         {
         atmo_drain(now);
         }
-      __except(EXCEPTION_EXECUTE_HANDLER)
+      __except(fault_filter(GetExceptionInformation()))
         {
         note_fault();
         }
+      --own_depth;
       }
 
     // ---- the whole frame (discovery, full_dump_request): every draw of one frame on the immediate context, one log
@@ -1993,7 +2043,7 @@ namespace edworld
 
     auto full_trigger_path() -> std::wstring { return settings().dir + L"\\edworld_dump_all"; }
 
-    auto check_full(LONGLONG now, bool panels) noexcept -> void
+    auto check_full(LONGLONG now, bool panels) -> void
       {
       if(full_armed)
         {
@@ -2071,7 +2121,7 @@ namespace edworld
 
     ///\brief panels: a panel draw began the frame; without (frame_without_panels) a surface dump is not armed or closed
     /// there, it waits for a frame with panels
-    auto begin_frame(LONGLONG now, bool panels = true) noexcept -> void
+    auto begin_frame(LONGLONG now, bool panels = true) -> void
       {
       if(recording >= 0 and ring[recording].count)
         ring[recording].filled = true;
@@ -2084,7 +2134,7 @@ namespace edworld
           {
           last_log_qpc = now;
           log_line("frame %llu: totals draws %llu faults %u vs %llu", static_cast<unsigned long long>(frame),
-                   static_cast<unsigned long long>(stat_draws), faults, static_cast<unsigned long long>(vs_created.load()));
+                   static_cast<unsigned long long>(stat_draws), faults.load(), static_cast<unsigned long long>(vs_created.load()));
           }
         }
       drain(now);
@@ -2346,7 +2396,7 @@ namespace edworld
       std::uint32_t start_index,
       std::int32_t base_vertex,
       std::uint32_t start_instance
-    ) noexcept -> void
+    ) -> void
       {
       LONGLONG const now{qpc_now()};
       if((now - last_draw_qpc) * 1000000 / qpc_frequency > settings().frame_gap_us)
@@ -2450,14 +2500,16 @@ namespace edworld
       std::uint32_t start_instance
     ) noexcept -> void
       {
+      ++own_depth;
       __try
         {
         observe_panel(ctx, index_count, instance_count, start_index, base_vertex, start_instance);
         }
-      __except(EXCEPTION_EXECUTE_HANDLER)
+      __except(fault_filter(GetExceptionInformation()))
         {
         note_fault();
         }
+      --own_depth;
       }
 
     // without panels (the galaxy map, 2026-11-16: F10 there dumped nothing) no panel draw begins a frame: once none came
@@ -2477,7 +2529,7 @@ namespace edworld
       return GetFileAttributesW(full_trigger_path().c_str()) != INVALID_FILE_ATTRIBUTES;
       }
 
-    auto frame_without_panels(ID3D11DeviceContext * ctx) noexcept -> void
+    auto frame_without_panels(ID3D11DeviceContext * ctx) -> void
       {
       if(ctx != immediate.load(std::memory_order_relaxed))
         return;
@@ -2491,16 +2543,27 @@ namespace edworld
         }
       }
 
+    // tools/test.sh: a fault on the first draw (EDWORLD_TEST_FAULT draw-seh or draw-cpp)
+    char const * const draw_test_fault{[]() noexcept
+                                         {
+                                           char value[16]{};
+                                           GetEnvironmentVariableA("EDWORLD_TEST_FAULT", value, sizeof value);
+                                           return std::strcmp(value, "draw-cpp") == 0 ? "draw-cpp" : "draw-seh";
+                                         }()};
+
     auto guarded_frame_without_panels(ID3D11DeviceContext * ctx) noexcept -> void
       {
+      ++own_depth;
       __try
         {
+        test_fault(draw_test_fault);
         frame_without_panels(ctx);
         }
-      __except(EXCEPTION_EXECUTE_HANDLER)
+      __except(fault_filter(GetExceptionInformation()))
         {
         note_fault();
         }
+      --own_depth;
       }
 
     ///\brief the end of a draw of the immediate context (after edworld's own work in it, a dump's copies: no gap of the
@@ -2520,6 +2583,7 @@ namespace edworld
       bool const spheres{settings().compass and settings().compass_spheres};
       if(not list and not spheres)
         return;
+      ++own_depth;
       __try
         {
         if(list)
@@ -2527,10 +2591,11 @@ namespace edworld
         if(spheres)
           panel_compass_after(ctx, frame, index_count, start_index, base_vertex, start_instance);
         }
-      __except(EXCEPTION_EXECUTE_HANDLER)
+      __except(fault_filter(GetExceptionInformation()))
         {
         note_fault();
         }
+      --own_depth;
       }
 
     // edworld's name and version in a corner of the picture, right after a non-indexed draw of the game (its last
@@ -2539,14 +2604,16 @@ namespace edworld
       {
       if(settings().build_info == 0 or ctx != immediate.load(std::memory_order_relaxed) or disabled.load(std::memory_order_relaxed))
         return;
+      ++own_depth;
       __try
         {
         build_info_after(ctx, device);
         }
-      __except(EXCEPTION_EXECUTE_HANDLER)
+      __except(fault_filter(GetExceptionInformation()))
         {
         note_fault();
         }
+      --own_depth;
       }
 
     auto watched_draw(ID3D11DeviceContext * ctx) noexcept -> bool
@@ -2601,6 +2668,9 @@ namespace edworld
 
     auto guarded_classify(ID3D11DeviceContext * ctx) noexcept -> void
       {
+      if(disabled.load(std::memory_order_relaxed))
+        return;
+      ++own_depth;
       __try
         {
         ID3D11VertexShader * vs{};
@@ -2611,11 +2681,12 @@ namespace edworld
           vs->Release();
           }
         }
-      __except(EXCEPTION_EXECUTE_HANDLER)
+      __except(fault_filter(GetExceptionInformation()))
         {
         current_pending = max_vs_seen;
         note_fault();
         }
+      --own_depth;
       }
 
     // ---- the probe (render thread) ----
@@ -2885,7 +2956,7 @@ namespace edworld
     /// forgets them); a shape no template knows is '?'. In a copy of the font older than this round the glyph may not
     /// be there yet (the game adds glyphs as it needs them): then '?' is not kept, and the font is copied again in the
     /// next round; in a fresh copy it is kept and logged once with its zones, to be named
-    auto galmap_char(std::int32_t u0, std::int32_t v0, std::int32_t u1, std::int32_t v1) noexcept -> char
+    auto galmap_char(std::int32_t u0, std::int32_t v0, std::int32_t u1, std::int32_t v1) -> char
       {
       galmap_state_t & g{galmap_state};
       auto const w{static_cast<std::int32_t>(g.font_width)}, h{static_cast<std::int32_t>(g.font_height)};
@@ -2916,7 +2987,7 @@ namespace edworld
       }
 
     ///\brief the copies read back, if the GPU is done with them: true once done (published, or nothing to read)
-    auto galmap_read(ID3D11DeviceContext * ctx) noexcept -> bool
+    auto galmap_read(ID3D11DeviceContext * ctx) -> bool
       {
       galmap_state_t & g{galmap_state};
       if(g.font_pending)
@@ -3043,7 +3114,7 @@ namespace edworld
       }
 
     ///\brief a draw of the HUD's text shader: while no panel is drawn, its part of the galaxy map's names
-    auto galmap_draw(ID3D11DeviceContext * ctx, std::uint32_t count, std::uint32_t start, std::int32_t base) noexcept -> void
+    auto galmap_draw(ID3D11DeviceContext * ctx, std::uint32_t count, std::uint32_t start, std::int32_t base) -> void
       {
       LONGLONG const now{qpc_now()};
       if((now - last_draw_qpc) * 1000 / qpc_frequency < panel_less_ms)
@@ -3090,14 +3161,16 @@ namespace edworld
 
     auto guarded_galmap(ID3D11DeviceContext * ctx, std::uint32_t count, std::uint32_t start, std::int32_t base) noexcept -> void
       {
+      ++own_depth;
       __try
         {
         galmap_draw(ctx, count, start, base);
         }
-      __except(EXCEPTION_EXECUTE_HANDLER)
+      __except(fault_filter(GetExceptionInformation()))
         {
         note_fault();
         }
+      --own_depth;
       }
 #endif
 
@@ -3200,19 +3273,23 @@ namespace edworld
 
     auto guarded_probe(ID3D11DeviceContext * ctx, std::uint32_t count, std::uint32_t instances) noexcept -> void
       {
+      if(disabled.load(std::memory_order_relaxed))
+        return;
+      ++own_depth;
       __try
         {
         probe_draw(ctx, count, instances);
         }
-      __except(EXCEPTION_EXECUTE_HANDLER)
+      __except(fault_filter(GetExceptionInformation()))
         {
         probe_request.store(false);
         note_fault();
         }
+      --own_depth;
       }
 
     // ---- the probe (its own thread): arms it once per charge that sees no panel draw ----
-    DWORD WINAPI probe_thread(LPVOID)
+    auto probe_body(void *) -> DWORD
       {
       bool armed_this_charge{};
       std::uint64_t armed_at{};
@@ -3401,15 +3478,18 @@ namespace edworld
         return;
       name.resize(slash + 1);
       name += L"VersionInfo.txt";
-      FILE * const file{_wfopen(name.c_str(), L"rb")};
-      if(not file)
+      HANDLE const file{CreateFileW(name.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
+                                    FILE_ATTRIBUTE_NORMAL, nullptr)};
+      if(file == INVALID_HANDLE_VALUE)
         {
         log_line("hologram: no VersionInfo.txt beside the exe");
         return;
         }
       char text[512]{};
-      std::size_t const n{std::fread(text, 1, sizeof text - 1, file)};
-      std::fclose(file);
+      DWORD n{};
+      if(not ReadFile(file, text, sizeof text - 1, &n, nullptr))
+        n = 0;
+      CloseHandle(file);
       text[n] = '\0';
       char const * const at{std::strstr(text, "\"Version\":\"")};
       char version[64]{};
@@ -3619,7 +3699,7 @@ namespace edworld
     auto holo_models_dir() -> std::wstring { return settings().dir + L"\\edworld_models"; }
 
     ///\brief the sample's copies once the GPU has made them: fingerprint, resolve again, log; edworld_eht writes them too
-    auto holo_sample_read(ID3D11DeviceContext * ctx, LONGLONG now) noexcept -> void
+    auto holo_sample_read(ID3D11DeviceContext * ctx, LONGLONG now) -> void
       {
       if(not holo_sample.in_flight)
         return;
@@ -3873,14 +3953,16 @@ namespace edworld
 
     auto guarded_laying_over(ID3D11DeviceContext * ctx) noexcept -> void
       {
+      ++own_depth;
       __try
         {
         holo_laying_over(ctx);
         }
-      __except(EXCEPTION_EXECUTE_HANDLER)
+      __except(fault_filter(GetExceptionInformation()))
         {
         note_fault();
         }
+      --own_depth;
       }
 
     ///\brief at a frame's start: the surface laid over second in the frame before is the target's (none with one)
@@ -4141,7 +4223,7 @@ namespace edworld
 
     ///\brief a draw of a candidate or of the hologram's shader on the immediate context
     auto hologram_draw(ID3D11DeviceContext * ctx, std::uint32_t index_count, std::uint32_t start_index, std::int32_t base_vertex,
-                       std::uint32_t start_instance) noexcept -> void
+                       std::uint32_t start_instance) -> void
       {
       if(index_count < holo_min_part or current_holo >= max_vs_seen)
         return;
@@ -4213,14 +4295,16 @@ namespace edworld
     auto guarded_hologram(ID3D11DeviceContext * ctx, std::uint32_t index_count, std::uint32_t start_index, std::int32_t base_vertex,
                           std::uint32_t start_instance) noexcept -> void
       {
+      ++own_depth;
       __try
         {
         hologram_draw(ctx, index_count, start_index, base_vertex, start_instance);
         }
-      __except(EXCEPTION_EXECUTE_HANDLER)
+      __except(fault_filter(GetExceptionInformation()))
         {
         note_fault();
         }
+      --own_depth;
       }
 
     // ---- hooks ----
@@ -4244,9 +4328,9 @@ namespace edworld
         verdict[at].store(verdict_e::pending, std::memory_order_relaxed);
         verdict_looked[at] = 0;
         // edworld's own (ImGui's, the list's) are judged at once: they draw from copies of a panel's surface
-        verdict[at].store(creating_own.load() ? verdict_e::not_panel : verdict_e::pending, std::memory_order_relaxed);
+        verdict[at].store(creating_own ? verdict_e::not_panel : verdict_e::pending, std::memory_order_relaxed);
         holo_kind_e kind{holo_kind_e::none};
-        if(not creating_own.load() and settings().station_axes)
+        if(not creating_own and settings().station_axes)
           {
           if(settings().station_vs and hash == settings().station_vs)
             kind = holo_kind_e::hologram;
@@ -4259,7 +4343,7 @@ namespace edworld
         seen_ptr[at].store(*shader, std::memory_order_release);
         table_put(*shader, at);
         }
-      if(creating_own.load())
+      if(creating_own)
         return hr;
 #if defined(EDWORLD_EHT)
       shader_catalog_note(shader_stage_e::vertex, bytecode, length, hash);
@@ -4283,14 +4367,14 @@ namespace edworld
               }
         }
 #if defined(EDWORLD_EHT)
-      if(hash == galmap_text_vs and not creating_own.load())
+      if(hash == galmap_text_vs and not creating_own)
         {
         static_cast<IUnknown *>(*shader)->AddRef();  // pinned, as the watched ones
         if(galmap_vs.exchange(*shader, std::memory_order_relaxed) == nullptr)
           log_line("galmap: the game made the text shader the galaxy map's names are read from");
         }
 #endif
-      if(hash == atmosphere_shell_vs and not creating_own.load())
+      if(hash == atmosphere_shell_vs and not creating_own)
         {
         static_cast<IUnknown *>(*shader)->AddRef();  // pinned, as the watched ones
         if(shell_vs.exchange(*shader, std::memory_order_relaxed) == nullptr)
@@ -4338,7 +4422,7 @@ namespace edworld
     )
       {
       HRESULT const hr{(*original)(self, bytecode, length, linkage, shader)};
-      if(SUCCEEDED(hr) and bytecode and not creating_own.load())
+      if(SUCCEEDED(hr) and bytecode and not creating_own)
         shader_catalog_note(stage, bytecode, length, fnv1a64(static_cast<std::uint8_t const *>(bytecode), length));
       return hr;
       }
@@ -4357,7 +4441,7 @@ namespace edworld
     )
       {
       HRESULT const hr{orig_create_gs_so(self, bytecode, length, entries, entry_count, strides, stride_count, rasterized, linkage, shader)};
-      if(SUCCEEDED(hr) and bytecode and not creating_own.load())
+      if(SUCCEEDED(hr) and bytecode and not creating_own)
         shader_catalog_note(shader_stage_e::geometry, bytecode, length, fnv1a64(static_cast<std::uint8_t const *>(bytecode), length));
       return hr;
       }
@@ -4372,7 +4456,7 @@ namespace edworld
     )
       {
       HRESULT const hr{orig_create_input_layout(self, elements, count, signature, length, layout)};
-      if(SUCCEEDED(hr) and not creating_own.load())
+      if(SUCCEEDED(hr) and not creating_own)
         shader_catalog_note_layout(elements, count);
       return hr;
       }
@@ -4415,6 +4499,8 @@ namespace edworld
       UINT instance_count
     )
       {
+      if(own_depth != 0)
+        return orig_vs_set_shader(self, shader, instances, instance_count);
       if(self == immediate.load(std::memory_order_relaxed))
         {
         int found{-1};
@@ -4701,16 +4787,20 @@ namespace edworld
 
     auto guarded_full_after(ID3D11DeviceContext * ctx) noexcept -> void
       {
+      if(disabled.load(std::memory_order_relaxed))  // after 8 faults every guarded path stays off
+        return;
       LONGLONG const began{qpc_now()};
+      ++own_depth;
       __try
         {
         full_after(ctx);
         }
-      __except(EXCEPTION_EXECUTE_HANDLER)
+      __except(fault_filter(GetExceptionInformation()))
         {
         full_after_draw = 0;
         note_fault();
         }
+      --own_depth;
       // the copy of the game's main target after a dump_vs draw takes milliseconds: no gap of the game's either (it ended
       // each whole frame of 2026-10-22 right after the hologram's draws, at 18 draws)
       if(last_draw_qpc)
@@ -4720,16 +4810,20 @@ namespace edworld
     auto guarded_full(ID3D11DeviceContext * ctx, char kind, std::uint32_t count, std::uint32_t instances, std::uint32_t start,
                       std::int32_t base, std::uint32_t start_instance) noexcept -> void
       {
+      if(disabled.load(std::memory_order_relaxed))
+        return;
       LONGLONG const began{qpc_now()};
+      ++own_depth;
       __try
         {
         full_draw(ctx, kind, count, instances, start, base, start_instance);
         }
-      __except(EXCEPTION_EXECUTE_HANDLER)
+      __except(fault_filter(GetExceptionInformation()))
         {
         full_armed = false;
         note_fault();
         }
+      --own_depth;
       // the dump's own work (copies of whole targets, milliseconds) is no gap of the game's: it must not end the frame
       if(last_draw_qpc)
         last_draw_qpc += qpc_now() - began;
@@ -4893,10 +4987,10 @@ namespace edworld
       ctx->GetDevice(&device);
       if(not device)
         return false;
-      creating_own.store(true);
+      creating_own = true;
       bool ok{SUCCEEDED(device->CreateVertexShader(g_clouds_vs, sizeof g_clouds_vs, nullptr, &clouds.vs))};
       ok = ok and SUCCEEDED(device->CreatePixelShader(g_clouds_ps, sizeof g_clouds_ps, nullptr, &clouds.ps));
-      creating_own.store(false);
+      creating_own = false;
 
       D3D11_BLEND_DESC blend{};
       blend.RenderTarget[0].BlendEnable = TRUE;
@@ -4941,12 +5035,12 @@ namespace edworld
       ctx->GetDevice(&device);
       if(not device)
         return false;
-      creating_own.store(true);
+      creating_own = true;
       bool ok{SUCCEEDED(device->CreateVertexShader(g_clouds3d_vs, sizeof g_clouds3d_vs, nullptr, &clouds.volume_vs))};
       ok = ok and SUCCEEDED(device->CreatePixelShader(g_clouds3d_ps, sizeof g_clouds3d_ps, nullptr, &clouds.volume_ps));
       clouds.half_failed = not(SUCCEEDED(device->CreateVertexShader(g_clouds_up_vs, sizeof g_clouds_up_vs, nullptr, &clouds.up_vs))
                                and SUCCEEDED(device->CreatePixelShader(g_clouds_up_ps, sizeof g_clouds_up_ps, nullptr, &clouds.up_ps)));
-      creating_own.store(false);
+      creating_own = false;
 
       // what the shader gives is already weighed by how much of it there is
       D3D11_BLEND_DESC blend{};
@@ -5410,18 +5504,22 @@ namespace edworld
       UINT start_instance
     ) noexcept -> void
       {
+      ++own_depth;
       __try
         {
         draw_clouds(ctx, index_count, instance_count, start_index, base_vertex, start_instance);
         }
-      __except(EXCEPTION_EXECUTE_HANDLER)
+      __except(fault_filter(GetExceptionInformation()))
         {
         note_fault();
         }
+      --own_depth;
       }
 
     void STDMETHODCALLTYPE hook_draw_indexed(ID3D11DeviceContext * self, UINT index_count, UINT start_index, INT base_vertex)
       {
+      if(own_depth != 0)
+        return orig_draw_indexed(self, index_count, start_index, base_vertex);
       census_note(self);
       if(not disabled.load(std::memory_order_relaxed))
         guarded_frame_without_panels(self);
@@ -5461,6 +5559,8 @@ namespace edworld
 
     void STDMETHODCALLTYPE hook_draw(ID3D11DeviceContext * self, UINT vertex_count, UINT start_vertex)
       {
+      if(own_depth != 0)
+        return orig_draw(self, vertex_count, start_vertex);
       census_note(self);
       if(not disabled.load(std::memory_order_relaxed))
         guarded_frame_without_panels(self);
@@ -5496,6 +5596,8 @@ namespace edworld
       UINT start_instance
     )
       {
+      if(own_depth != 0)
+        return orig_draw_indexed_instanced(self, index_count, instance_count, start_index, base_vertex, start_instance);
       census_note(self);
       if(not disabled.load(std::memory_order_relaxed))
         guarded_frame_without_panels(self);
@@ -5549,6 +5651,8 @@ namespace edworld
       UINT start_instance
     )
       {
+      if(own_depth != 0)
+        return orig_draw_instanced(self, vertex_count, instance_count, start_vertex, start_instance);
       census_note(self);
       if(not disabled.load(std::memory_order_relaxed))
         guarded_frame_without_panels(self);
@@ -5688,7 +5792,7 @@ namespace edworld
         }
       }
 
-    DWORD WINAPI census_thread(void *)
+    auto census_body(void *) -> DWORD
       {
       Sleep(30000);
       census_report("after 30 s", true);
@@ -5789,7 +5893,8 @@ namespace edworld
       if(order == 0)
         {
         census_on.store(true);
-        if(HANDLE const t{CreateThread(nullptr, 0, &census_thread, nullptr, 0, nullptr)})
+        auto const census_thread{[](LPVOID) -> DWORD { return run_guarded_thread("census", &census_body, nullptr, 1); }};
+        if(HANDLE const t{CreateThread(nullptr, 0, census_thread, nullptr, 0, nullptr)})
           CloseHandle(t);
         }
       else
@@ -5812,8 +5917,9 @@ namespace edworld
       {
       start_game_state();
       static std::atomic<bool> probe_started{};
+      auto const probe_thread{[](LPVOID) -> DWORD { return run_guarded_thread("probe", &probe_body, nullptr); }};
       if(not probe_started.exchange(true))
-        if(HANDLE const t{CreateThread(nullptr, 0, &probe_thread, nullptr, 0, nullptr)})
+        if(HANDLE const t{CreateThread(nullptr, 0, probe_thread, nullptr, 0, nullptr)})
           CloseHandle(t);
       }
     if(settings().patch and not settings().edsm)

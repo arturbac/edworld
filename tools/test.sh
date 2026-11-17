@@ -69,6 +69,27 @@ creator_case() {  # $1 = edworld | edworld_eht; a device asked through a dll fro
   ini_check "bdhkm64.dll passed over by default, no ini line needed" $?
   set -e
 }
+fault_case() {  # $1 = edworld | edworld_eht; a fault in a guard and in a thread is caught, logged, and the game goes on
+  local what want
+  set +e
+  for what in draw-seh draw-cpp thread; do
+    case $what in
+      draw-seh) want='hooks: a fault caught \(exception 0xC0000005' ;;
+      draw-cpp) want='hooks: a fault caught \(exception 0xE06D7363, a C\+\+ exception' ;;
+      thread) want='thread state: a fault \(exception 0xE06D7363, a C\+\+ exception\), 1 of 8' ;;
+    esac
+    EDWORLD_TEST_FAULT=$what WINEDEBUG=-all WINEDLLOVERRIDES="d3d11=n,b" wine test_app.exe > "fault-$what.out"
+    local r=$?
+    sleep 2  # the thread's line comes after its restart's second
+    grep -qE "$want" "$1.log"
+    local logged=$?
+    # the state thread starts again a second later: test_app's checks of the jump panel run before it reads Status.json,
+    # so they may fail (exit 1); the process must still end by itself, not by a crash
+    local most=0; [[ $what == thread ]] && most=1
+    ini_check "a fault ($what) caught and logged, test_app exit $r" $(( logged != 0 || r > most ))
+  done
+  set -e
+}
 doc_case() {  # doc/settings.md is made by edworld_eht from its table of settings (it has every setting); in the run directory
   set +e
   EDWORLD_SETTINGS_DOC=settings.md ini_run
@@ -111,6 +132,7 @@ run_variant() {  # $1 = edworld | edworld_eht; sets rc on failure
   head -40 $V.log 2>/dev/null
   ini_cases "$V"
   creator_case "$V"
+  fault_case "$V"
   [[ $V != edworld_eht ]] || doc_case
   popd >/dev/null
 }

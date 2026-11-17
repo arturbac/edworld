@@ -5,29 +5,32 @@
 
 namespace edworld
   {
+  // The functions below run under edworld's guards (hooks.cc, guarded_*): they are not noexcept, so a C++ exception
+  // (out of memory) reaches the guard, which logs it and counts it as a fault, instead of ending the game.
+
   ///\brief called at a watched panel draw, before the game's draw goes on; draws at most once a frame, only
   /// while a jump charges to a Federation, Empire or Alliance system (or always while charging in test mode),
   /// and only when the draw samples the configured surface
-  auto panel_patch(ID3D11DeviceContext * ctx, ID3D11Device * device, std::uint64_t frame) noexcept -> void;
+  auto panel_patch(ID3D11DeviceContext * ctx, ID3D11Device * device, std::uint64_t frame) -> void;
 
   ///\brief called right after the game's watched panel draw: when it is the jump panel's and the list was made this
   /// frame, the list is drawn under the panel as a quad of its own in the panel's plane
   auto panel_list_after(ID3D11DeviceContext * ctx, std::uint64_t frame, std::uint32_t index_count, std::uint32_t start_index,
-                        std::int32_t base_vertex, std::uint32_t start_instance) noexcept -> void;
+                        std::int32_t base_vertex, std::uint32_t start_instance) -> void;
   ///\brief called at a watched panel draw (PoC): when the draw samples the compass's surface, the compass's dot is
   /// read off it and the angles drawn beside the disc, at most once a frame (settings: compass*)
-  auto panel_compass(ID3D11DeviceContext * ctx, ID3D11Device * device, std::uint64_t frame) noexcept -> void;
+  auto panel_compass(ID3D11DeviceContext * ctx, ID3D11Device * device, std::uint64_t frame) -> void;
   ///\brief called right after the game's watched panel draw (PoC): the compass's spheres as quads of edworld's own, in the
   /// planes of the HUD pieces holding their anchors (compass_anchor) or of the frame's first two 12-index draws of the
   /// 2048x1280 surface (settings: compass_spheres)
   auto panel_compass_after(ID3D11DeviceContext * ctx, std::uint64_t frame, std::uint32_t index_count, std::uint32_t start_index,
-                           std::int32_t base_vertex, std::uint32_t start_instance) noexcept -> void;
+                           std::int32_t base_vertex, std::uint32_t start_instance) -> void;
   ///\brief called at a watched panel draw (PoC): when the draw samples the 2200x1800 HUD surface, the tower's pad box is
   /// looked for about twice a second and each new text in it is written as a sample (settings: pad_text_samples)
-  auto panel_pad_text(ID3D11DeviceContext * ctx, ID3D11Device * device, std::uint64_t frame) noexcept -> void;
+  auto panel_pad_text(ID3D11DeviceContext * ctx, ID3D11Device * device, std::uint64_t frame) -> void;
   ///\brief called right after a game's non-indexed draw (settings: build_info): when it drew to a swap chain's back
   /// buffer, edworld's name and version go into the configured corner of the picture, once a frame
-  auto build_info_after(ID3D11DeviceContext * ctx, ID3D11Device * device) noexcept -> void;
+  auto build_info_after(ID3D11DeviceContext * ctx, ID3D11Device * device) -> void;
   ///\brief edworld_eht: a model of `count` indices not in the registry was sampled - NEW MODEL under the right sphere for a
   /// while (render thread)
   auto sphere_note_new_model(std::uint32_t count) noexcept -> void;

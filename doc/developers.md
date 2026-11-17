@@ -543,6 +543,18 @@ The ini and log names are fixed by the build, not taken from the dll's file name
 - Logs to `<plugin>.log` in the log folder: chain, attach, watched shaders, the patch's first draw and the
   destination's allegiance and factions (how many, from which source), and once a second (`log_interval_ms`) a summary: in edworld_eht the frame's panel draws
   with surface size and anchor in NDC, in edworld the draw and fault totals. A fault in edworld's own work is caught; eight of them switch the observer off, never the game call.
+  Each guard (`guarded_*` in `src/hooks.cc`) catches hardware faults and C++ exceptions alike, and its filter
+  (`fault_filter`) logs each of the first 16 with its code and place (`hooks: a fault caught (exception ... at
+  <module>+<offset>)`). The functions a guard calls are not `noexcept`: a C++ exception (out of memory) thrown below
+  one would end the process before reaching the guard (a 2026-11-18 test under clang-cl /EHsc: hardware faults below
+  `noexcept` frames are caught, a C++ exception through one is not). While a guard runs (`own_depth`, per thread),
+  edworld's own draws and shader binds (ImGui's, the state put back) pass the hooks straight to the context.
+  edworld's own threads (state, writer, probe, census, machine, shader catalog) run under `run_guarded_thread`: a
+  fault or exception is logged and the thread started again a second later, eight times at most. Files are written
+  and the log appended with Windows' own calls (`write_whole_file`, `append_to_file`; a file not written whole is
+  removed), never CRT streams: a thread killed at the game's exit must leave nothing for the CRT's closing of all
+  streams at edworld's unload (0xC0000409, 2026-11-17). `EDWORLD_TEST_FAULT` (`draw-seh`, `draw-cpp`, `thread`)
+  makes one such fault for `tools/test.sh`.
   One file per game session: at start, the last session's `<plugin>.log` is renamed `<plugin>.<UTC>.log` (the time it
   was last written); EHT's backup compresses those into its own directory and removes them from the game's folder.
 
@@ -729,7 +741,9 @@ What a plugin of this kind needs, as edworld does it:
 7. **Put the game's state back.** Before drawing anything of your own, read back everything you will bind (shaders,
    input layout, topology, constant buffers in your slots, shader resources, samplers, blend, depth, rasteriser,
    targets) and set it again afterwards (`backup_t`, `list_backup_t` in `src/panel_patch.cc`). Create your own
-   shaders with a flag set so your observer never takes them for the game's (`creating_own` in `src/runtime.h`).
+   shaders with a flag set so your observer never takes them for the game's (`creating_own` in `src/runtime.h`, per
+   thread, cleared by a guard's fault filter). `state_scope_t` puts the state back also when a C++ exception leaves
+   the scope; a hardware fault unwinds without destructors under /EHsc, and there only the game's next binds help.
 8. **Never take the game down.** Wrap your own work in SEH (`guarded_*` in `src/hooks.cc`); count faults and switch
    yourself off after a few, never the game's call. Log once per change of state, not per frame.
 9. **Find things in the game by evidence.** `edworld_dump` and `tools/geometry_dump.py` show what each panel draw

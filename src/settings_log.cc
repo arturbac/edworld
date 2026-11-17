@@ -5,14 +5,15 @@
 #include "runtime.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <cstdarg>
 #include <cstdio>
 #include <cwchar>
 #include <exception>
 #include <iterator>
-#include <mutex>
 #include <cstdlib>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -22,9 +23,22 @@ namespace edworld
   {
   namespace
     {
-    settings_t current;
-    std::FILE * log_file{};
-    std::mutex log_mutex;
+    // Two copies: the render thread reads the ini again into the one not in use and then publishes it, so the threads
+    // reading settings() never see one being written. `current` is the first, filled before any of them runs
+    settings_t slots[2];
+    settings_t & current{slots[0]};
+    std::atomic<settings_t const *> live{&slots[0]};
+    FILETIME ini_written{};  ///< the ini's last write as last read (load_settings, complete_settings, refresh_live_settings)
+
+    auto ini_write_time(std::wstring const & path) noexcept -> FILETIME
+      {
+      WIN32_FILE_ATTRIBUTE_DATA data{};
+      return GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data) ? data.ftLastWriteTime : FILETIME{};
+      }
+    // Windows' own file, not a CRT stream: a thread killed at the game's exit in the middle of a write leaves no stream
+    // half done for the CRT's closing of all streams at edworld's unload (the 0xC0000409 of 2026-11-17)
+    HANDLE log_file{INVALID_HANDLE_VALUE};
+    SRWLOCK log_lock = SRWLOCK_INIT;  ///< no std::mutex: its lock may throw, and log_line runs where nothing may
 
     auto trim(std::string_view s) -> std::string_view
       {
@@ -510,7 +524,7 @@ namespace edworld
       }
     }  // namespace
 
-  auto settings() noexcept -> settings_t const & { return current; }
+  auto settings() noexcept -> settings_t const & { return *live.load(std::memory_order_acquire); }
 
   namespace
     {
@@ -545,13 +559,14 @@ namespace edworld
     {
     current.dir = output_dir;
     ini_path = config_dir + L"\\" + plugin_name + L".ini";
+    // the time first: a change made after it, before the first refresh, is read then (and not taken for this read)
+    ini_written = ini_write_time(ini_path);
     read_ini(ini_path, current);
     }
 
   auto refresh_live_settings() noexcept -> void
     {
     static ULONGLONG looked{};
-    static FILETIME written{};
     ULONGLONG const now{GetTickCount64()};
     if(now - looked < 1000u or ini_path.empty())
       return;
@@ -559,26 +574,27 @@ namespace edworld
     WIN32_FILE_ATTRIBUTE_DATA data{};
     if(not GetFileAttributesExW(ini_path.c_str(), GetFileExInfoStandard, &data))
       return;
-    if(CompareFileTime(&data.ftLastWriteTime, &written) == 0)
+    if(CompareFileTime(&data.ftLastWriteTime, &ini_written) == 0)
       return;
-    bool const first{written.dwLowDateTime == 0u and written.dwHighDateTime == 0u};
-    written = data.ftLastWriteTime;
-    if(first)
-      return;  // the ini load_settings read
+    ini_written = data.ftLastWriteTime;
     try
       {
-      settings_t read{current};
+      settings_t const & in_use{*live.load(std::memory_order_relaxed)};
+      settings_t read{in_use};
       if(not read_ini(ini_path, read))
         return;
+      settings_t & next{&in_use == &slots[0] ? slots[1] : slots[0]};
+      next = in_use;
       std::string values;
       for(key_t const & key: keys)
         {
         if(key.read != r::live)
           continue;
-        copy_value(current, read, key.field);
+        copy_value(next, read, key.field);
         ((values += values.empty() ? "" : ", ") += key.name) += ' ';
-        values += value_text(current, key.field);
+        values += value_text(next, key.field);
         }
+      live.store(&next, std::memory_order_release);
       log_line("settings: read again: %s", values.c_str());
       }
     catch(std::exception const & e)
@@ -619,6 +635,8 @@ namespace edworld
       text += lines;
       bool const written{std::fwrite(text.data(), 1, text.size(), f) == text.size()};
       bool const closed{std::fclose(f) == 0};
+      if(path == ini_path)
+        ini_written = ini_write_time(ini_path);  // edworld's own addition is no change to read again
       if(written and closed)
         log_line("settings: %zu added to %S", count, path.c_str());
       else
@@ -678,14 +696,92 @@ namespace edworld
       std::swprintf(aside, 64, L"\\%ls.%04u%02u%02uT%02u%02u%02uZ.log", plugin_name, t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
       set_aside_failed = not MoveFileExW(path.c_str(), (dir + aside).c_str(), 0);
       }
-    log_file = _wfopen(path.c_str(), L"ab");
+    log_file = CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                           OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if(set_aside_failed)
       log_line("log: the last session's log could not be set aside (error %lu); appending to it", GetLastError());
     }
 
+  auto write_whole_file(wchar_t const * path, void const * data, std::size_t bytes) noexcept -> bool
+    {
+    HANDLE const f{CreateFileW(path, GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr)};
+    if(f == INVALID_HANDLE_VALUE)
+      {
+      log_line("file: %ls could not be made (error %lu)", path, GetLastError());
+      return false;
+      }
+    auto const * at{static_cast<char const *>(data)};
+    bool ok{true};
+    for(std::size_t left{bytes}; ok and left != 0;)
+      {
+      DWORD const chunk{static_cast<DWORD>(std::min<std::size_t>(left, 1u << 30))};
+      DWORD written{};
+      ok = WriteFile(f, at, chunk, &written, nullptr) and written == chunk;
+      at += written;
+      left -= written;
+      }
+    DWORD const error{ok ? 0u : GetLastError()};
+    ok = CloseHandle(f) and ok;
+    if(not ok)
+      {
+      DeleteFileW(path);
+      log_line("file: %ls not written whole (error %lu); removed", path, error ? error : GetLastError());
+      }
+    return ok;
+    }
+
+  auto append_to_file(wchar_t const * path, void const * data, std::size_t bytes) noexcept -> bool
+    {
+    HANDLE const f{CreateFileW(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
+                               FILE_ATTRIBUTE_NORMAL, nullptr)};
+    if(f == INVALID_HANDLE_VALUE)
+      return false;
+    DWORD written{};
+    bool const ok{bytes <= MAXDWORD and WriteFile(f, data, static_cast<DWORD>(bytes), &written, nullptr) and written == bytes};
+    CloseHandle(f);
+    return ok;
+    }
+
+  auto test_fault(char const * where) -> void
+    {
+    static std::string const asked{[]
+                                     {
+                                       char value[32]{};
+                                       DWORD const n{GetEnvironmentVariableA("EDWORLD_TEST_FAULT", value, sizeof value)};
+                                       return n != 0 and n < sizeof value ? std::string{value, n} : std::string{};
+                                     }()};
+    static std::atomic<bool> done{};
+    if(asked.empty() or asked != where or done.exchange(true))
+      return;
+    if(asked == "draw-cpp" or asked == "thread")
+      throw std::runtime_error{"EDWORLD_TEST_FAULT"};
+    *static_cast<int volatile *>(nullptr) = 1;
+    }
+
+  auto run_guarded_thread(char const * name, DWORD (*body)(void *), void * arg, int attempts) noexcept -> DWORD
+    {
+    for(int faults{}; faults < attempts; ++faults)
+      {
+      DWORD code{};
+      __try
+        {
+        return body(arg);
+        }
+      __except(code = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER)
+        {
+        log_line("thread %s: a fault (exception 0x%08lX%s), %d of %d", name, code, code == 0xE06D7363u ? ", a C++ exception" : "",
+                 faults + 1, attempts);
+        }
+      if(faults + 1 < attempts)
+        Sleep(1000);
+      }
+    log_line("thread %s: stopped after %d fault(s)", name, attempts);
+    return 0;
+    }
+
   auto log_line(char const * fmt, ...) noexcept -> void
     {
-    if(not log_file)
+    if(log_file == INVALID_HANDLE_VALUE)
       return;
     SYSTEMTIME t;
     GetSystemTime(&t);
@@ -704,12 +800,15 @@ namespace edworld
     )};
     va_list args;
     va_start(args, fmt);
-    int const m{std::vsnprintf(buf + n, sizeof buf - static_cast<std::size_t>(n) - 2, fmt, args)};
+    int const room{static_cast<int>(sizeof buf) - n - 1};  // one byte kept for the line's end
+    int const m{std::vsnprintf(buf + n, static_cast<std::size_t>(room), fmt, args)};
     va_end(args);
-    n = m < 0 ? n : std::min<int>(n + m, static_cast<int>(sizeof buf) - 2);
+    // a cut line ends where vsnprintf put its terminator, which the line's end replaces: no NUL in the log
+    n += m < 0 ? 0 : std::min(m, room - 1);
     buf[n++] = '\n';
-    std::lock_guard const lock{log_mutex};
-    std::fwrite(buf, 1, static_cast<std::size_t>(n), log_file);
-    std::fflush(log_file);
+    DWORD written{};
+    AcquireSRWLockExclusive(&log_lock);
+    WriteFile(log_file, buf, static_cast<DWORD>(n), &written, nullptr);
+    ReleaseSRWLockExclusive(&log_lock);
     }
   }  // namespace edworld

@@ -287,7 +287,7 @@ namespace edworld
         log_options_file(dir, highest.c_str());
       }
 
-    DWORD WINAPI machine_thread(void *)
+    auto machine_body(void *) -> DWORD
       {
       try
         {
@@ -312,7 +312,8 @@ namespace edworld
     static std::atomic<bool> started{};
     if(started.exchange(true))
       return;
-    if(HANDLE const t{CreateThread(nullptr, 0, &machine_thread, nullptr, 0, nullptr)})
+    auto const machine_thread{[](LPVOID) -> DWORD { return run_guarded_thread("machine", &machine_body, nullptr, 1); }};
+    if(HANDLE const t{CreateThread(nullptr, 0, machine_thread, nullptr, 0, nullptr)})
       CloseHandle(t);
     else
       log_line("machine: the thread could not be made (error %lu)", GetLastError());

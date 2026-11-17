@@ -9,6 +9,7 @@
 #include "runtime.h"
 
 #include <cstdio>
+#include <exception>
 #include <cstdarg>
 #include <cstring>
 #include <ctime>
@@ -86,7 +87,7 @@ namespace
     next_create_swap = system_create_swap;
     }
 
-  auto chain_next() noexcept -> void
+  auto chain_next() -> void
     {
     std::wstring path{edworld::settings().next};
     // under edloader the way on is always edloader's list; a player has nothing to set for it
@@ -152,14 +153,33 @@ namespace
 
   BOOL CALLBACK init_callback(PINIT_ONCE, PVOID, PVOID *)
     {
-    std::wstring const log_dir{directory_from(L"EDLOADER_LOG_DIR")};
-    edworld::load_settings(directory_from(L"EDLOADER_CONFIG_DIR"), log_dir);
-    edworld::log_open(log_dir);
-    edworld::log_line("%S %s, read-only d3d11 observer", edworld::plugin_name, EDWORLD_VERSION);
-    edworld::log_machine();
-    edworld::complete_settings(directory_from(L"EDLOADER_CONFIG_DIR"));
-    edworld::write_settings_doc();
-    chain_next();
+    // the strings here may throw (out of memory): caught, so the game goes on, with the defaults and the next d3d11
+    try
+      {
+      std::wstring const log_dir{directory_from(L"EDLOADER_LOG_DIR")};
+      edworld::load_settings(directory_from(L"EDLOADER_CONFIG_DIR"), log_dir);
+      edworld::log_open(log_dir);
+      edworld::log_line("%S %s, read-only d3d11 observer", edworld::plugin_name, EDWORLD_VERSION);
+      edworld::log_machine();
+      edworld::complete_settings(directory_from(L"EDLOADER_CONFIG_DIR"));
+      edworld::write_settings_doc();
+      }
+    catch(std::exception const & e)
+      {
+      edworld::log_line("start: %s; edworld runs on what it has", e.what());
+      }
+    catch(...)
+      {
+      edworld::log_line("start: an exception; edworld runs on what it has");
+      }
+    try
+      {
+      chain_next();
+      }
+    catch(...)
+      {
+      edworld::log_line("start: the next d3d11 not found (an exception); calls go to the system copy");
+      }
     return TRUE;
     }
 

@@ -191,10 +191,10 @@ namespace edworld
         r.sphere_font = io.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t *>(font::list_font), static_cast<int>(font::list_font_size),
                                                        84.f, &cfg, ranges);
       }
-      creating_own.store(true);
+      creating_own = true;
       bool ok{ImGui_ImplDX11_Init(device, ctx)};
       ok = ok and ImGui_ImplDX11_CreateDeviceObjects();
-      creating_own.store(false);
+      creating_own = false;
       ok = ok and make_emblem(emblems::federation_mask, emblems::federation_width, emblems::federation_height, 0);
       ok = ok and make_emblem(emblems::empire_mask, emblems::empire_width, emblems::empire_height, 1);
       ok = ok and make_emblem(emblems::alliance_mask, emblems::alliance_width, emblems::alliance_height, 2);
@@ -359,6 +359,22 @@ namespace edworld
       release(b.ps_cb);
       release(b.layout);
       }
+
+    ///\brief the game's state kept for the scope and put back when it ends, also when a C++ exception leaves it (a
+    /// hardware fault caught by a guard unwinds without destructors under /EHsc: there only the next draws of the game
+    /// bind their state again)
+    struct state_scope_t
+      {
+      ID3D11DeviceContext * ctx;
+      backup_t b{};
+
+      explicit state_scope_t(ID3D11DeviceContext * c) : ctx{c} { save(ctx, b); }
+
+      ~state_scope_t() { restore(ctx, b); }
+
+      state_scope_t(state_scope_t const &) = delete;
+      auto operator=(state_scope_t const &) -> state_scope_t & = delete;
+      };
 
     ///\brief 0xRRGGBB -> ImGui's packed colour, opaque
     auto im_colour(std::uint32_t rgb) -> ImU32
@@ -534,10 +550,10 @@ namespace edworld
         return true;
       if(r.list_failed)
         return false;
-      creating_own.store(true);
+      creating_own = true;
       bool ok{SUCCEEDED(r.device->CreateVertexShader(g_list_vs, sizeof g_list_vs, nullptr, &r.list_vs))};
       ok = ok and SUCCEEDED(r.device->CreatePixelShader(g_list_ps, sizeof g_list_ps, nullptr, &r.list_ps));
-      creating_own.store(false);
+      creating_own = false;
       // the instance index from the game's own instance stream (VB0), as its panel shader reads it
       D3D11_INPUT_ELEMENT_DESC const element{"INSTANCEINDEX", 0, DXGI_FORMAT_R32G32_UINT, 0, 0, D3D11_INPUT_PER_INSTANCE_DATA, 1};
       ok = ok and SUCCEEDED(r.device->CreateInputLayout(&element, 1, g_list_vs, sizeof g_list_vs, &r.list_layout));
@@ -825,12 +841,8 @@ namespace edworld
       wchar_t name[MAX_PATH];
       std::swprintf(name, MAX_PATH, L"%ls\\edworld_dumps\\superpower_%llu_%dx%d_pitch%u.raw", settings().dir.c_str(),
                     static_cast<unsigned long long>(destination), text_width, text_height, m.RowPitch);
-      if(std::FILE * f{_wfopen(name, L"wb")})
-        {
-        std::fwrite(m.pData, 1, static_cast<std::size_t>(m.RowPitch) * text_height, f);
-        std::fclose(f);
+      if(write_whole_file(name, m.pData, static_cast<std::size_t>(m.RowPitch) * text_height))
         log_line("superpower: the area read written to %S", name);
-        }
       }
 
     ///\brief once a frame while a jump charges: the panel's text copied (this frame) and read (a few frames later,
@@ -905,7 +917,7 @@ namespace edworld
     float patch_centre_y{};  ///< where the patch stands this frame (the gate of the list's quad)
     }  // namespace
 
-  auto panel_patch(ID3D11DeviceContext * ctx, ID3D11Device * device, std::uint64_t frame) noexcept -> void
+  auto panel_patch(ID3D11DeviceContext * ctx, ID3D11Device * device, std::uint64_t frame) -> void
     {
     settings_t const & s{settings()};
     if(s.patch == 0 or frame == patched_frame)
@@ -1046,13 +1058,13 @@ namespace edworld
     ImGui::Render();
 
     // the backend puts back what it binds itself; the targets and the surface's own slots are ours to put back
-    backup_t b;
-    save(ctx, b);
+    {
+    state_scope_t const kept{ctx};
     ctx->OMSetRenderTargets(1, &rtv, nullptr);
     ctx->PSSetShaderResources(1, 1, &mask);
     ctx->PSSetConstantBuffers(0, 1, &r.gate);
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-    restore(ctx, b);
+    }
 
     // the list into its own texture, for the quad drawn after the game's draw of the panel (panel_list_after)
     if(s.list != 0 and (listing or test) and r.font and make_list_objects())
@@ -1070,15 +1082,15 @@ namespace edworld
         ImGui::NewFrame();
         float const used{draw_list(ImGui::GetBackgroundDrawList(), s, list, test, static_cast<float>(w) / 2.f, 0.f)};
         ImGui::Render();
-        backup_t lb;
-        save(ctx, lb);
+        {
+        state_scope_t const kept{ctx};
         float const clear[4]{0.f, 0.f, 0.f, 0.f};
         ctx->ClearRenderTargetView(r.list_rtv, clear);
         ctx->OMSetRenderTargets(1, &r.list_rtv, nullptr);
         ctx->PSSetShaderResources(1, 1, &r.white);
         ctx->PSSetConstantBuffers(0, 1, &r.white_gate);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-        restore(ctx, lb);
+        }
         ctx->GenerateMips(r.list_srv);
         list_used = std::min(used, static_cast<float>(h));
         list_frame = used > 0.f ? frame : ~0ull;
@@ -1101,7 +1113,7 @@ namespace edworld
     }
 
   auto panel_list_after(ID3D11DeviceContext * ctx, std::uint64_t frame, std::uint32_t index_count, std::uint32_t start_index,
-                        std::int32_t base_vertex, std::uint32_t start_instance) noexcept -> void
+                        std::int32_t base_vertex, std::uint32_t start_instance) -> void
     {
     settings_t const & s{settings()};
     if(frame != list_frame or not r.list_vs or index_count < 3 or index_count > 64)
@@ -2458,15 +2470,15 @@ namespace edworld
             }
           }
         ImGui::Render();
-        backup_t b;
-        save(ctx, b);
+        {
+        state_scope_t const kept{ctx};
         float const clear[4]{0.f, 0.f, 0.f, 0.f};
         ctx->ClearRenderTargetView(cs.sphere_rtv[k], clear);
         ctx->OMSetRenderTargets(1, &cs.sphere_rtv[k], nullptr);
         ctx->PSSetShaderResources(1, 1, &r.white);
         ctx->PSSetConstantBuffers(0, 1, &r.white_gate);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-        restore(ctx, b);
+        }
         ctx->GenerateMips(cs.sphere_srv[k]);
         }
       // a file edworld_sphere_dump beside the log: both textures (their largest level) written once to edworld_dumps, at the
@@ -2496,11 +2508,7 @@ namespace edworld
             wchar_t name[MAX_PATH];
             std::swprintf(name, MAX_PATH, L"%ls\\edworld_dumps\\sphere%d_%ux%u_f28_pitch%u.raw", settings().dir.c_str(), k, sphere_w,
                           sphere_h, m.RowPitch);
-            if(std::FILE * out{_wfopen(name, L"wb")})
-              {
-              std::fwrite(m.pData, 1, static_cast<std::size_t>(m.RowPitch) * sphere_h, out);
-              std::fclose(out);
-              }
+            write_whole_file(name, m.pData, static_cast<std::size_t>(m.RowPitch) * sphere_h);
             ctx->Unmap(staging, 0);
             }
           staging->Release();
@@ -2513,7 +2521,7 @@ namespace edworld
       }
     }  // namespace
 
-  auto panel_compass(ID3D11DeviceContext * ctx, ID3D11Device * device, std::uint64_t frame) noexcept -> void
+  auto panel_compass(ID3D11DeviceContext * ctx, ID3D11Device * device, std::uint64_t frame) -> void
     {
     settings_t const & s{settings()};
     if(s.compass == 0 or frame == cs.drawn_frame)
@@ -2765,13 +2773,15 @@ namespace edworld
     ImGui::Render();
     scale_draw_data(k);
 
-    backup_t b;
-    save(ctx, b);
+    {
+
+    state_scope_t const kept{ctx};
+
     ctx->OMSetRenderTargets(1, &rtv, nullptr);
     ctx->PSSetShaderResources(1, 1, &mask);
     ctx->PSSetConstantBuffers(0, 1, &r.gate);
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-    restore(ctx, b);
+    }
     if(s.compass_spheres)
       render_spheres(ctx, s, f);
 
@@ -3155,7 +3165,7 @@ namespace edworld
     }  // namespace
 
   auto panel_compass_after(ID3D11DeviceContext * ctx, std::uint64_t frame, std::uint32_t index_count, std::uint32_t start_index,
-                           std::int32_t base_vertex, std::uint32_t start_instance) noexcept -> void
+                           std::int32_t base_vertex, std::uint32_t start_instance) -> void
     {
     settings_t const & s{settings()};
     if(s.compass == 0 or not s.compass_spheres or not cs.spheres_drawn or not r.list_vs)
@@ -3288,10 +3298,8 @@ namespace edworld
       wchar_t name[MAX_PATH];
       std::swprintf(name, MAX_PATH, L"%ls\\edworld_padtext\\pad_%lld_src%u_%dx%d_pitch%u.raw", settings().dir.c_str(),
                     static_cast<long long>(unix_now()), source_pad, pad_box_width, pad_box_height, m.RowPitch);
-      if(std::FILE * f{_wfopen(name, L"wb")})
+      if(write_whole_file(name, m.pData, static_cast<std::size_t>(m.RowPitch) * pad_box_height))
         {
-        std::fwrite(m.pData, 1, static_cast<std::size_t>(m.RowPitch) * pad_box_height, f);
-        std::fclose(f);
         ++pts.samples;
         log_line("pad text: %s; sample %u written to %S (the data source's pad %u)", burst ? "a second on" : "a text in the box",
                  pts.samples, name, source_pad);
@@ -3301,7 +3309,7 @@ namespace edworld
       }
     }  // namespace
 
-  auto panel_pad_text(ID3D11DeviceContext * ctx, ID3D11Device * device, std::uint64_t frame) noexcept -> void
+  auto panel_pad_text(ID3D11DeviceContext * ctx, ID3D11Device * device, std::uint64_t frame) -> void
     {
     if(settings().pad_text_samples == 0 and settings().pad_text_read == 0)
       return;
@@ -3449,7 +3457,7 @@ namespace edworld
       }
     }  // namespace
 
-  auto build_info_after(ID3D11DeviceContext * ctx, ID3D11Device * device) noexcept -> void
+  auto build_info_after(ID3D11DeviceContext * ctx, ID3D11Device * device) -> void
     {
     settings_t const & s{settings()};
     if(s.build_info == 0)
@@ -3527,13 +3535,13 @@ namespace edworld
     dl->AddText(r.font, size, ImVec2{at.x + 1.f, at.y + 1.f}, IM_COL32(0, 0, 0, 200), text);
     dl->AddText(r.font, size, ImVec2{at.x, at.y}, im_colour(0x9aa0a6u), text);
     ImGui::Render();
-    backup_t b;
-    save(ctx, b);
+    {
+    state_scope_t const kept{ctx};
     ctx->OMSetRenderTargets(1, &rtv, nullptr);
     ctx->PSSetShaderResources(1, 1, &r.white);
     ctx->PSSetConstantBuffers(0, 1, &r.white_gate);
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-    restore(ctx, b);
+    }
     rtv->Release();
     if(not told_build_info)
       {

@@ -58,7 +58,7 @@ namespace edworld
       std::wstring const dir{root + L"\\" + widen(game_build_key())};
       CreateDirectoryW(root.c_str(), nullptr);
       CreateDirectoryW(dir.c_str(), nullptr);
-      FILE * catalog{};
+      std::string catalog;  // the batch's lines, added to catalog.tsv at once
       std::uint32_t added{}, known{};
       std::size_t bytes{};
       for(noted_t const & n: batch)
@@ -72,37 +72,29 @@ namespace edworld
           ++known;
           continue;
           }
-        if(FILE * const f{_wfopen(path.c_str(), L"wb")})
-          {
-          std::fwrite(n.bytes.data(), 1, n.bytes.size(), f);
-          std::fclose(f);
-          }
+        // a file not written whole is removed (and logged), so a later session writes it again
+        if(not write_whole_file(path.c_str(), n.bytes.data(), n.bytes.size()))
+          continue;
+        char line[8192];
+        int length{};
+        if(n.stage == shader_stage_e::layout)
+          length = std::snprintf(line, sizeof line, "%016llX\til\t%zu\t-\t%.*s\t-\t-\t0\n", static_cast<unsigned long long>(n.hash),
+                                 n.bytes.size(), static_cast<int>(n.bytes.size()), reinterpret_cast<char const *>(n.bytes.data()));
         else
           {
-          log_line("shaders: could not write %ls", path.c_str());
-          continue;
+          dxbc_shape_t const s{dxbc_shape(n.bytes.data(), n.bytes.size())};
+          length = std::snprintf(line, sizeof line, "%016llX\t%s\t%zu\t%u.%u\t%s\t%s\t%s\t%u\t%s\n", static_cast<unsigned long long>(n.hash),
+                                 stage_name(n.stage), n.bytes.size(), s.major, s.minor, s.inputs.empty() ? "-" : s.inputs.c_str(),
+                                 s.outputs.empty() ? "-" : s.outputs.c_str(), s.decls.empty() ? "-" : s.decls.c_str(), s.instructions,
+                                 s.ok ? s.chunks.c_str() : "UNREAD");
           }
-        if(not catalog)
-          catalog = _wfopen((dir + L"\\catalog.tsv").c_str(), L"ab");
-        if(catalog)
-          {
-          if(n.stage == shader_stage_e::layout)
-            std::fprintf(catalog, "%016llX\til\t%zu\t-\t%.*s\t-\t-\t0\n", static_cast<unsigned long long>(n.hash), n.bytes.size(),
-                         static_cast<int>(n.bytes.size()), reinterpret_cast<char const *>(n.bytes.data()));
-          else
-            {
-            dxbc_shape_t const s{dxbc_shape(n.bytes.data(), n.bytes.size())};
-            std::fprintf(catalog, "%016llX\t%s\t%zu\t%u.%u\t%s\t%s\t%s\t%u\t%s\n", static_cast<unsigned long long>(n.hash),
-                         stage_name(n.stage), n.bytes.size(), s.major, s.minor, s.inputs.empty() ? "-" : s.inputs.c_str(),
-                         s.outputs.empty() ? "-" : s.outputs.c_str(), s.decls.empty() ? "-" : s.decls.c_str(), s.instructions,
-                         s.ok ? s.chunks.c_str() : "UNREAD");
-            }
-          }
+        if(length > 0)
+          catalog.append(line, std::min<std::size_t>(static_cast<std::size_t>(length), sizeof line - 1));
         ++added;
         bytes += n.bytes.size();
         }
-      if(catalog)
-        std::fclose(catalog);
+      if(not catalog.empty() and not append_to_file((dir + L"\\catalog.tsv").c_str(), catalog.data(), catalog.size()))
+        log_line("shaders: catalog.tsv not written whole (error %lu)", GetLastError());
       log_line("shaders: %u new to edworld_shaders\\%s (%zu bytes), %u there from before; created this session: vs %u ps %u "
                "cs %u gs %u hs %u ds %u layouts %u", added, game_build_key(), bytes, known,
                created[static_cast<int>(shader_stage_e::vertex)], created[static_cast<int>(shader_stage_e::pixel)],
@@ -111,7 +103,7 @@ namespace edworld
                created[static_cast<int>(shader_stage_e::layout)]);
       }
 
-    auto WINAPI writer(void *) -> DWORD
+    auto writer_body(void *) -> DWORD
       {
       for(;;)
         {
@@ -135,6 +127,8 @@ namespace edworld
           }
         }
       }
+
+    auto WINAPI writer(void *) -> DWORD { return run_guarded_thread("shader catalog", &writer_body, nullptr); }
 
     auto note(shader_stage_e stage, std::uint64_t hash, std::uint8_t const * bytes, std::size_t length) noexcept -> void
       {

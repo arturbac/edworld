@@ -406,8 +406,22 @@ namespace edworld
   ///\brief one line, time-stamped (UTC), flushed
   auto log_line(char const * fmt, ...) noexcept -> void;
 
-  ///\brief set while edworld creates its own shaders: they are never taken for the game's panels
-  inline std::atomic<bool> creating_own{false};
+  ///\brief a whole file written with Windows' own calls (no CRT stream a thread killed at the game's exit could leave
+  /// half done): false, logged, and the partial file removed when not all of it was written
+  auto write_whole_file(wchar_t const * path, void const * data, std::size_t bytes) noexcept -> bool;
+  ///\brief bytes added at a file's end, Windows' own calls; false when not all of them were written
+  auto append_to_file(wchar_t const * path, void const * data, std::size_t bytes) noexcept -> bool;
+  ///\brief a thread's body run under a handler for faults and C++ exceptions alike: one is logged with the thread's
+  /// name and the body started again a second later, `attempts` times in all, then the thread ends saying so. The body
+  /// is not noexcept, so a C++ exception reaches the handler
+  auto run_guarded_thread(char const * name, DWORD (*body)(void *), void * arg, int attempts = 8) noexcept -> DWORD;
+  ///\brief tools/test.sh only: with EDWORLD_TEST_FAULT naming `where` (draw-seh, draw-cpp, thread) the first call faults
+  /// once (a write to address 0, or a C++ exception), to show the guard catches it and the game goes on; nothing without
+  auto test_fault(char const * where) -> void;
+
+  ///\brief set while edworld creates its own shaders: they are never taken for the game's panels. Per thread: a shader
+  /// the game creates meanwhile on another thread stays the game's; a guard's fault filter clears it (hooks.cc)
+  inline thread_local bool creating_own{false};
 
   ///\brief a dump of one whole frame asked for (every draw: its shader, viewport, target and constants, with the
   /// surfaces): by the data source's counter (edworld_eht, `dump` in shm_dir) or a file edworld_dump_all beside the log

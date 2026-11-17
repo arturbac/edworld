@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **No error of edworld's own takes the game down.** A C++ exception (out of memory) in edworld's work on the
+  render thread now reaches its guard instead of ending the process; every fault or exception caught is logged with
+  its code and place. edworld's own threads are guarded too and start again after a fault, eight times at most.
+  Files and the log are written with Windows' own calls (a file not written whole is removed), the live settings
+  are read into a second copy and then published, a change of the ini before the first clouds is no longer missed,
+  and edworld's own draws pass its hooks unobserved.
 - **No crash at the game's exit with a `status_file` in a folder that does not exist.** The thread reading
   Status.json is stopped wherever it is when the game exits; caught in a failed open, it left a file half open, and
   the C runtime's closing of all files when edworld was unloaded ended the process (0xC0000409). Status.json and
