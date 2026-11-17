@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.2.0-beta.13
 
+- **edloader 1.2.0 in the zip:** it knows ReShade (`dxgi.dll`) and needs nothing set for it. doc/users.md: ReShade
+  and an antivirus with edloader (Bitdefender: edworld needs nothing set; edloader, if its log says `TAKEOVER:` with
+  no ReShade loaded, `accept_takeover = true`).
 - **edworld's version in a corner of the screen** (`build_info`, 3 = the bottom right by default; 1 top left, 2 top
   right, 4 bottom left, 0 none), in place of the footer under the factions list. Drawn into the swap chain's back
   buffer right after the game's own drawing of it; the log's `build_info:` line says where it went, or that no back

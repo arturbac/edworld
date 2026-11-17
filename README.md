@@ -38,6 +38,11 @@ turns it off. Its settings: [Clouds](doc/users.md#clouds).
 
 ![Auroras from the ground: a neon world's orange curtains (left), an argon-rich world's violet ones (right)](doc/images/aurora.jpg)
 
+Since 1.2.0-beta.13 it snows (PoC) under the clouds of ammonia and methane worlds, where their own gas condenses at
+the planet's cold: on foot outdoors, and in a ship or an SRV in the air, crystals fall near you as fast as the gravity
+and the thin air let, glint as they turn towards the star, and further off make a grey haze. `snow = 0` turns it off;
+[doc/clouds.md](doc/clouds.md#snow-poc) says where and how much.
+
 How the clouds follow the physics, and where to look for cyclones: [doc/clouds.md](doc/clouds.md). The aurora, its colours and how often each shows: [doc/auroras.md](doc/auroras.md).
 
 ## Navballs, testers wanted

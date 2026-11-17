@@ -60,10 +60,21 @@ With EDVR's anti-aliasing on, set `ui_quality = off` in the `[fix]` section of `
 otherwise makes the cockpit panels bigger, edworld no longer finds them and the navballs are gone. The clouds are not
 affected.
 
-With the game from the Epic Games Store nothing is to be set: edloader from 1.1.0 (the one in this zip) knows Epic's
+With the game from the Epic Games Store nothing is to be set: edloader from 1.1.0 knows Epic's
 overlay, and edworld from 1.2.0-beta.7 does not follow the overlay's device and stays with the game's (`not followed`
 in its log). An older edloader needs `accept_takeover = true` in `edloader.txt`
 ([edloader's doc/users.md](https://github.com/arturbac/edloader/blob/main/doc/users.md#the-epic-games-store-epics-overlay)).
+
+With ReShade (its installer puts it in the game's folder as `dxgi.dll`) nothing is to be set either: edloader from
+1.2.0 (the one in this zip) knows it. An older edloader stops (`TAKEOVER: before edloader started`) and needs
+`accept_takeover = true` in `edloader.txt`
+([edloader's doc/users.md](https://github.com/arturbac/edloader/blob/main/doc/users.md#reshade)).
+
+With an antivirus that hooks the game (Bitdefender's `bdhkm64.dll`, seen in a player's log): edworld needs nothing
+set, it passes `bdhkm64.dll` over by default (`creator_pass`, below in "Check that it works"). edloader does not
+accept an antivirus's takeover by itself: if its log says `TAKEOVER:` and no ReShade is loaded, add
+`accept_takeover = true` to `edloader.txt`
+([edloader's doc/users.md](https://github.com/arturbac/edloader/blob/main/doc/users.md#an-antivirus)).
 
 ### On its own
 
