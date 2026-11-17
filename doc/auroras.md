@@ -80,6 +80,11 @@ patchy glow covers the night side, as on Mars and Venus, where the star's wind m
 *Spoihee OR-L c24-72 A 1, sulphur dioxide, 2542 km, no field of its own: a red band low and a green one above it
 along the edge of the night side; the light edge on the left is the game's own air on the day side.*
 
+![A thin nitrogen world with no field of its own: a violet-blue arc along its night edge](images/aurora-no-field-nitrogen.jpg)
+
+*Spoihee US-J c25-17 5, thin nitrogen, 2947 km, no field of its own: nitrogen's violet-blue along the night edge
+(right and top), fading little by little toward the day side and gone on the lit edge on the left.*
+
 A planet with no field of its own has no oval and no curtains. Nothing turns the star's wind aside, so it reaches the
 upper air everywhere and the whole night side glows a little - as Mars does, where the MAVEN spacecraft saw a diffuse
 aurora spread over the night side, and Venus. Looked at from above, the glowing layer is thin and faint. Looked at
