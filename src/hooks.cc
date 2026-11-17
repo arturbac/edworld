@@ -2533,6 +2533,22 @@ namespace edworld
         }
       }
 
+    // edworld's name and version in a corner of the picture, right after a non-indexed draw of the game (its last
+    // composite to the back buffer is one); SEH as around the observation
+    auto guarded_build_info(ID3D11DeviceContext * ctx) noexcept -> void
+      {
+      if(settings().build_info == 0 or ctx != immediate.load(std::memory_order_relaxed) or disabled.load(std::memory_order_relaxed))
+        return;
+      __try
+        {
+        build_info_after(ctx, device);
+        }
+      __except(EXCEPTION_EXECUTE_HANDLER)
+        {
+        note_fault();
+        }
+      }
+
     auto watched_draw(ID3D11DeviceContext * ctx) noexcept -> bool
       {
       return current_watched >= 0 and ctx == immediate.load(std::memory_order_relaxed)
@@ -5467,6 +5483,7 @@ namespace edworld
       orig_draw(self, vertex_count, start_vertex);
       if(full_after_draw and self == immediate.load(std::memory_order_relaxed))
         guarded_full_after(self);
+      guarded_build_info(self);
       note_draw_end(self);
       }
 
@@ -5554,6 +5571,7 @@ namespace edworld
       orig_draw_instanced(self, vertex_count, instance_count, start_vertex, start_instance);
       if(full_after_draw and self == immediate.load(std::memory_order_relaxed))
         guarded_full_after(self);
+      guarded_build_info(self);
       note_draw_end(self);
       }
 

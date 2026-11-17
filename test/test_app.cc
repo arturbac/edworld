@@ -1066,9 +1066,20 @@ int main()
   check(one.factions == 1u and one.source == 0u and seven.factions == 7u, "list: one row per faction, up to seven");
   check(seven_edsm.factions == 7u and seven_edsm.source == 1u, "list: EDSM's source row comes on top of seven factions");
   check(many.factions == 7u, "list: seven rows at most");
-  check(std::fabs(edworld::list_height(one, 58.f, 15.f, 28.f) - 116.f) < 0.01f and
-          std::fabs(edworld::list_height(seven_edsm, 58.f, 15.f, 28.f) - 522.f) < 0.01f,
-        "list: the box as high as its rows and its footer");
+  check(std::fabs(edworld::list_height(one, 58.f, 15.f) - 88.f) < 0.01f and
+          std::fabs(edworld::list_height(seven_edsm, 58.f, 15.f) - 494.f) < 0.01f,
+        "list: the box as high as its rows");
+  }
+  // build_info: the corners clockwise from the top left; a value out of range as the bottom right
+  {
+  auto const at = [](std::uint32_t corner, float x, float y) -> bool
+    {
+    auto const p{edworld::corner_text_at(corner, 9000.f, 2160.f, 300.f, 24.f, 16.f)};
+    return std::fabs(p.x - x) < 0.01f and std::fabs(p.y - y) < 0.01f;
+    };
+  check(at(1u, 16.f, 16.f) and at(2u, 8684.f, 16.f) and at(3u, 8684.f, 2120.f) and at(4u, 16.f, 2120.f),
+        "build_info: 1 top left, 2 top right, 3 bottom right, 4 bottom left");
+  check(at(7u, 8684.f, 2120.f), "build_info: a value out of range at the bottom right");
   }
   // the compass: a filled dot and a hollow one drawn into a copy of the disc's square, read back; the angles from the
   // sphere's projection; the flight path angle from two fixes Status.json gave on 2026-10-06 (ed-lab, Kestrel)

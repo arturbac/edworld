@@ -351,11 +351,29 @@ namespace edworld
     return {placeholder ? most : std::min(count, most), from_edsm or placeholder ? 1u : 0u};
     }
 
-  ///\brief the list box's height for those rows and its footer (edworld's name and version, smaller), in pixels
+  ///\brief the list box's height for those rows, in pixels
   [[nodiscard]]
-  constexpr auto list_height(list_lines_t const & l, float line, float pad, float footer) noexcept -> float
+  constexpr auto list_height(list_lines_t const & l, float line, float pad) noexcept -> float
     {
-    return static_cast<float>(l.factions + l.source) * line + footer + 2.f * pad;
+    return static_cast<float>(l.factions + l.source) * line + 2.f * pad;
+    }
+
+  // ---- edworld's name and version in a corner of the picture (build_info) ----
+  struct corner_text_t
+    {
+    float x;  ///< the text's left edge
+    float y;  ///< its top
+    };
+
+  ///\brief where a text of text_w x text_h goes in a picture of width x height, margin pixels in from the corner:
+  /// 1 top left, 2 top right, 3 bottom right, 4 bottom left (clockwise); any other value as 3
+  [[nodiscard]]
+  constexpr auto corner_text_at(std::uint32_t corner, float width, float height, float text_w, float text_h, float margin) noexcept
+    -> corner_text_t
+    {
+    bool const left{corner == 1u or corner == 4u};
+    bool const top{corner == 1u or corner == 2u};
+    return {left ? margin : width - margin - text_w, top ? margin : height - margin - text_h};
     }
 
   // ---- the pad's text (PoC, 2026-10-21) ----

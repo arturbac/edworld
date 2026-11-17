@@ -465,15 +465,9 @@ namespace edworld
       bool const with_source{source_line(list, placeholder, rows, size, source) and source_rows != 0};
       if(with_source)
         inner = std::max(inner, 2.f * cw + width(source));
-      // the footer: edworld's name and version, small and grey in the box's bottom right corner
-      char footer[64];
-      std::snprintf(footer, sizeof footer, "edworld %s", EDWORLD_VERSION);
-      float const footer_size{std::round(size * 0.55f)};
-      float const footer_w{r.font->CalcTextSizeA(footer_size, FLT_MAX, 0.f, footer).x};
-      inner = std::max(inner, footer_w);
       float const box_w{std::min(inner + 2.f * pad, s.list_width)};
       float const left{std::round(centre_x - box_w / 2.f)}, right{left + box_w};
-      float const bottom{top + list_height(lines, line, pad, footer_size)};
+      float const bottom{top + list_height(lines, line, pad)};
       dl->AddRectFilled(
         ImVec2{left, top}, ImVec2{right, bottom}, IM_COL32(0, 0, 0, static_cast<int>(std::clamp(s.list_alpha, 0.f, 1.f) * 255.f + 0.5f))
       );
@@ -517,7 +511,6 @@ namespace edworld
         }
       if(with_source)
         dl->AddText(r.font, size, ImVec2{x_name, top + pad + static_cast<float>(shown) * line}, grey, source);
-      dl->AddText(r.font, footer_size, ImVec2{right - pad - footer_w, bottom - pad - footer_size}, im_colour(0x6e7378u), footer);
       return bottom - top;
       }
 
@@ -1068,7 +1061,7 @@ namespace edworld
       auto const w{static_cast<std::uint32_t>(std::clamp(s.list_width, 64.f, 4096.f))};
       // room for the most faction rows and the source's row
       auto const h{static_cast<std::uint32_t>(
-        list_height(list_lines_t{std::max(s.list_rows, 1u), 1u}, line, std::round(r.font->FontSize * 0.3f), std::round(r.font->FontSize * 0.55f)) + 1.f
+        list_height(list_lines_t{std::max(s.list_rows, 1u), 1u}, line, std::round(r.font->FontSize * 0.3f)) + 1.f
       )};
       if(list_target(w, h))
         {
@@ -3415,5 +3408,138 @@ namespace edworld
     {
     model_note = sphere_note_t{{}, 2, GetTickCount64() + model_note_ms};
     std::snprintf(model_note.text, sizeof model_note.text, "NEW MODEL %u", count);
+    }
+
+  // ---- build_info: edworld's name and version in a corner of the picture ----
+  namespace
+    {
+    ///\brief a target the game drew to, whether it is a swap chain's back buffer (DXGI says so in its usage)
+    struct target_seen_t
+      {
+      void * texture;
+      UINT width, height;
+      DXGI_FORMAT format;
+      bool back_buffer;
+      };
+
+    target_seen_t targets_seen[4]{};
+    std::uint32_t target_seen_next{};
+    bool other_target_since{true};  ///< a draw to another target came since the text was last drawn
+    LONGLONG build_info_drawn_qpc{};
+    LONGLONG build_info_first_qpc{};
+    bool told_build_info{};
+    bool told_no_back_buffer{};
+
+    auto back_buffer(ID3D11Texture2D * tex, D3D11_TEXTURE2D_DESC const & d) -> bool
+      {
+      for(target_seen_t const & t: targets_seen)
+        if(t.texture == tex and t.width == d.Width and t.height == d.Height and t.format == d.Format)
+          return t.back_buffer;
+      DXGI_USAGE usage{};
+      IDXGIResource * dxgi{};
+      if(SUCCEEDED(tex->QueryInterface(__uuidof(IDXGIResource), reinterpret_cast<void **>(&dxgi))) and dxgi)
+        {
+        if(FAILED(dxgi->GetUsage(&usage)))
+          usage = 0;
+        dxgi->Release();
+        }
+      bool const back{(usage & DXGI_USAGE_BACK_BUFFER) != 0};
+      targets_seen[target_seen_next++ % std::size(targets_seen)] = target_seen_t{tex, d.Width, d.Height, d.Format, back};
+      return back;
+      }
+    }  // namespace
+
+  auto build_info_after(ID3D11DeviceContext * ctx, ID3D11Device * device) noexcept -> void
+    {
+    settings_t const & s{settings()};
+    if(s.build_info == 0)
+      return;
+    LONGLONG const now{qpc()};
+    LARGE_INTEGER f{};
+    QueryPerformanceFrequency(&f);
+    if(build_info_first_qpc == 0)
+      build_info_first_qpc = now;
+    ID3D11RenderTargetView * rtv{};
+    ctx->OMGetRenderTargets(1, &rtv, nullptr);
+    if(not rtv)
+      return;
+    ID3D11Resource * res{};
+    rtv->GetResource(&res);
+    ID3D11Texture2D * tex{};
+    if(res)
+      {
+      D3D11_RESOURCE_DIMENSION dim{};
+      res->GetType(&dim);
+      if(dim == D3D11_RESOURCE_DIMENSION_TEXTURE2D)
+        res->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void **>(&tex));
+      res->Release();
+      }
+    if(not tex)
+      {
+      rtv->Release();
+      return;
+      }
+    D3D11_TEXTURE2D_DESC d{};
+    tex->GetDesc(&d);
+    bool const back{back_buffer(tex, d)};
+    tex->Release();
+    if(not back)
+      {
+      rtv->Release();
+      other_target_since = true;
+      if(not told_no_back_buffer and (now - build_info_first_qpc) / f.QuadPart >= 30)
+        {
+        told_no_back_buffer = true;
+        if(not told_build_info)
+          log_line("build_info: no swap chain's back buffer among the game's targets in 30 s; nothing drawn");
+        }
+      return;
+      }
+    // once a frame: the frame's first draw to the back buffer comes after draws to other targets; a frame with none of
+    // those still gets the text a few milliseconds after the last
+    if(not other_target_since and (now - build_info_drawn_qpc) * 1000 / f.QuadPart < 4)
+      {
+      rtv->Release();
+      return;
+      }
+    if(not create(device, ctx) or not make_list_objects() or not r.font)
+      {
+      rtv->Release();
+      return;
+      }
+    other_target_since = false;
+    build_info_drawn_qpc = now;
+
+    char text[64];
+    std::snprintf(text, sizeof text, "edworld %s", EDWORLD_VERSION);
+    float const sw{static_cast<float>(d.Width)}, sh{static_cast<float>(d.Height)};
+    float const size{std::clamp(std::round(sh * 0.011f), 12.f, 48.f)};
+    ImVec2 const extent{r.font->CalcTextSizeA(size, FLT_MAX, 0.f, text)};
+    corner_text_t const at{corner_text_at(s.build_info, sw, sh, std::ceil(extent.x), size, std::round(size * 0.6f))};
+    ImGui::SetCurrentContext(r.imgui);
+    ImGuiIO & io{ImGui::GetIO()};
+    io.DisplaySize = ImVec2{sw, sh};
+    io.DeltaTime = 1.f / 60.f;
+    ImGui_ImplDX11_NewFrame();
+    ImGui::NewFrame();
+    ImDrawList * const dl{ImGui::GetBackgroundDrawList()};
+    // grey on a black shadow: readable on a bright planet and on space alike
+    dl->AddText(r.font, size, ImVec2{at.x + 1.f, at.y + 1.f}, IM_COL32(0, 0, 0, 200), text);
+    dl->AddText(r.font, size, ImVec2{at.x, at.y}, im_colour(0x9aa0a6u), text);
+    ImGui::Render();
+    backup_t b;
+    save(ctx, b);
+    ctx->OMSetRenderTargets(1, &rtv, nullptr);
+    ctx->PSSetShaderResources(1, 1, &r.white);
+    ctx->PSSetConstantBuffers(0, 1, &r.white_gate);
+    ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+    restore(ctx, b);
+    rtv->Release();
+    if(not told_build_info)
+      {
+      told_build_info = true;
+      log_line("build_info: \"%s\" drawn in corner %u of the back buffer %ux%u (format %u)", text, s.build_info, d.Width, d.Height,
+               static_cast<unsigned>(d.Format));
+      }
     }
   }  // namespace edworld

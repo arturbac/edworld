@@ -7,7 +7,6 @@ edworld fixes the panel the game shows while the frame shift drive charges for a
   Independents get the game's phoenix in gold in place of its dull blue one.
 - **The destination's factions** under the panel: by influence, the controlling one starred, the trend at the last
   tick, their states. They come from EDSM, or from Elite Help Tool (EHT) when you use it and it has the system.
-  A small grey footer names edworld and its version.
 
 Both move with the panel when the cockpit camera swings.
 
@@ -282,6 +281,10 @@ night side. The log has `aurora: the planet of radius ... m has a field of its o
 strong one now: `aurora_activity = 7`, and `aurora_field = 1` on a planet the guess left without a field. Where and why, its colours and how often: [auroras.md](auroras.md).
 
 ## Check that it works
+
+edworld's name and version stand small and grey in the screen's bottom right corner (`build_info`: 1 top left, 2 top
+right, 3 bottom right, 4 bottom left, 0 none); the log's `build_info:` line says where it went. Without them edworld
+is not running, or found no picture to draw into (`build_info: no swap chain's back buffer ...`).
 
 The log lists `patch: first drawn` at your first charge, `superpower: ... reads Alliance on the panel` (or the
 Federation, the Empire, Independent) for each new destination and `list: N faction(s) ... drawn, from EDSM` (or

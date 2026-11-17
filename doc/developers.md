@@ -136,11 +136,17 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   texture has a full mip chain, sampled half a level sharp, as the cockpit shows it at about 0.7 of its size (the
   game's supersampling below 1). `list_gain` (0.8) scales its colours: the cockpit's target is HDR
   (R11G11B10_FLOAT), where white text blooms more than the panel's own. The first quad drawn logs the target's
-  format and the game's blend for the panel. The box's footer names edworld and its version (`edworld v1.0.0`),
-  small and grey in its bottom right corner. In test mode
+  format and the game's blend for the panel. In test mode
   (`patch = 2`) the box is drawn with placeholder rows when there is nothing to list, to see where it goes.
   The panel's vertex (stride 40): the packed local position in bytes 0..15 (EDVR's decode), the surface
   coordinate in bytes 16..19 as two unorm16 halves, `(h / 32767 - 1) * 16`.
+- `build_info`: after each non-indexed draw of the immediate context (`Draw`, `DrawInstanced`; the game's last
+  composite of a frame, a full-screen quad, is one, about 20 to 130 of them a frame in F10 dumps of 2026-11), the
+  draw's first target is checked once per texture: a swap chain's back buffer when DXGI's usage says
+  `DXGI_USAGE_BACK_BUFFER`. Right after the first such draw of a frame (one that follows draws to other targets, or
+  4 ms after the last text) `edworld <version>` is drawn into it by ImGui, its height 1.1% of the target's (12 to 48
+  px), grey on a one-pixel black shadow, in the corner `build_info` names (`corner_text_at`, panel_math.h). The game's
+  draws to the back buffer after that one (small quads in the dumps) come over it.
 - On request, dumps every panel's interface surface: create an empty file `edworld_dump` in the log folder; at
   the next frame each surface is copied and written to `edworld_dumps\<stamp>_<id>_<w>x<h>_f<fmt>_pitch<n>.raw`
   and the trigger file is removed. `tools/dump_to_png.py <dir>` makes PNGs. With the surfaces, each panel draw of

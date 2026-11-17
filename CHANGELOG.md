@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **edworld's version in a corner of the screen** (`build_info`, 3 = the bottom right by default; 1 top left, 2 top
+  right, 4 bottom left, 0 none), in place of the footer under the factions list. Drawn into the swap chain's back
+  buffer right after the game's own drawing of it; the log's `build_info:` line says where it went, or that no back
+  buffer was seen.
 - **A program in the game's own call no longer hides the game's device** (`creator_pass`). A dll from outside the
   game's folder in the call for the game's device (an antivirus's hooks, `bdhkm64.dll` in a player's log) made
   edworld take the game's device for an overlay's and follow none. The `not followed` line now names the setting with

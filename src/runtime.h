@@ -30,6 +30,9 @@ namespace edworld
     /// puts itself in the game's own call (an antivirus's hooks, `bdhkm64.dll` seen 2026-11-17 in a player's log, there
     /// by default so the player needs no ini); empty = none
     std::wstring creator_pass{L"bdhkm64.dll"};
+    ///\brief edworld's name and version in a corner of the picture (the swap chain's back buffer): 1 top left, 2 top
+    /// right, 3 bottom right, 4 bottom left; 0 = none
+    std::uint32_t build_info{3};
     ///\brief vertex shaders whose draws are panels: the cockpit holo panel family, its "GUI effects off" twin, and
     /// the one the game switches the same panels to near a war settlement (surface at PS t1; seen 2026-10-05)
     std::vector<std::uint64_t> watch_vs{0x81216C77F90DEDD6ull, 0x1989E6D3B405FDE0ull, 0x925ACEDA0153AA5Bull};

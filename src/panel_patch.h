@@ -25,6 +25,9 @@ namespace edworld
   ///\brief called at a watched panel draw (PoC): when the draw samples the 2200x1800 HUD surface, the tower's pad box is
   /// looked for about twice a second and each new text in it is written as a sample (settings: pad_text_samples)
   auto panel_pad_text(ID3D11DeviceContext * ctx, ID3D11Device * device, std::uint64_t frame) noexcept -> void;
+  ///\brief called right after a game's non-indexed draw (settings: build_info): when it drew to a swap chain's back
+  /// buffer, edworld's name and version go into the configured corner of the picture, once a frame
+  auto build_info_after(ID3D11DeviceContext * ctx, ID3D11Device * device) noexcept -> void;
   ///\brief edworld_eht: a model of `count` indices not in the registry was sampled - NEW MODEL under the right sphere for a
   /// while (render thread)
   auto sphere_note_new_model(std::uint32_t count) noexcept -> void;
