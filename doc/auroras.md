@@ -92,7 +92,16 @@ along it, at the edge of the planet's night side, the eye passes through a long 
 following the edge, and as a ring round the planet when its night side faces you. This is by design, not an error:
 it is there on every planet without a field (about two in three), on the night side only, from the line between day
 and night on; it is a little patchy and drifts slowly, and it is as bright in a storm as in a quiet sky. Its colours
-and its height are the kind's (the tables on this page). From the ground it is only a faint glow of the night sky.
+and its height are the kind's (the tables on this page).
+
+From the ground the layer stands overhead, all over the night sky: looking up, the eye crosses only its thickness,
+toward the horizon a long way of it, so the night sky glows in the kind's lower colour, brightest low over the
+horizon. On a carbon dioxide world, whose layer stands high (below), the whole night sky turns green.
+
+![On foot at night under the glow of a carbon dioxide world with no field of its own: a green sky](images/aurora-no-field-ground.jpg)
+
+*Spoihee LV-T b50-1 B 3 a, thin carbon dioxide, 1626 km, 183 K, no field of its own, on foot at night: oxygen's green
+over the whole night sky, brightest near the horizon. With `aurora = 0` the same sky is black.*
 
 **The star** sets how strong the wind is: activity M 1, K 0.6, G 0.5, F 0.3, brown dwarfs 0.3, hotter 0.1. Neon
 worlds circle brown dwarfs (54%) and M stars (35%), argon M stars (56%), carbon dioxide and ammonia mostly F, G and K
