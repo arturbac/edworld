@@ -87,14 +87,19 @@ cbuffer clouds : register(b4)
   float aurora_floor;       // the shell's floor and ceiling over the surface, as parts of the radius
   float aurora_ceiling;
   float3 aurora_edge;       // nitrogen's pink lower edge, 0 = none
-  // the snow (PoC, src/snow.h) near the ground on foot: crystals under a full cloud and in a clear sky (0 = none), how
-  // fast they fall (m/s), then where the eye walked east and north since a reference fix (metres, wrapped)
+  // the snow (PoC, src/snow.h) near the ground, on foot or in a craft: crystals under a full cloud and in a clear sky
+  // (0 = none), how fast they fall (m/s), where the eye went up, east and north since a reference fix (metres,
+  // wrapped), then how fast it goes east, north and up (m/s)
   float snow_under;
   float snow_clear;
   float snow_fall;
-  float snow_pad0;
+  float snow_up;
   float snow_east;
   float snow_north;
+  float snow_v_east;
+  float snow_v_north;
+  float snow_v_up;
+  float snow_pad0;
   float snow_pad1;
   float snow_pad2;
   };
@@ -809,15 +814,15 @@ float3 aurora_along(ps_in input, float3 ray, float3 centre, out float eye_under)
   return light * strength * 120.f * frame_rows[90].y;
   }
 
-// the snow (PoC, 2026-11-17): near the eye on foot, crystals of the air's own gas falling under the clouds, and the
+// the snow (PoC, 2026-11-17): near the eye on foot or in a craft in the air, crystals of the air's own gas falling under the clouds, and the
 // haze their many make further off. The space near the ground cut into cells of snow_cell metres, in the frame of the
 // ground under the eye (east, north, up): in each cell one crystal or none, its place, size and turn from the cell's
-// hash; the cells fall with the snow and drift with a slow wind, and move against the eye's walk on the ground
-// (Status.json), so the crystals stay in the air as the eye turns and walks. The ray looks at snow_samples places from
+// hash; the cells fall with the snow and drift with a slow wind, and move against the eye's way (Status.json), so the
+// crystals stay in the air as the eye turns, walks and flies. The ray looks at snow_samples places from
 // snow_near to snow_reach; at each, the crystal of that place's cell. Ice: translucent, giving back snow_albedo of the
 // star's light in the colour of the kind's clouds, and flashing for a moment as it turns and a face catches the star
 // (each its own beat, 1..5 a second; brighter towards the star); a speck of its own size (1..3 mm) drawn no smaller
-// than half a pixel, soft, a short streak of one frame's way; one near enough to show its shape a soft hexagonal
+// than half a pixel, soft, a streak of one frame's way against the eye (a cell's size at the most); one near enough to show its shape a soft hexagonal
 // plate. None at night, none behind the ground (the scene's depth). How many: snow_under under a full cloud (the
 // weather over the eye, as the clouds above have it), snow_clear in a clear sky; the haze over the way to the ground
 // as dense as they are many (5 km to see at the most), hiding at most half of what is behind, grey in their colour
@@ -836,7 +841,8 @@ float4 snow_along(ps_in input, float3 ray, float3 centre)
     return 0.f;
   float planet = frame_rows[126].x;
   float kind = abs(planet - cloud_kind_radius) < 4.f ? cloud_kind_weight : 0.f;
-  // on that planet's ground only (Status.json says on foot outdoors, but the planet is the one whose kind was read)
+  // near that planet's ground only (Status.json says on foot outdoors or in a craft, but the planet is the one whose
+  // kind was read)
   if(kind <= 0.f || length(centre) - planet > 5000.f)
     return 0.f;
   float inverse_square = 1.f / dot(object_rows[9].xyz, object_rows[9].xyz);
@@ -893,15 +899,16 @@ float4 snow_along(ps_in input, float3 ray, float3 centre)
   float thick = 3.f / snow_see_m * many / 0.15f;
   float haze = snow_haze_most * (1.f - exp(-thick * way));
 
-  // the ray in the ground's frame; the cells fall and drift with the time, and move against the eye's walk
+  // the ray in the ground's frame; the cells fall and drift with the time, and move against the eye's way
   float3 dir = float3(dot(ray_model, east), dot(ray_model, north), dot(ray_model, up));
   float time = cloud_wind_seconds;
   float wind_angle = 6.2831853f * noise(float3(time * 0.01f, 3.1f, 7.7f));
   float2 drift = float2(cos(wind_angle), sin(wind_angle)) * (0.3f + 1.2f * noise(float3(time * 0.03f, 5.3f, 1.9f)));
-  float3 shift = float3(snow_east + drift.x * time, snow_north + drift.y * time, snow_fall * time);
-  // how a crystal moves against the eye: down with the fall, along with the wind; a streak of one frame's way
-  float3 moving = -float3(drift, snow_fall);
-  float streak = length(moving) / 60.f;
+  float3 shift = float3(snow_east + drift.x * time, snow_north + drift.y * time, snow_up + snow_fall * time);
+  // how a crystal moves against the eye: down with the fall, along with the wind, back from the eye's own way; a streak
+  // of one frame's way, no longer than a cell (only the crystal of the cell a sample stands in is seen)
+  float3 moving = -float3(drift.x + snow_v_east, drift.y + snow_v_north, snow_fall + snow_v_up);
+  float streak = min(length(moving) / 60.f, snow_cell);
   moving = normalize(moving + float3(0.f, 0.f, -1e-4f));
   // a plate's own axes across the ray, for its hexagon
   float3 side = normalize(cross(dir, abs(dir.z) < 0.99f ? float3(0.f, 0.f, 1.f) : float3(1.f, 0.f, 0.f)));

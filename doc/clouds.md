@@ -201,7 +201,8 @@ what it carries over from the Earth and what it chooses, the colours of each kin
 
 ## Snow (PoC)
 
-`snow = 1` (off by default): on foot outdoors, crystals of the air's own gas fall near you under the clouds, where the
+`snow = 1` (off by default): on foot outdoors or in a ship or an SRV in the air, crystals of the air's own gas fall near
+you under the clouds, where the
 gas condenses at the planet's cold. Every landable atmosphere is thinner than its gas' triple point (ammonia's 6 kPa,
 methane's 12 kPa, and so on), so a gas that condenses makes crystals, never rain. Of the scans of two commanders (1845
 planets, 2026-11-16) the ammonia worlds lie on their saturation curve (the air as dense as the gas can be at that
@@ -220,10 +221,12 @@ The second colour of ammonia comes with a cold planet whose air is well past sat
 
 Where it snows is where the clouds above have their overcast: the weather of the clouds (a slow planet's deck over
 the day side, a faster one's bands and patches) over the place you stand, together with the kind's cover. Only then
-on foot outdoors (`Status.json` Flags2: on foot, on a planet, outdoors), in a building of a settlement never. The
+on foot outdoors (`Status.json` Flags2: on foot, on a planet, outdoors), in a building of a settlement never; or in a
+ship, a fighter or an SRV with an altitude in `Status.json`, out of supercruise and not docked (a port's pads may lie
+in a hangar), up to 5 km over the planet's radius, so the snow is there as soon as the ship comes down into the air. The
 crystals are specks of 1-3 mm from 1.5 to 30 m before you, one in some of the cells of 0.8 m held to the ground (at
 most about one cell in 7 under a full cloud), each its own size and brightness, drawn soft, no smaller than half a pixel
-and as bright as they cover of it, with a streak of one frame's way; one near enough to show its shape is a soft
+and as bright as they cover of it, with a streak of one frame's way (against you as you fly, a cell's size at the most); one near enough to show its shape is a soft
 hexagonal plate at its own turn. Ice is translucent: it gives back about 15% of the star's light, in the colour of
 the kind's clouds, and flashes for a moment as it turns and a face catches the star (each its own beat, 1 to 5 times
 a second, brighter towards the star). Further off their many make a grey haze over the way to the ground, as dense as
@@ -232,7 +235,9 @@ behind it. They fall as fast as the gravity and the air let: a small ice
 crystal falls about 0.3 m/s in the Earth's air, and for a drag growing with the square of the speed its speed goes
 with the square root of the gravity over the air's density, so in an ammonia world's thin air (about 1/600 of the
 Earth's) some 25 times faster - 2.6 m/s at 0.13 g, a slow wind only leaning it - and in methane's (1/10) 0.23 m/s at
-0.06 g, the wind carrying it. The gravity comes from `Status.json` on foot, the air's density from the kind's typical
-planet. They stay in the air as you turn and walk (your walk from `Status.json`'s latitude and longitude). The star
+0.06 g, the wind carrying it. The gravity comes from `Status.json` on foot (in a craft the last one read on foot on that planet, else
+0.1 g), the air's density from the kind's typical planet. They stay in the air as you turn, walk and fly (your way from
+`Status.json`'s latitude, longitude and altitude, carried on at its last speed between the file's updates for up to 2 s,
+so a fast flight does not jump). The star
 lights them, brighter as you look towards it, as ice glints; at night there are none to see. The ground and buildings
 hide those behind them. `snow_gain` scales how many. A PoC: their look and their number are to be tuned in the game.

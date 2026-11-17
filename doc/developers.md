@@ -48,15 +48,21 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   write-combined under DXVK) and publishes the latest frame to `panels` in `shm_dir` (seqlock; layout in
   `src/edworld_share.h`).
 - **Snow (PoC, `snow = 1`)** (`src/snow.h`, `snow_along` in `shaders/clouds3d.hlsl`): in the clouds' draw, values
-  112..119 of its constants: under a full cloud and in a clear sky by the kind (`snow_of`: ammonia 0.5, its second
-  colour 1 and 0.05, methane 0.8), 0 unless `Status.json` Flags2 has bits 0, 4 and 15 (on foot, on a planet, outdoors);
-  the fall `0.3 sqrt(gravity 1.2 / air density)` m/s (the kind's typical air: ammonia 0.00206, methane 0.1217 kg/m3),
-  at most one cell in 7 (`snow_most` 0.15); the eye's walk east and north from a first fix of latitude and longitude (`snow_walked`,
-  wrapped at 1024 m, a new fix past 10 km). The shader samples 24 places along the ray from 0.4 to 30 m (spaced as a
+  112..123 of its constants: under a full cloud and in a clear sky by the kind (`snow_of`: ammonia 0.5, its second
+  colour 1 and 0.05, methane 0.8), 0 unless `snow_where`: `Status.json` without an altitude and Flags2 bits 0, 4 and 15
+  (on foot, on a planet, outdoors), or with an altitude, Flags bit 24, 25 or 26 (ship, fighter, SRV) and neither bit 0
+  (docked) nor 4 (supercruise); the shader's own 5 km over the radius bounds the height;
+  the fall `0.3 sqrt(gravity 1.2 / air density)` m/s (the kind's typical air: ammonia 0.00206, methane 0.1217 kg/m3;
+  the gravity from Status.json on foot, in a craft the last one on foot on a planet of the same radius, else 0.1 g:
+  `snow_gravity`), at most one cell in 7 (`snow_most` 0.15); the eye's way up, east and north from a first fix of
+  latitude, longitude and altitude (`snow_walked`; on foot no altitude; wrapped at 1024 m, a new fix past 10 km or on
+  leaving or entering a craft), and its speed from the last two fixes: between fixes the eye goes on at it (by
+  `steady_clock`) for 1.5 times the last gap and 2 s at the most, then is held and the speed is 0. The shader samples 24 places along the ray from 0.4 to 30 m (spaced as a
   power, started at the pixel's blue noise), takes the crystal of each place's 0.8 m cell in the ground's frame (east
   from the planet's axis y and the up of the eye), kept by the cell's hash under the number; hidden past the scene's
   depth; from 1.5 m; 1-3 mm, drawn at least half a pixel wide and as bright as it covers, a soft (Gaussian) streak of
-  one frame (1/60 s) of its way with fading ends, a soft hexagon once 2-4 pixels wide; albedo 0.15 in the kind's tint,
+  one frame (1/60 s) of its way against the eye (the fall, the wind and back from the eye's speed; a cell, 0.8 m, at
+  the most) with fading ends, a soft hexagon once 2-4 pixels wide; albedo 0.15 in the kind's tint,
   a flash `sin^40` at 1-5 Hz each; a haze `0.5 (1 - exp(-3 / 5000 m * many / 0.15 * way))` over the way to the ground
   (found by 6 halvings against the scene's depth, 1.5 km for the sky) laid in front of the clouds; 12 samples; lit by the star (`frame_rows[293]`), more towards it, none under the horizon.
   The number under the clouds follows `weather_at` over the eye (the clouds' weather, now a function of its own) with

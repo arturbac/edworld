@@ -12,8 +12,8 @@
   (`compass_hide_game` 1, was 0); it returns whenever edworld is not there.
 - **The pads' disc turns yellow and red later:** green up to 15 degrees of tilt, red from 35 (`pad_tilt_green_deg`,
   `pad_tilt_red_deg`, were 10 and 20).
-- **Snow (PoC, `snow`, off by default).** On foot outdoors on an ammonia or methane planet, crystals of its own gas
-  fall near you under the clouds; a cold ammonia planet (its second colour) snows steadily and glints a little in a
+- **Snow (PoC, `snow`, off by default).** On foot outdoors or in a ship or an SRV in the air of an ammonia or
+  methane planet, crystals of its own gas fall near you under the clouds, streaking past as you fly; a cold ammonia planet (its second colour) snows steadily and glints a little in a
   clear sky. From the render and Status.json alone. See doc/clouds.md.
 - **edworld_eht: the galaxy map's names for EHT** (`galmap`, `galmap_interval_ms`). While the map is open, a few times a
   second, the names it shows are read off its text draws, each glyph by its shape in the game's font, and put in

@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -1284,13 +1285,14 @@ namespace edworld
       }
 
     snow_walk_t snow_walk{};
+    snow_gravity_t snow_g{};
 
-    ///\brief the snow's values 112..119 (clouds3d.hlsl, src/snow.h): under a full cloud and in a clear sky (0 = none:
-    /// snow off, no kind of snow, not on foot outdoors), how fast the crystals fall, then where the eye walked east and
-    /// north since a reference fix
+    ///\brief the snow's values 112..123 (clouds3d.hlsl, src/snow.h): under a full cloud and in a clear sky (0 = none:
+    /// snow off, no kind of snow, not on foot outdoors nor in a craft in the air), how fast the crystals fall, where the
+    /// eye went east, north and up since a reference fix, then how fast it goes east, north and up
     auto atmo_snow_values(float * v) noexcept -> void
       {
-      std::fill(v, v + 8, 0.f);
+      std::fill(v, v + 12, 0.f);
       if(not settings().snow)
         {
         snow_walk.have = false;
@@ -1299,7 +1301,8 @@ namespace edworld
       auto const kind{static_cast<atmosphere_kind_e>(atmo_kind.load(std::memory_order_relaxed))};
       snow_t const snow{snow_of(kind, atmo_kind_cold.load(std::memory_order_relaxed))};
       flight_t const f{flight()};
-      if(snow.under_clouds <= 0.f or not snow_outdoors(f.flags2) or not f.has_ground)
+      double const gravity{snow_gravity(snow_g, f.has_ground, f.gravity, f.planet_radius)};
+      if(snow.under_clouds <= 0.f or not snow_where(f.flags, f.flags2, f.has_ground, f.has_position))
         {
         snow_walk.have = false;
         return;
@@ -1307,10 +1310,16 @@ namespace edworld
       float const gain{std::max(settings().snow_gain, 0.f)};
       v[0] = snow.under_clouds * snow_most * gain;
       v[1] = snow.clear * snow_most * gain;
-      v[2] = snow_fall_speed(f.gravity > 0.0 ? f.gravity : 0.1, snow.air_density);
-      auto const walked{snow_walked(snow_walk, f.latitude, f.longitude, f.planet_radius)};
-      v[4] = walked[0];
-      v[5] = walked[1];
+      v[2] = snow_fall_speed(gravity, snow.air_density);
+      // a clock finer than the tick's 16 ms: at 300 m/s a tick is 5 m of the eye's way
+      double const now{std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count()};
+      snow_eye_t const eye{snow_walked(snow_walk, f.latitude, f.longitude, f.altitude, f.has_ground, f.planet_radius, now)};
+      v[3] = eye.place[2];
+      v[4] = eye.place[0];
+      v[5] = eye.place[1];
+      v[6] = eye.speed[0];
+      v[7] = eye.speed[1];
+      v[8] = eye.speed[2];
       }
 
     ///\brief the day read off the turn of the planet of this radius, 0 = not known
@@ -4631,7 +4640,7 @@ namespace edworld
       ID3D11DepthStencilState * volume_depth_state{};
       ID3D11Buffer * volume_params{};
       // the volume's parameters, the wind's seconds among them, written again for each draw
-      float volume_values[120]{};
+      float volume_values[124]{};
       ULONGLONG wind_start{};
       ID3D11Texture2D * depth_copy{};
       ID3D11ShaderResourceView * depth_view{};
@@ -4888,15 +4897,15 @@ namespace edworld
       // 19..32 (the game's fade, near and far, the debug colour, the planet's size on the screen, the steps' most, the
       // edge, the haze) and 33..42 (the atmosphere's kind) are written again for each draw, as they change while the game
       // runs, 43 the lumps' size, 44..85 the storms, 86..91 the lumps by the layer and the weather, 92..111 the aurora,
-      // 112..119 the snow
-      float const values[120]{
+      // 112..123 the snow
+      float const values[124]{
         settings().clouds_bottom, settings().clouds_top, settings().clouds_cover, settings().clouds_light,
         settings().clouds_steps, settings().clouds_density, settings().clouds_opacity, settings().clouds_top_gain,
         settings().clouds_min_light, settings().clouds_under_gain, settings().clouds_detail, settings().clouds_detail_size,
         settings().clouds_detail_range, settings().clouds_detail_edge, settings().clouds_detail_gap, 0.f,
         settings().clouds_wind_low / 3.6f, settings().clouds_wind_high / 3.6f, 1.f, 0.f,
         0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f
-      };  // the rest, 44..119, zero
+      };  // the rest, 44..123, zero
       std::memcpy(clouds.volume_values, values, sizeof values);
       clouds.wind_start = GetTickCount64();
       D3D11_BUFFER_DESC desc{};

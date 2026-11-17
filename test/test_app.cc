@@ -705,22 +705,43 @@ namespace
     std::vector<galmap_quad_t> const narrow{
       {0.f, 10.f, 30.f, 'B'}, {11.f, 21.f, 30.f, '3'}, {22.f, 27.f, 30.f, '1'}, {35.f, 40.f, 30.f, '-'}, {41.f, 51.f, 30.f, '7'}};
     check(galmap_labels(narrow) == std::vector<std::string>{"B31-7"}, "galmap: a narrow 1 in a digit's room before a dash is no space");
-    // the snow: by the kind and ammonia's cold colour; on foot outdoors only; the fall by the gravity; the walk
+    // the snow: by the kind and ammonia's cold colour; on foot outdoors or in a craft; the fall by the gravity; the way
     check(snow_of(atmosphere_kind_e::ammonia, false).under_clouds == 0.5f and snow_of(atmosphere_kind_e::ammonia, true).clear > 0.f
             and snow_of(atmosphere_kind_e::methane, false).under_clouds > 0.f and snow_of(atmosphere_kind_e::carbon_dioxide, false).under_clouds == 0.f
             and snow_of(atmosphere_kind_e::neon, true).under_clouds == 0.f,
           "snow: ammonia and methane, a cold ammonia also in a clear sky, no other kind");
     check(snow_outdoors(33041u) and not snow_outdoors(33041u & ~(1u << 15)) and not snow_outdoors(0u),
-          "snow: on foot outdoors (Flags2 33041 at 6 c), not indoors or in a ship");
+          "snow: on foot outdoors (Flags2 33041 at 6 c), not indoors");
     check(std::fabs(snow_fall_speed(1.0, 1.2) - 0.3f) < 1e-6f
             and std::fabs(snow_fall_speed(0.13, snow_of(atmosphere_kind_e::ammonia, true).air_density) - 2.612f) < 0.01f
             and std::fabs(snow_fall_speed(0.06, snow_of(atmosphere_kind_e::methane, false).air_density) - 0.231f) < 0.01f,
           "snow: falls 0.3 m/s in the Earth's air, 2.6 m/s in ammonia's at 0.13 g, 0.23 m/s in methane's at 0.06 g");
+    check(snow_where(0u, 33041u, true, false) and not snow_where(0u, 33041u & ~(1u << 15), true, false)
+            and snow_where(1ull << 24, 0u, false, true) and snow_where((1ull << 24) | (1ull << 1), 0u, false, true)
+            and snow_where(1ull << 26, 0u, false, true) and not snow_where((1ull << 24) | (1ull << 4), 0u, false, true)
+            and not snow_where((1ull << 24) | 1ull, 0u, false, true) and not snow_where(1ull << 24, 0u, false, false),
+          "snow: on foot outdoors, or in a ship or an SRV with an altitude, not in supercruise nor docked");
+    snow_gravity_t g{};
+    check(snow_gravity(g, false, 0.0, 1109282.75) == 0.1 and snow_gravity(g, true, 0.13, 1109282.75) == 0.13
+            and snow_gravity(g, false, 0.0, 1109282.75) == 0.13 and snow_gravity(g, false, 0.0, 600000.0) == 0.1,
+          "snow: the gravity read on foot stands in a craft on the same planet, 0.1 g elsewhere");
     snow_walk_t walk{};
-    auto const here{snow_walked(walk, 1.5908, 109.0544, 1109282.75)};
-    auto const there{snow_walked(walk, 1.5908, 109.0554, 1109282.75)};
-    check(here[0] == 0.f and here[1] == 0.f and std::fabs(there[0] - 19.353f) < 0.01f and there[1] == 0.f,
-          "snow: the walk east from the first fix, metres");
+    auto const here{snow_walked(walk, 1.5908, 109.0544, 0.0, true, 1109282.75, 10.0)};
+    auto const there{snow_walked(walk, 1.5908, 109.0554, 0.0, true, 1109282.75, 11.0)};
+    check(here.place[0] == 0.f and here.place[1] == 0.f and std::fabs(there.place[0] - 19.353f) < 0.01f and there.place[1] == 0.f
+            and std::fabs(there.speed[0] - 19.353f) < 0.01f,
+          "snow: the walk east from the first fix, metres, and its speed");
+    // in a ship: 100 m up and 200 m east in a second, then on at that speed between the fixes, held once they stop
+    snow_walk_t flying{};
+    double const east_deg{200.0 / (1109282.75 * std::cos(1.5908 * 3.14159265358979323846 / 180.0)) * 180.0 / 3.14159265358979323846};
+    auto const boarded{snow_walked(flying, 1.5908, 109.0544, 1000.0, false, 1109282.75, 20.0)};
+    auto const second{snow_walked(flying, 1.5908, 109.0544 + east_deg, 1100.0, false, 1109282.75, 21.0)};
+    auto const between{snow_walked(flying, 1.5908, 109.0544 + east_deg, 1100.0, false, 1109282.75, 21.5)};
+    auto const stopped{snow_walked(flying, 1.5908, 109.0544 + east_deg, 1100.0, false, 1109282.75, 23.0)};
+    check(boarded.place[2] == 0.f and std::fabs(second.place[0] - 200.f) < 0.01f and std::fabs(second.place[2] - 100.f) < 0.01f
+            and std::fabs(between.place[0] - 300.f) < 0.01f and std::fabs(between.place[2] - 150.f) < 0.01f
+            and std::fabs(between.speed[2] - 100.f) < 0.01f and std::fabs(stopped.place[0] - 200.f) < 0.01f and stopped.speed[0] == 0.f,
+          "snow: the flight's way up and east, on between the fixes, held when they stop");
     }
     check(small_float(960u, 6u) == 1.f and small_float(896u, 6u) == 0.5f and small_float(512u, 5u) == 2.f and small_float(0u, 6u) == 0.f,
           "atmosphere: the table's small floats");
