@@ -820,14 +820,15 @@ float3 aurora_along(ps_in input, float3 ray, float3 centre, out float eye_under)
 // than half a pixel, soft, a short streak of one frame's way; one near enough to show its shape a soft hexagonal
 // plate. None at night, none behind the ground (the scene's depth). How many: snow_under under a full cloud (the
 // weather over the eye, as the clouds above have it), snow_clear in a clear sky; the haze over the way to the ground
-// as dense as they are many (1.5 km to see at the most)
+// as dense as they are many (5 km to see at the most), hiding at most half of what is behind, grey in their colour
 static const float snow_cell = 0.8f;
 static const float snow_near = 1.5f;
 static const float snow_reach = 30.f;
-static const int snow_samples = 24;
+static const int snow_samples = 12;
 static const float snow_albedo = 0.15f;
-static const float snow_see_m = 1500.f;  // how far one sees in the densest snow
-static const float snow_sky_m = 3000.f;  // the way of a ray that meets no ground
+static const float snow_see_m = 5000.f;  // how far one sees in the densest snow
+static const float snow_sky_m = 1500.f;  // the way of a ray that meets no ground
+static const float snow_haze_most = 0.5f; // the haze never hides more than this (a white wall at 6 c, 2026-11-17)
 
 float4 snow_along(ps_in input, float3 ray, float3 centre)
   {
@@ -877,7 +878,7 @@ float4 snow_along(ps_in input, float3 ray, float3 centre)
     {
     float lo = 0.f, hi = snow_sky_m;
     [unroll]
-    for(int k = 0; k != 12; ++k)
+    for(int k = 0; k != 6; ++k)
       {
       float mid = 0.5f * (lo + hi);
       float4 c = clip_ray * mid + frame_rows[273];
@@ -888,9 +889,9 @@ float4 snow_along(ps_in input, float3 ray, float3 centre)
       }
     way = lo;
     }
-  // snow_under at its most (one cell in 20, src/snow.h snow_most) sees snow_see_m
-  float thick = 3.f / snow_see_m * many / 0.05f;
-  float haze = 1.f - exp(-thick * way);
+  // snow_under at its most (src/snow.h snow_most) sees snow_see_m
+  float thick = 3.f / snow_see_m * many / 0.15f;
+  float haze = snow_haze_most * (1.f - exp(-thick * way));
 
   // the ray in the ground's frame; the cells fall and drift with the time, and move against the eye's walk
   float3 dir = float3(dot(ray_model, east), dot(ray_model, north), dot(ray_model, up));
@@ -949,7 +950,7 @@ float4 snow_along(ps_in input, float3 ray, float3 centre)
     float flash = pow(saturate(sin(6.2831853f * (time * beat + hash(cell + 29.f)))), 40.f) * (0.5f + 4.f * pow(toward, 4.f));
     glow += speck * covers * (0.3f + 0.7f * hash(cell + 13.f)) * (0.2f + 0.3f * toward + flash);
     }
-  float3 colour = light * (snow_albedo * glow * 4.f + haze * (0.3f + 0.4f * toward));
+  float3 colour = light * (snow_albedo * glow * 12.f + haze * (0.1f + 0.13f * toward));
   return float4(colour, haze);
   }
 

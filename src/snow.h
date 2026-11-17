@@ -25,8 +25,8 @@ namespace edworld
     };
 
   ///\brief the most crystals: the share of the 0.8 m cells that hold one under a full cloud at 1 (all of them was a
-  /// blizzard at 6 c, 2026-11-17)
-  inline constexpr float snow_most{0.05f};
+  /// blizzard at 6 c, 2026-11-17, one in 20 hardly seen)
+  inline constexpr float snow_most{0.15f};
 
   ///\brief by the kind: ammonia light under the clouds, its cold second colour steadily and a little in a clear sky
   /// (diamond dust); methane light and denser (a heavy column of air, little gravity); any other none
