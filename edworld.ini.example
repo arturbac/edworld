@@ -9,6 +9,10 @@
 
 ; Where edworld goes on to, the next d3d11 mod. Through edloader leave it empty: edworld goes on down edloader.txt. On its own: a mod's dll you renamed, d3d11_edhm.dll; empty = the system's own
 ;next = 
+;creator_pass = bdhkm64.dll
+
+; edworld's version in a corner of the screen: 1 top left, 2 top right, 3 bottom right, 4 bottom left, 0 = none
+;build_info = 3
 
 ; The game's Status.json, the journals beside it; change it only if edworld looks in the wrong place
 ;status_file = C:\Users\you\Saved Games\Frontier Developments\Elite Dangerous\Status.json
@@ -186,7 +190,7 @@
 ;compass_anchor_c_dx = 1.22
 ;compass_anchor_c_dy = 0.83
 ;compass_text = 0
-;compass_hide_game = 0
+;compass_hide_game = 1
 ;compass_colour_disc = 101214
 ;compass_colour_grid = 5A6068
 ;compass_colour_rim = A8AEB5
@@ -207,7 +211,7 @@
 ;compass_max_rate_dps = 0
 ;compass_filled_min = 120
 ;compass_filled_max = 320
-;compass_hollow_min = 60
+;compass_hollow_min = 20
 ;compass_hollow_max = 180
 ;compass_log_ms = 1000
 ;gate_dive = 17
@@ -215,8 +219,17 @@
 ;gate_arc = 30
 ;gate_dive_steepest = 73
 ;station_axes = 1
-;pad_tilt_green_deg = 10
-;pad_tilt_red_deg = 20
+;pad_tilt_green_deg = 15
+;pad_tilt_red_deg = 35
+
+; Snow of the air's own gas near the ground (PoC): 1 = on
+;snow = 1
+;snow_gain = 1
+;snow_bench = 0
+
+; The galaxy map's names for EHT: 0 = off
+;galmap = 1
+;galmap_interval_ms = 500
 ;pad_text_samples = 0
 ;pad_text_read = 1
 ;pad_text_unsure_sample = 1
