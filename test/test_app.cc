@@ -1648,6 +1648,17 @@ int main()
   // tools/test.sh's cases of the ini: the file stays as the script left it, edworld only starts
   if(GetEnvironmentVariableW(L"EDWORLD_TEST_INI_KEEP", nullptr, 0))
     {
+    // creator_pass's case: the device asked through a dll from another folder standing in the game's own call (an
+    // antivirus's hooks; test_foreign.dll copied under that name by tools/test.sh)
+    wchar_t passer[MAX_PATH]{};
+    GetEnvironmentVariableW(L"EDWORLD_TEST_PASSER", passer, MAX_PATH);
+    if(passer[0])
+      {
+      using passer_fn = HRESULT (*)();
+      HMODULE const m{LoadLibraryW(passer)};
+      auto const make{m ? reinterpret_cast<passer_fn>(GetProcAddress(m, "foreign_make_device")) : nullptr};
+      return make and SUCCEEDED(make()) ? 0 : 3;
+      }
     ID3D11Device * device{};
     D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &device, nullptr, nullptr);
     if(device)

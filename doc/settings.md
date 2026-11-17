@@ -190,6 +190,7 @@ None.
 | setting | default | range | what |
 |---|---|---|---|
 | `next` | empty | a dll's name or empty | the next d3d11 mod in the chain (`d3d11_edhm.dll`, a mod's dll renamed); empty = the system's own, under edloader the next on its list |
+| `creator_pass` | empty | dll names by commas, or empty | dlls passed over when edworld tells who asks for a device: a program that puts itself in the game's own call (an antivirus's hooks); without it a device asked through such a dll is taken for an overlay's and not followed, and edworld draws nothing. The log's `not followed` line names the dll |
 | `status_file` | empty | a path or empty | the game's `Status.json`, the journals beside it; empty = in Saved Games; for a game whose Saved Games lie elsewhere |
 | `shm_dir` | `Z:\dev\shm\eht` | a folder or empty | edworld_eht only: the folder shared with EHT as the game sees it (`Z:` is the Linux root under Wine); `panels` published there, `target` read from there; empty = neither |
 | `shader_catalog` | `1` | 0, 1 | edworld_eht only: `1` keeps each shader the game creates, once per build of the game, in `edworld_shaders` beside the log; `0` none |

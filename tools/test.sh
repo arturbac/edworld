@@ -49,6 +49,22 @@ ini_cases() {  # $1 = edworld | edworld_eht; in the run directory
   ini_check "under edloader an empty next is d3d11.dll" $?
   set -e
 }
+creator_case() {  # $1 = edworld | edworld_eht; a device asked through a dll from another folder in the game's own call
+  local ini=$1.ini
+  mkdir -p pass
+  cp "$BUILD/test/test_foreign.dll" pass/bdhkm64.dll
+  set +e
+  : > "$ini"
+  EDWORLD_TEST_PASSER='pass\bdhkm64.dll' ini_run
+  # starts within a second share a log, so only the last device line is the run's
+  grep 'D3D11CreateDevice:' "$1.log" | tail -n 1 | grep -q 'asked by bdhkm64.dll from outside the game.s folder: not followed; .*creator_pass = bdhkm64.dll'
+  ini_check "a device asked through another folder's dll is not followed, the log names creator_pass" $?
+  printf 'creator_pass = other.dll, BDHKM64.dll\n' > "$ini"
+  EDWORLD_TEST_PASSER='pass\bdhkm64.dll' ini_run
+  grep 'D3D11CreateDevice:' "$1.log" | tail -n 1 | grep -q 'asked by test_app.exe (past bdhkm64.dll: creator_pass)$'
+  ini_check "creator_pass passes the dll over: the device is the game's" $?
+  set -e
+}
 doc_case() {  # doc/settings.md is made by edworld_eht from its table of settings (it has every setting); in the run directory
   set +e
   EDWORLD_SETTINGS_DOC=settings.md ini_run
@@ -90,6 +106,7 @@ run_variant() {  # $1 = edworld | edworld_eht; sets rc on failure
   echo "--- $V.log"
   head -40 $V.log 2>/dev/null
   ini_cases "$V"
+  creator_case "$V"
   [[ $V != edworld_eht ]] || doc_case
   popd >/dev/null
 }

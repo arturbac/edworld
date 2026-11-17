@@ -193,7 +193,30 @@ namespace
     {
     creator_e kind{creator_e::unknown};
     char name[MAX_PATH]{"unknown"};
+    char passed[MAX_PATH]{};  ///< the first dll of creator_pass met on the way, empty if none
     };
+
+  ///\brief a dll's file name (no folder) among creator_pass's names, by commas, without regard to case
+  [[nodiscard]]
+  auto passed_over(std::wstring_view file) noexcept -> bool
+    {
+    std::wstring_view list{edworld::settings().creator_pass};
+    while(not list.empty())
+      {
+      auto const comma{list.find(L',')};
+      std::wstring_view item{list.substr(0, comma)};
+      list = comma == std::wstring_view::npos ? std::wstring_view{} : list.substr(comma + 1);
+      while(not item.empty() and (item.front() == L' ' or item.front() == L'\t'))
+        item.remove_prefix(1);
+      while(not item.empty() and (item.back() == L' ' or item.back() == L'\t'))
+        item.remove_suffix(1);
+      if(not item.empty() and item.size() == file.size()
+         and CompareStringOrdinal(item.data(), static_cast<int>(item.size()), file.data(), static_cast<int>(file.size()), TRUE)
+               == CSTR_EQUAL)
+        return true;
+      }
+    return false;
+    }
 
   ///\brief the folder of a module's file, with its last backslash
   auto folder_of(wchar_t const * path) noexcept -> std::wstring_view
@@ -204,8 +227,9 @@ namespace
     }
 
   ///\brief who asks for a device: the first module on the stack that is neither edworld nor a d3d11 proxy (one that
-  /// exports D3D11CreateDevice: edloader, EDHM, EDVR, the system copy); code outside any module (a hook's trampoline) is
-  /// passed over. The game's when that module lies in the game exe's folder, foreign elsewhere
+  /// exports D3D11CreateDevice: edloader, EDHM, EDVR, the system copy); code outside any module (a hook's trampoline) and
+  /// the dlls named in creator_pass are passed over. The game's when that module lies in the game exe's folder, foreign
+  /// elsewhere
   auto find_creator() noexcept -> creator_t
     {
     creator_t c{};
@@ -225,6 +249,12 @@ namespace
       if(not GetModuleFileNameW(m, path, MAX_PATH) or not GetModuleFileNameW(nullptr, exe, MAX_PATH))
         return c;
       std::wstring_view const folder{folder_of(path)};
+      if(passed_over(std::wstring_view{path}.substr(folder.size())))
+        {
+        if(not c.passed[0])
+          WideCharToMultiByte(CP_UTF8, 0, path + folder.size(), -1, c.passed, sizeof c.passed - 1, nullptr, nullptr);
+        continue;
+        }
       std::wstring_view const exe_folder{folder_of(exe)};
       bool const beside_game{not exe_folder.empty() and folder.size() == exe_folder.size()
                              and CompareStringOrdinal(folder.data(), static_cast<int>(folder.size()), exe_folder.data(),
@@ -242,9 +272,20 @@ namespace
     {
     static int told{};
     if(told++ < 8 or (made and by.kind == creator_e::foreign))
-      edworld::log_line("%s: hr 0x%08lX, device %s%s, asked by %s%s", what, static_cast<unsigned long>(hr),
+      {
+      char past[MAX_PATH + 32]{};
+      if(by.passed[0])
+        std::snprintf(past, sizeof past, " (past %s: creator_pass)", by.passed);
+      char advice[MAX_PATH + 160]{};
+      if(by.kind == creator_e::foreign)
+        std::snprintf(advice, sizeof advice,
+                      "; if edworld draws nothing and this is the game's only device (an antivirus in the game's call), "
+                      "add to edworld.ini: creator_pass = %s", by.name);
+      edworld::log_line("%s: hr 0x%08lX, device %s%s, asked by %s%s%s%s", what, static_cast<unsigned long>(hr),
                         made ? "made" : asked ? "asked, none made" : "not asked", nested ? " (nested, not attached)" : "",
-                        by.name, by.kind == creator_e::foreign ? " from outside the game's folder: not followed" : "");
+                        by.name, past, by.kind == creator_e::foreign ? " from outside the game's folder: not followed" : "",
+                        advice);
+      }
     }
   }  // namespace
 

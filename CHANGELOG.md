@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **A program in the game's own call no longer hides the game's device** (`creator_pass`). A dll from outside the
+  game's folder in the call for the game's device (an antivirus's hooks, `bdhkm64.dll` in a player's log) made
+  edworld take the game's device for an overlay's and follow none. The `not followed` line now names the setting with
+  the dll; the dlls listed in `creator_pass` are passed over like a hook's code, so the game behind them is found.
 - **Argon known at more planets.** edworld took a hue for a kind only within 0.004 of the kind's, which the closest
   two kinds need; an Argon planet 0.005 off was left without its kind, so without its clouds and its aurora. Now each
   kind may lie as far off as half the way to the nearest other kind, from 0.004 to 0.010.

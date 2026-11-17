@@ -304,6 +304,12 @@ Each device's line says who asked for it (`asked by EliteDangerous64.exe`). An o
 from outside the game's folder (Epic's overlay `EOSOVH-Win64-Shipping.dll`, for example) is logged as
 `from outside the game's folder: not followed`: edworld stays with the game's device.
 
+Some programs put themselves in the game's own call for its device, an antivirus's hooks for example. Then the
+game's device too is logged as asked by that dll and `not followed`, and edworld draws nothing. The line names the
+dll and the fix: add it to `edworld.ini` as `creator_pass = <its name>` (several by commas). edworld then passes it
+over, finds the game behind it and logs `asked by EliteDangerous64.exe (past <its name>: creator_pass)`. Do not add an
+overlay's dll there (Epic's, Discord's, Steam's): edworld would follow the overlay's device instead of the game's.
+
 30 seconds and 5 minutes after the start, `census` lines count the game's draws edworld saw and say whether its
 hooks are still in place (`draw hooks in place`, or which dll took them). No draws seen, or hooks taken, means
 edworld sees nothing of the game: the navballs, the panel and the clouds stay away.
