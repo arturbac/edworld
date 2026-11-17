@@ -44,17 +44,23 @@ namespace edworld
       ReleaseSRWLockExclusive(&list_lock);
       }
 
+    ///\brief the whole file, empty when it cannot be read. Windows' own calls, not the CRT's streams: the state thread
+    /// is killed wherever it is when the game exits, and a stream it left half open (a failed open of a status_file in
+    /// a folder that does not exist) made the CRT's closing of all streams at edworld's unload end the process
+    /// (0xC0000409, the invalid parameter of _fcloseall)
     auto read_file(std::wstring const & path) -> std::string
       {
       std::string text;
-      std::FILE * f{_wfopen(path.c_str(), L"rb")};
-      if(not f)
+      // shared every way: the game rewrites the file while it is read
+      HANDLE const f{CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                                 OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr)};
+      if(f == INVALID_HANDLE_VALUE)
         return text;
       char buf[4096];
-      std::size_t n;
-      while((n = std::fread(buf, 1, sizeof buf, f)) > 0)
+      DWORD n{};
+      while(ReadFile(f, buf, sizeof buf, &n, nullptr) and n > 0)
         text.append(buf, n);
-      std::fclose(f);
+      CloseHandle(f);
       return text;
       }
 

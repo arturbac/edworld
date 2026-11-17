@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **No crash at the game's exit with a `status_file` in a folder that does not exist.** The thread reading
+  Status.json is stopped wherever it is when the game exits; caught in a failed open, it left a file half open, and
+  the C runtime's closing of all files when edworld was unloaded ended the process (0xC0000409). Status.json and
+  the data source's files are now read with Windows' own calls.
+
 ## 1.2.0-beta.13
 
 - **edloader 1.2.0 in the zip:** it knows ReShade (`dxgi.dll`) and needs nothing set for it. doc/users.md: ReShade
