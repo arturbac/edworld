@@ -50,11 +50,12 @@ The ini and log names are fixed by the build, not taken from the dll's file name
 - **Snow (PoC, `snow = 1`)** (`src/snow.h`, `snow_along` in `shaders/clouds3d.hlsl`): in the clouds' draw, values
   112..119 of its constants: under a full cloud and in a clear sky by the kind (`snow_of`: ammonia 0.5, its second
   colour 1 and 0.05, methane 0.8), 0 unless `Status.json` Flags2 has bits 0, 4 and 15 (on foot, on a planet, outdoors);
-  the fall `sqrt(gravity)` m/s; the eye's walk east and north from a first fix of latitude and longitude (`snow_walked`,
+  the fall `0.3 sqrt(gravity 1.2 / air density)` m/s (the kind's typical air: ammonia 0.00206, methane 0.1217 kg/m3),
+  at most one cell in 20 (`snow_most`); the eye's walk east and north from a first fix of latitude and longitude (`snow_walked`,
   wrapped at 1024 m, a new fix past 10 km). The shader samples 24 places along the ray from 0.4 to 30 m (spaced as a
   power, started at the pixel's blue noise), takes the crystal of each place's 0.8 m cell in the ground's frame (east
   from the planet's axis y and the up of the eye), kept by the cell's hash under the number; hidden past the scene's
-  depth; at least about a pixel wide; lit by the star (`frame_rows[293]`), more towards it, none under the horizon.
+  depth; 1-3 mm, drawn at least half a pixel wide and as bright as it covers, a streak of 0.03 s of its way; lit by the star (`frame_rows[293]`), more towards it, none under the horizon.
   The number under the clouds follows `weather_at` over the eye (the clouds' weather, now a function of its own) with
   the kind's cover.
 - (edworld_eht only, `galmap = 1`) **The galaxy map's names** (`src/galmap.h`): the map writes its labels (the systems'

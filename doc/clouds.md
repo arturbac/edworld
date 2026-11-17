@@ -221,8 +221,13 @@ The second colour of ammonia comes with a cold planet whose air is well past sat
 Where it snows is where the clouds above have their overcast: the weather of the clouds (a slow planet's deck over
 the day side, a faster one's bands and patches) over the place you stand, together with the kind's cover. Only then
 on foot outdoors (`Status.json` Flags2: on foot, on a planet, outdoors), in a building of a settlement never. The
-crystals are points of a pixel or so in the 30 m before you, in cells of 0.8 m held to the ground: they fall as fast
-as the gravity lets (about 1 m/s at 1 g, 0.36 m/s at 0.13 g; `Status.json` gives it on foot), drift with a slow wind,
-and stay in the air as you turn and walk (your walk from `Status.json`'s latitude and longitude). The star lights them,
-brighter as you look towards it, as ice glints; at night there are none to see. The ground and buildings hide those
-behind them. `snow_gain` scales how many. A PoC: their look and their number are to be tuned in the game.
+crystals are specks of 1-3 mm in the 30 m before you, one in some of the cells of 0.8 m held to the ground (at most one
+cell in 20 under a full cloud), each its own size and brightness, drawn no smaller than half a pixel and as bright as
+they cover of it, with a short streak along their way. They fall as fast as the gravity and the air let: a small ice
+crystal falls about 0.3 m/s in the Earth's air, and for a drag growing with the square of the speed its speed goes
+with the square root of the gravity over the air's density, so in an ammonia world's thin air (about 1/600 of the
+Earth's) some 25 times faster - 2.6 m/s at 0.13 g, a slow wind only leaning it - and in methane's (1/10) 0.23 m/s at
+0.06 g, the wind carrying it. The gravity comes from `Status.json` on foot, the air's density from the kind's typical
+planet. They stay in the air as you turn and walk (your walk from `Status.json`'s latitude and longitude). The star
+lights them, brighter as you look towards it, as ice glints; at night there are none to see. The ground and buildings
+hide those behind them. `snow_gain` scales how many. A PoC: their look and their number are to be tuned in the game.

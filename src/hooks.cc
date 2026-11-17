@@ -1305,9 +1305,9 @@ namespace edworld
         return;
         }
       float const gain{std::max(settings().snow_gain, 0.f)};
-      v[0] = snow.under_clouds * gain;
-      v[1] = snow.clear * gain;
-      v[2] = snow_fall_speed(f.gravity > 0.0 ? f.gravity : 0.1);
+      v[0] = snow.under_clouds * snow_most * gain;
+      v[1] = snow.clear * snow_most * gain;
+      v[2] = snow_fall_speed(f.gravity > 0.0 ? f.gravity : 0.1, snow.air_density);
       auto const walked{snow_walked(snow_walk, f.latitude, f.longitude, f.planet_radius)};
       v[4] = walked[0];
       v[5] = walked[1];

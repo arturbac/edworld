@@ -14,12 +14,19 @@
 
 namespace edworld
   {
-  ///\brief how many crystals: under a full cloud, and in a clear sky (as a part of the most, which snow_gain scales)
+  ///\brief how many crystals: under a full cloud, and in a clear sky (as a part of the most, which snow_gain scales);
+  /// and the kind's air near the ground, kg/m3 (its typical planet's pressure and temperature, the scans' medians of
+  /// 2026-11-16), which sets how fast they fall
   struct snow_t
     {
     float under_clouds;
     float clear;
+    float air_density;
     };
+
+  ///\brief the most crystals: the share of the 0.8 m cells that hold one under a full cloud at 1 (all of them was a
+  /// blizzard at 6 c, 2026-11-17)
+  inline constexpr float snow_most{0.05f};
 
   ///\brief by the kind: ammonia light under the clouds, its cold second colour steadily and a little in a clear sky
   /// (diamond dust); methane light and denser (a heavy column of air, little gravity); any other none
@@ -28,9 +35,10 @@ namespace edworld
     {
     switch(kind)
       {
-      case atmosphere_kind_e::ammonia: return cold ? snow_t{1.f, 0.05f} : snow_t{0.5f, 0.f};
-      case atmosphere_kind_e::methane: return snow_t{0.8f, 0.f};
-      default:                         return snow_t{0.f, 0.f};
+      // 166 Pa, 165 K, 17 g/mol; 6006 Pa, 95 K, 16 g/mol
+      case atmosphere_kind_e::ammonia: return cold ? snow_t{1.f, 0.05f, 0.00206f} : snow_t{0.5f, 0.f, 0.00206f};
+      case atmosphere_kind_e::methane: return snow_t{0.8f, 0.f, 0.1217f};
+      default:                         return snow_t{0.f, 0.f, 0.f};
       }
     }
 
@@ -45,11 +53,16 @@ namespace edworld
     return (flags2 & all) == all;
     }
 
-  ///\brief how fast a crystal falls, metres a second: an Earth's snowflake about 1 m/s, the gravity (in g) under a
-  /// square root as for a drag that grows with the square of the speed
+  ///\brief how fast a crystal falls, metres a second: a small ice crystal about 0.3 m/s in the Earth's air (1.2 kg/m3 at
+  /// 1 g); for a drag that grows with the square of the speed the speed goes with the square root of the gravity (in g)
+  /// over the air's density, so in a thin air far faster (an ammonia world's ~1/600 of the Earth's: about 25 times,
+  /// 2.6 m/s at 0.13 g; methane's 1/10: 0.23 m/s at 0.06 g) and the wind only leans the fall
   [[nodiscard]]
-  inline auto snow_fall_speed(double gravity) noexcept -> float
-    { return static_cast<float>(std::sqrt(std::clamp(gravity, 0.01, 3.0))); }
+  inline auto snow_fall_speed(double gravity, double air_density) noexcept -> float
+    {
+    double const v{0.3 * std::sqrt(std::clamp(gravity, 0.01, 3.0) * 1.2 / std::max(air_density, 1e-4))};
+    return static_cast<float>(std::clamp(v, 0.05, 8.0));
+    }
 
   ///\brief where the eye walked on the ground since a reference fix: metres east and north from Status.json's latitude
   /// and longitude, wrapped at snow_wrap_m so a float keeps centimetres; a new reference past 10 km

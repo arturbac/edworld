@@ -869,6 +869,10 @@ float3 snow_along(ps_in input, float3 ray, float3 centre)
   float x_scale = length(float3(frame_rows[270].x, frame_rows[271].x, frame_rows[272].x));
   float pixel_angle = 2.f * cloud_pixel / max(cloud_view_width * x_scale, 1.f);
 
+  // how a crystal moves against the eye: down with the fall, along with the wind; drawn as a short streak along it
+  float3 moving = -float3(drift, snow_fall);
+  float streak = length(moving) * 0.03f;
+  moving = normalize(moving + float3(0.f, 0.f, -1e-4f));
   float glints = 0.f;
   float start = blue_noise.Load(int3(uint2(input.pos.xy) & 63u, 0));
   [loop]
@@ -886,16 +890,20 @@ float3 snow_along(ps_in input, float3 ray, float3 centre)
     float4 clip = clip_ray * along + frame_rows[273];
     if(clip.z < scene * clip.w)  // the depth is reversed: the scene stands nearer
       continue;
-    float apart = length(shift + dir * along - crystal);
-    float size = max(0.003f, pixel_angle * along * 0.7f);
-    // a small crystal far off is as bright as its size on the screen allows
-    glints += saturate(1.f - apart / size) * saturate(0.003f / size * 4.f + 0.25f);
+    // the nearest point of its streak to the ray
+    float3 off = shift + dir * along - crystal;
+    float3 across = off - moving * clamp(dot(off, moving), -streak * 0.5f, streak * 0.5f);
+    // each its own size (1..3 mm) and brightness; never drawn smaller than half a pixel, as bright as it covers of it
+    float own = 0.001f + 0.002f * hash(cell + 11.f);
+    float size = max(own, pixel_angle * along * 0.5f);
+    float covers = (own / size) * (own / size);
+    glints += saturate(1.f - length(across) / size) * covers * (0.3f + 0.7f * hash(cell + 13.f));
     }
   if(glints <= 0.f)
     return 0.f;
   float toward = saturate(dot(ray_model, sun_model));
   float3 star = frame_rows[293].xyz;
-  return glints * star * (0.2f + 2.f * pow(toward, 8.f)) * day * kind * frame_rows[90].y * 30.f;
+  return glints * star * (0.2f + 2.f * pow(toward, 8.f)) * day * kind * frame_rows[90].y * 6.f;
   }
 
 float4 ps_main(ps_in input) : SV_TARGET

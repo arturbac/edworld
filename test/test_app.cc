@@ -712,7 +712,10 @@ namespace
           "snow: ammonia and methane, a cold ammonia also in a clear sky, no other kind");
     check(snow_outdoors(33041u) and not snow_outdoors(33041u & ~(1u << 15)) and not snow_outdoors(0u),
           "snow: on foot outdoors (Flags2 33041 at 6 c), not indoors or in a ship");
-    check(std::fabs(snow_fall_speed(1.0) - 1.f) < 1e-6f and std::fabs(snow_fall_speed(0.13) - 0.3606f) < 1e-3f, "snow: falls about 1 m/s at 1 g, 0.36 at 0.13 g");
+    check(std::fabs(snow_fall_speed(1.0, 1.2) - 0.3f) < 1e-6f
+            and std::fabs(snow_fall_speed(0.13, snow_of(atmosphere_kind_e::ammonia, true).air_density) - 2.612f) < 0.01f
+            and std::fabs(snow_fall_speed(0.06, snow_of(atmosphere_kind_e::methane, false).air_density) - 0.231f) < 0.01f,
+          "snow: falls 0.3 m/s in the Earth's air, 2.6 m/s in ammonia's at 0.13 g, 0.23 m/s in methane's at 0.06 g");
     snow_walk_t walk{};
     auto const here{snow_walked(walk, 1.5908, 109.0544, 1109282.75)};
     auto const there{snow_walked(walk, 1.5908, 109.0554, 1109282.75)};
