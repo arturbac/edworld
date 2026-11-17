@@ -306,7 +306,8 @@ from outside the game's folder (Epic's overlay `EOSOVH-Win64-Shipping.dll`, for 
 
 Some programs put themselves in the game's own call for its device, an antivirus's hooks for example. Then the
 game's device too is logged as asked by that dll and `not followed`, and edworld draws nothing. The line names the
-dll and the fix: add it to `edworld.ini` as `creator_pass = <its name>` (several by commas). edworld then passes it
+dll and the fix: add it to `edworld.ini` as `creator_pass = <its name>` (several by commas; `bdhkm64.dll`, seen in a
+player's log, is there by default, so keep it in the list). edworld then passes it
 over, finds the game behind it and logs `asked by EliteDangerous64.exe (past <its name>: creator_pass)`. Do not add an
 overlay's dll there (Epic's, Discord's, Steam's): edworld would follow the overlay's device instead of the game's.
 

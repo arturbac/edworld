@@ -54,7 +54,7 @@ creator_case() {  # $1 = edworld | edworld_eht; a device asked through a dll fro
   mkdir -p pass
   cp "$BUILD/test/test_foreign.dll" pass/bdhkm64.dll
   set +e
-  : > "$ini"
+  printf 'creator_pass =\n' > "$ini"
   EDWORLD_TEST_PASSER='pass\bdhkm64.dll' ini_run
   # starts within a second share a log, so only the last device line is the run's
   grep 'D3D11CreateDevice:' "$1.log" | tail -n 1 | grep -q 'asked by bdhkm64.dll from outside the game.s folder: not followed; .*creator_pass = bdhkm64.dll'
@@ -63,6 +63,10 @@ creator_case() {  # $1 = edworld | edworld_eht; a device asked through a dll fro
   EDWORLD_TEST_PASSER='pass\bdhkm64.dll' ini_run
   grep 'D3D11CreateDevice:' "$1.log" | tail -n 1 | grep -q 'asked by test_app.exe (past bdhkm64.dll: creator_pass)$'
   ini_check "creator_pass passes the dll over: the device is the game's" $?
+  : > "$ini"
+  EDWORLD_TEST_PASSER='pass\bdhkm64.dll' ini_run
+  grep 'D3D11CreateDevice:' "$1.log" | tail -n 1 | grep -q 'asked by test_app.exe (past bdhkm64.dll: creator_pass)$'
+  ini_check "bdhkm64.dll passed over by default, no ini line needed" $?
   set -e
 }
 doc_case() {  # doc/settings.md is made by edworld_eht from its table of settings (it has every setting); in the run directory
