@@ -87,6 +87,16 @@ cbuffer clouds : register(b4)
   float aurora_floor;       // the shell's floor and ceiling over the surface, as parts of the radius
   float aurora_ceiling;
   float3 aurora_edge;       // nitrogen's pink lower edge, 0 = none
+  // the snow (PoC, src/snow.h) near the ground on foot: crystals under a full cloud and in a clear sky (0 = none), how
+  // fast they fall (m/s), then where the eye walked east and north since a reference fix (metres, wrapped)
+  float snow_under;
+  float snow_clear;
+  float snow_fall;
+  float snow_pad0;
+  float snow_east;
+  float snow_north;
+  float snow_pad1;
+  float snow_pad2;
   };
 
 Texture2D<float> scene_depth : register(t0);
@@ -258,6 +268,21 @@ float storm_density(float3 p, float bottom, float top, float kind, float tower, 
   }
 
 // the clouds along the ray, premultiplied; none (0) where the ray misses them, so the aurora may still be drawn
+// the weather (design v2) at a place of the planet: -1 clear .. 1 overcast. A slow turn for the planet's size (R/L
+// under 0.3): clouds over the day side about the point under the star, held to the ground (ground_dir); a faster one:
+// bands by latitude and patches drifting with the wind (middle_dir, the place blown)
+float weather_at(float3 ground_dir, float3 middle_dir, float3 seed, float3 sun_model)
+  {
+  float rossby = cloud_kind_rossby;
+  if(rossby < 0.3f)
+    return 2.f * smoothstep(-0.2f, 0.8f, dot(ground_dir, sun_model)) - 1.f;
+  float latitude = degrees(asin(clamp(middle_dir.y, -1.f, 1.f)));
+  float period = rossby <= 4.f ? 50.f : 100.f / (rossby * 0.5f);
+  float band = cos(latitude / period * 6.2831853f) * (1.f - 0.7f * smoothstep(60.f, 85.f, abs(latitude)));
+  float patch = (fbm(middle_dir * max(rossby * 1.5f, 1.5f) + seed + 57.f, 2) - 0.375f) / 0.375f;
+  return clamp(0.5f * band + 0.5f * patch, -1.f, 1.f);
+  }
+
 float4 clouds_along(ps_in input, float3 ray, float3 centre)
   {
   float planet = frame_rows[126].x;
@@ -370,18 +395,7 @@ float4 clouds_along(ps_in input, float3 ray, float3 centre)
   float weather_shift = 0.f;  // how far the weather moved the edge, given back in a storm, which brings its own clouds
   if(cloud_weather > 0.f && kind > 0.f)
     {
-    float rossby = cloud_kind_rossby;
-    float weather;
-    if(rossby < 0.3f)
-      weather = 2.f * smoothstep(-0.2f, 0.8f, dot(ground_dir, sun_model)) - 1.f;
-    else
-      {
-      float latitude = degrees(asin(clamp(middle_dir.y, -1.f, 1.f)));
-      float period = rossby <= 4.f ? 50.f : 100.f / (rossby * 0.5f);
-      float band = cos(latitude / period * 6.2831853f) * (1.f - 0.7f * smoothstep(60.f, 85.f, abs(latitude)));
-      float patch = (fbm(middle_dir * max(rossby * 1.5f, 1.5f) + seed + 57.f, 2) - 0.375f) / 0.375f;
-      weather = clamp(0.5f * band + 0.5f * patch, -1.f, 1.f);
-      }
+    float weather = weather_at(ground_dir, middle_dir, seed, sun_model);
     weather_shift = cloud_weather * weather * kind;
     edge -= weather_shift;
     }
@@ -795,6 +809,95 @@ float3 aurora_along(ps_in input, float3 ray, float3 centre, out float eye_under)
   return light * strength * 120.f * frame_rows[90].y;
   }
 
+// the snow (PoC, 2026-11-17): near the eye on foot, crystals of the air's own gas falling under the clouds. The space
+// near the ground cut into cells of snow_cell metres, in the frame of the ground under the eye (east, north, up): in
+// each cell one crystal or none, its place and its chance from the cell's hash; the cells fall with the snow and drift
+// with a slow wind, and move against the eye's walk on the ground (Status.json), so the crystals stay in the air as the
+// eye turns and walks. The ray looks at snow_samples places from 0.4 m to snow_reach; at each, the crystal of that
+// place's cell, a point of a pixel or so, lit by the star (brighter towards it, as ice crystals scatter forward), none
+// at night, hidden by the ground (the scene's depth). How many: snow_under under a full cloud (the weather over the
+// eye, as the clouds above have it), snow_clear in a clear sky
+static const float snow_cell = 0.8f;
+static const float snow_reach = 30.f;
+static const int snow_samples = 24;
+
+float3 snow_along(ps_in input, float3 ray, float3 centre)
+  {
+  if(snow_under <= 0.f && snow_clear <= 0.f)
+    return 0.f;
+  float planet = frame_rows[126].x;
+  float kind = abs(planet - cloud_kind_radius) < 4.f ? cloud_kind_weight : 0.f;
+  // on that planet's ground only (Status.json says on foot outdoors, but the planet is the one whose kind was read)
+  if(kind <= 0.f || length(centre) - planet > 5000.f)
+    return 0.f;
+  float inverse_square = 1.f / dot(object_rows[9].xyz, object_rows[9].xyz);
+  float3 eye_model = -(object_rows[9].xyz * centre.x + object_rows[10].xyz * centre.y + object_rows[11].xyz * centre.z) * inverse_square;
+  float3 up = normalize(eye_model);
+  float3 east = cross(float3(0.f, 1.f, 0.f), up);
+  east = dot(east, east) > 1e-6f ? normalize(east) : float3(1.f, 0.f, 0.f);
+  float3 north = cross(up, east);
+  float3 sun = -frame_rows[291].xyz;
+  float3 sun_model = normalize(object_rows[9].xyz * sun.x + object_rows[10].xyz * sun.y + object_rows[11].xyz * sun.z);
+
+  // how much cloud over the eye: the weather there, as the clouds above have it
+  float cover = lerp(cloud_cover, cloud_kind_cover, kind);
+  if(cloud_weather > 0.f)
+    {
+    float3 seed = frac(planet / float3(977.f, 1543.f, 2111.f)) * 50.f;
+    cover = saturate(cover + 0.5f * cloud_weather * weather_at(up, up, seed, sun_model) / 0.3f);
+    }
+  float many = snow_under * smoothstep(0.35f, 0.75f, cover) + snow_clear;
+  if(many <= 0.f)
+    return 0.f;
+  // the star's light on them, none once it is under the horizon
+  float day = saturate(dot(up, sun_model) * 4.f + 0.3f);
+  if(day <= 0.f)
+    return 0.f;
+
+  // the ray in the ground's frame; the cells fall and drift with the time, and move against the eye's walk
+  float3 ray_model = normalize((object_rows[9].xyz * ray.x + object_rows[10].xyz * ray.y + object_rows[11].xyz * ray.z) * inverse_square);
+  float3 dir = float3(dot(ray_model, east), dot(ray_model, north), dot(ray_model, up));
+  float time = cloud_wind_seconds;
+  float wind_angle = 6.2831853f * noise(float3(time * 0.01f, 3.1f, 7.7f));
+  float2 drift = float2(cos(wind_angle), sin(wind_angle)) * (0.3f + 1.2f * noise(float3(time * 0.03f, 5.3f, 1.9f)));
+  float3 shift = float3(snow_east + drift.x * time, snow_north + drift.y * time, snow_fall * time);
+
+  // the scene: a crystal behind the ground or the ship is hidden
+  float4 clip_ray = frame_rows[270] * ray.x + frame_rows[271] * ray.y + frame_rows[272] * ray.z;
+  float scene = scene_depth.Load(int3(input.pos.xy * cloud_pixel, 0));
+  // a pixel's angle: a crystal is never drawn smaller than about a pixel, so it does not flicker
+  float x_scale = length(float3(frame_rows[270].x, frame_rows[271].x, frame_rows[272].x));
+  float pixel_angle = 2.f * cloud_pixel / max(cloud_view_width * x_scale, 1.f);
+
+  float glints = 0.f;
+  float start = blue_noise.Load(int3(uint2(input.pos.xy) & 63u, 0));
+  [loop]
+  for(int i = 0; i != snow_samples; ++i)
+    {
+    float t = 0.4f * pow(snow_reach / 0.4f, (i + start) / snow_samples);
+    float3 at = shift + dir * t;
+    float3 cell = floor(at / snow_cell);
+    if(hash(cell + 17.f) > many)
+      continue;
+    float3 crystal = (cell + 0.15f + 0.7f * float3(hash(cell), hash(cell + 3.f), hash(cell + 7.f))) * snow_cell;
+    float along = dot(crystal - shift, dir);
+    if(along < 0.3f)
+      continue;
+    float4 clip = clip_ray * along + frame_rows[273];
+    if(clip.z < scene * clip.w)  // the depth is reversed: the scene stands nearer
+      continue;
+    float apart = length(shift + dir * along - crystal);
+    float size = max(0.003f, pixel_angle * along * 0.7f);
+    // a small crystal far off is as bright as its size on the screen allows
+    glints += saturate(1.f - apart / size) * saturate(0.003f / size * 4.f + 0.25f);
+    }
+  if(glints <= 0.f)
+    return 0.f;
+  float toward = saturate(dot(ray_model, sun_model));
+  float3 star = frame_rows[293].xyz;
+  return glints * star * (0.2f + 2.f * pow(toward, 8.f)) * day * kind * frame_rows[90].y * 30.f;
+  }
+
 float4 ps_main(ps_in input) : SV_TARGET
   {
   float3 ray = normalize(input.view);
@@ -806,6 +909,8 @@ float4 ps_main(ps_in input) : SV_TARGET
   float3 aurora = aurora_along(input, ray, centre, eye_under);
   // the aurora only gives light: from under the clouds it shows through their gaps, from over them it stands in front
   float4 result = clouds + float4(aurora * lerp(1.f, 1.f - clouds.a, eye_under), 0.f);
+  // the snow stands before the clouds, near the eye
+  result.rgb += snow_along(input, ray, centre);
   if(all(result == 0.f))
     discard;
   return result;

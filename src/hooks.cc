@@ -21,6 +21,7 @@
 #include "panel_math.h"
 #include "panel_patch.h"
 #include "runtime.h"
+#include "snow.h"
 #include "shader_catalog.h"
 
 #include <d3d11_1.h>
@@ -1162,6 +1163,7 @@ namespace edworld
     std::atomic<float> atmo_kind_radius{};
     std::atomic<std::uint8_t> atmo_kind{};
     std::atomic<bool> atmo_kind_volcanic{};  ///< neon's second table: a neon atmosphere over volcanism
+    std::atomic<bool> atmo_kind_cold{};      ///< ammonia's second table: a cold, oversaturated ammonia atmosphere
     std::atomic<ULONGLONG> atmo_kind_since{};
     constexpr float atmo_kind_fade_ms{2000.f};
 
@@ -1176,6 +1178,7 @@ namespace edworld
         return;
       atmo_kind_since.store(GetTickCount64(), std::memory_order_relaxed);
       atmo_kind_volcanic.store(found and kind == atmosphere_kind_e::neon and found->r_g > 1.f, std::memory_order_relaxed);
+      atmo_kind_cold.store(found and kind == atmosphere_kind_e::ammonia and found->r_g > 0.7f, std::memory_order_relaxed);
       atmo_kind.store(static_cast<std::uint8_t>(kind), std::memory_order_relaxed);
       atmo_kind_radius.store(radius, std::memory_order_relaxed);
       log_line("clouds: the planet of radius %.0f m is %.*s (r/g %.4f b/g %.4f)", double(radius),
@@ -1278,6 +1281,36 @@ namespace edworld
       v[7] = c.tint[0];
       v[8] = c.tint[1];
       v[9] = c.tint[2];
+      }
+
+    snow_walk_t snow_walk{};
+
+    ///\brief the snow's values 112..119 (clouds3d.hlsl, src/snow.h): under a full cloud and in a clear sky (0 = none:
+    /// snow off, no kind of snow, not on foot outdoors), how fast the crystals fall, then where the eye walked east and
+    /// north since a reference fix
+    auto atmo_snow_values(float * v) noexcept -> void
+      {
+      std::fill(v, v + 8, 0.f);
+      if(not settings().snow)
+        {
+        snow_walk.have = false;
+        return;
+        }
+      auto const kind{static_cast<atmosphere_kind_e>(atmo_kind.load(std::memory_order_relaxed))};
+      snow_t const snow{snow_of(kind, atmo_kind_cold.load(std::memory_order_relaxed))};
+      flight_t const f{flight()};
+      if(snow.under_clouds <= 0.f or not snow_outdoors(f.flags2) or not f.has_ground)
+        {
+        snow_walk.have = false;
+        return;
+        }
+      float const gain{std::max(settings().snow_gain, 0.f)};
+      v[0] = snow.under_clouds * gain;
+      v[1] = snow.clear * gain;
+      v[2] = snow_fall_speed(f.gravity > 0.0 ? f.gravity : 0.1);
+      auto const walked{snow_walked(snow_walk, f.latitude, f.longitude, f.planet_radius)};
+      v[4] = walked[0];
+      v[5] = walked[1];
       }
 
     ///\brief the day read off the turn of the planet of this radius, 0 = not known
@@ -4598,7 +4631,7 @@ namespace edworld
       ID3D11DepthStencilState * volume_depth_state{};
       ID3D11Buffer * volume_params{};
       // the volume's parameters, the wind's seconds among them, written again for each draw
-      float volume_values[112]{};
+      float volume_values[120]{};
       ULONGLONG wind_start{};
       ID3D11Texture2D * depth_copy{};
       ID3D11ShaderResourceView * depth_view{};
@@ -4854,15 +4887,16 @@ namespace edworld
 
       // 19..32 (the game's fade, near and far, the debug colour, the planet's size on the screen, the steps' most, the
       // edge, the haze) and 33..42 (the atmosphere's kind) are written again for each draw, as they change while the game
-      // runs, 43 the lumps' size, 44..85 the storms, 86..91 the lumps by the layer and the weather, 92..111 the aurora
-      float const values[112]{
+      // runs, 43 the lumps' size, 44..85 the storms, 86..91 the lumps by the layer and the weather, 92..111 the aurora,
+      // 112..119 the snow
+      float const values[120]{
         settings().clouds_bottom, settings().clouds_top, settings().clouds_cover, settings().clouds_light,
         settings().clouds_steps, settings().clouds_density, settings().clouds_opacity, settings().clouds_top_gain,
         settings().clouds_min_light, settings().clouds_under_gain, settings().clouds_detail, settings().clouds_detail_size,
         settings().clouds_detail_range, settings().clouds_detail_edge, settings().clouds_detail_gap, 0.f,
         settings().clouds_wind_low / 3.6f, settings().clouds_wind_high / 3.6f, 1.f, 0.f,
         0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f
-      };  // the rest, 44..111, zero
+      };  // the rest, 44..119, zero
       std::memcpy(clouds.volume_values, values, sizeof values);
       clouds.wind_start = GetTickCount64();
       D3D11_BUFFER_DESC desc{};
@@ -5066,6 +5100,7 @@ namespace edworld
       atmo_cyclone_values(clouds.volume_values + 44);
       atmo_lump_values(clouds.volume_values + 86);
       atmo_aurora_values(clouds.volume_values + 92);
+      atmo_snow_values(clouds.volume_values + 112);
       if(clouds.volume_values[84] > 0.f)
         {
         // the storms tower to twice the layer's height (v1.4s): the kind's top raised, the tower told to the shader

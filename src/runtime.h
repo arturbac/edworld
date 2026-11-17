@@ -332,6 +332,11 @@ namespace edworld
     ///\brief edworld_eht: the names the galaxy map shows, read off its text draws (src/galmap.h) and published to
     /// `galmap` in shm_dir; 0 = off
     std::uint32_t galmap{1};
+    ///\brief (PoC) crystals of the air's own gas falling near the ground on foot, under the clouds, where the kind's gas
+    /// condenses (src/snow.h: ammonia, methane); 0 = none
+    std::uint32_t snow{0};
+    ///\brief how many of them, times the kind's own
+    float snow_gain{1.f};
     ///\brief how often, at most, they are read (milliseconds)
     std::uint32_t galmap_interval_ms{500};
     ///\brief the pad's text read (2026-10-24, src/pad_text_read.h): 1 = the tower's notice in that box gives the pad and

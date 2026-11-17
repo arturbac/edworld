@@ -25,6 +25,7 @@
 #include "../src/blue_noise.h"
 #include "../src/galmap.h"
 #include "../src/gate_math.h"
+#include "../src/snow.h"
 #include "../src/gpu_timing.h"
 #include "../src/hologram_math.h"
 #include "../src/holo_models.h"
@@ -704,6 +705,19 @@ namespace
     std::vector<galmap_quad_t> const narrow{
       {0.f, 10.f, 30.f, 'B'}, {11.f, 21.f, 30.f, '3'}, {22.f, 27.f, 30.f, '1'}, {35.f, 40.f, 30.f, '-'}, {41.f, 51.f, 30.f, '7'}};
     check(galmap_labels(narrow) == std::vector<std::string>{"B31-7"}, "galmap: a narrow 1 in a digit's room before a dash is no space");
+    // the snow: by the kind and ammonia's cold colour; on foot outdoors only; the fall by the gravity; the walk
+    check(snow_of(atmosphere_kind_e::ammonia, false).under_clouds == 0.5f and snow_of(atmosphere_kind_e::ammonia, true).clear > 0.f
+            and snow_of(atmosphere_kind_e::methane, false).under_clouds > 0.f and snow_of(atmosphere_kind_e::carbon_dioxide, false).under_clouds == 0.f
+            and snow_of(atmosphere_kind_e::neon, true).under_clouds == 0.f,
+          "snow: ammonia and methane, a cold ammonia also in a clear sky, no other kind");
+    check(snow_outdoors(33041u) and not snow_outdoors(33041u & ~(1u << 15)) and not snow_outdoors(0u),
+          "snow: on foot outdoors (Flags2 33041 at 6 c), not indoors or in a ship");
+    check(std::fabs(snow_fall_speed(1.0) - 1.f) < 1e-6f and std::fabs(snow_fall_speed(0.13) - 0.3606f) < 1e-3f, "snow: falls about 1 m/s at 1 g, 0.36 at 0.13 g");
+    snow_walk_t walk{};
+    auto const here{snow_walked(walk, 1.5908, 109.0544, 1109282.75)};
+    auto const there{snow_walked(walk, 1.5908, 109.0554, 1109282.75)};
+    check(here[0] == 0.f and here[1] == 0.f and std::fabs(there[0] - 19.353f) < 0.01f and there[1] == 0.f,
+          "snow: the walk east from the first fix, metres");
     }
     check(small_float(960u, 6u) == 1.f and small_float(896u, 6u) == 0.5f and small_float(512u, 5u) == 2.f and small_float(0u, 6u) == 0.f,
           "atmosphere: the table's small floats");

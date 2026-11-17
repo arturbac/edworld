@@ -38,6 +38,10 @@ namespace edworld
     std::uint64_t flags2;
     bool has_position;
     double latitude, longitude, altitude, planet_radius, heading;
+    ///\brief on foot Status.json has the place without an altitude: latitude, longitude and the planet's radius there,
+    /// and the gravity (in g) and the temperature (K) where the commander stands; false and 0 elsewhere
+    bool has_ground;
+    double gravity, temperature;
     ///\brief degrees, + climbing, from the last two fixes that differed; NaN until there are two
     double path_angle;
     ///\brief metres a second, + climbing, from the last two fixes that differed (by the host's clock); NaN until there are two

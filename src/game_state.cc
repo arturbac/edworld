@@ -116,13 +116,16 @@ namespace edworld
       flight_t f{};
       f.flags = flags;
       f.flags2 = flags2;
-      bool la{}, lo{}, al{}, pr{}, hd{};
+      bool la{}, lo{}, al{}, pr{}, hd{}, gr{}, te{};
       f.latitude = real_after(text, "\"Latitude\"", 0, la);
       f.longitude = real_after(text, "\"Longitude\"", 0, lo);
       f.altitude = real_after(text, "\"Altitude\"", 0, al);
       f.planet_radius = real_after(text, "\"PlanetRadius\"", 0, pr);
       f.heading = real_after(text, "\"Heading\"", 0, hd);
       f.has_position = la and lo and al and pr;
+      f.gravity = real_after(text, "\"Gravity\"", 0, gr);
+      f.temperature = real_after(text, "\"Temperature\"", 0, te);
+      f.has_ground = la and lo and pr and not al;
       f.path_angle = std::nan("");
       f.vertical_speed = std::nan("");
       ULONGLONG const now{GetTickCount64()};
@@ -156,6 +159,8 @@ namespace edworld
         {
         last.flags = f.flags;
         last.flags2 = f.flags2;
+        last.gravity = f.gravity;
+        last.temperature = f.temperature;
         last.heading = f.heading;
         last.destination_body = f.destination_body;
         std::memcpy(last.destination_name, f.destination_name, sizeof f.destination_name);

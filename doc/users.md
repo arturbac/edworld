@@ -143,6 +143,8 @@ the values that make sense, and whether a change shows while the game runs or ne
 | `clouds_weather` | `1` | (PoC) the weather in the kinds' clouds: overcast and clear regions by how fast the planet turns for its size, `1` = as [clouds.md](clouds.md) gives, `0` = none, `2` = twice as strong; read again while the game runs |
 | `aurora` | `1` | (PoC) `1` = an aurora over the night side of a planet whose atmosphere's kind is known, as [clouds.md](clouds.md#aurora) gives, `0` = none; this and the four below read again while the game runs |
 | `aurora_gain` | `1` | how bright the aurora is, `0`..`3` |
+| `snow` | `0` | (PoC) `1` = on foot outdoors, crystals of the air's own gas falling near you under the clouds of an ammonia or methane planet (doc/clouds.md, "Snow"); read again while the game runs |
+| `snow_gain` | `1` | how many of them |
 | `aurora_activity` | `-1` | (test) how stormy: `-1` = by the time, each 3 hours its own and the same for everyone; `0`..`9` = always this, as the Kp index (`7` for a picture of a strong one) |
 | `aurora_dance` | `1` | how much the aurora moves in seconds in a substorm (waves, folds, wiggles, curls): `1` = as designed, `0` = none of these (its rays still grow and fade), `2` = twice as much |
 | `aurora_flicker` | `1` | `1` = small patches of the aurora flicker a few times a second in a substorm, `0` = none |

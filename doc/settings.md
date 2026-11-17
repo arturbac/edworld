@@ -42,6 +42,8 @@ In `edworld.ini` (or `edworld_eht.ini`), beside the dll or in `edloader\config`;
 | `aurora_dance` | `1` | 0..2 (clamped) | how much the aurora moves in seconds in a substorm: waves along its arc, folds, wiggles, curls; `1` = as designed, `0` = none of these (its rays still grow and fade), `2` = twice as much |
 | `aurora_flicker` | `1` | 0, 1 | `1` = small patches of the aurora flicker a few times a second in a substorm, as real ones do; `0` = none |
 | `aurora_field` | `-1` | -1, 0, 1 | (test) whether the planet has a magnetic field of its own: `-1` = as guessed from its size and turn, `1` = always (the whole aurora on any planet whose kind is known), `0` = never (a faint glow only) |
+| `snow` | `0` | 0, 1 | (PoC) `1` = crystals of the air's own gas falling near the ground on foot outdoors, under the clouds, on an ammonia or methane planet (a cold ammonia one, its second colour, also a little in a clear sky); `0` = none |
+| `snow_gain` | `1` | 0 and more | how many crystals, times the kind's own (ammonia 0.5 under a full cloud, a cold ammonia 1, methane 0.8) |
 
 ### Read at the game's start (a change needs a restart)
 

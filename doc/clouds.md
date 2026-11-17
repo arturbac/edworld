@@ -198,3 +198,31 @@ worlds of 3000-4000 km turning in a day or so are the other good place: several 
 On a planet whose kind is known (`aurora = 1`), an aurora over the night side, over the clouds. What edworld reads,
 what it carries over from the Earth and what it chooses, the colours of each kind and how often you will meet them:
 [auroras.md](auroras.md).
+
+## Snow (PoC)
+
+`snow = 1` (off by default): on foot outdoors, crystals of the air's own gas fall near you under the clouds, where the
+gas condenses at the planet's cold. Every landable atmosphere is thinner than its gas' triple point (ammonia's 6 kPa,
+methane's 12 kPa, and so on), so a gas that condenses makes crystals, never rain. Of the scans of two commanders (1845
+planets, 2026-11-16) the ammonia worlds lie on their saturation curve (the air as dense as the gas can be at that
+cold), the methane ones near it; the others mostly far from it at their surface, and edworld cannot tell their cold
+from the render. So:
+
+| kind (by its colour) | under a full cloud | in a clear sky |
+|---|---|---|
+| Ammonia | light snow (0.5) | none |
+| Ammonia, its second colour | steady light snow (1) | a few glints (0.05), as diamond dust |
+| Methane | light, denser snow (0.8) | none |
+| any other | none | none |
+
+The second colour of ammonia comes with a cold planet whose air is well past saturation: both of the two seen
+(156 K and 154.5 K) had it, and none of the six from 164 to 173 K, one of them in the same system.
+
+Where it snows is where the clouds above have their overcast: the weather of the clouds (a slow planet's deck over
+the day side, a faster one's bands and patches) over the place you stand, together with the kind's cover. Only then
+on foot outdoors (`Status.json` Flags2: on foot, on a planet, outdoors), in a building of a settlement never. The
+crystals are points of a pixel or so in the 30 m before you, in cells of 0.8 m held to the ground: they fall as fast
+as the gravity lets (about 1 m/s at 1 g, 0.36 m/s at 0.13 g; `Status.json` gives it on foot), drift with a slow wind,
+and stay in the air as you turn and walk (your walk from `Status.json`'s latitude and longitude). The star lights them,
+brighter as you look towards it, as ice glints; at night there are none to see. The ground and buildings hide those
+behind them. `snow_gain` scales how many. A PoC: their look and their number are to be tuned in the game.
