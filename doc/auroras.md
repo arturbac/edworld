@@ -68,7 +68,8 @@ eight nitrogen's violet-blue, one in seven argon's faint lilac.
 **A field of its own** comes from the chance by radius (0.15 under 1000 km, 0.4 to 3000 km, 0.7 past), a third of
 it for a planet that turns slowly (radius over the Rossby radius under 0.3, or a day over 10 days, a weak dynamo), a
 third more for a volcanic neon world (edworld tells it by the second neon print; the table above counts the
-journal's volcanism instead). Of the landable planets with an atmosphere 18% are under 1000 km, 31% 1000-3000 km,
+journal's volcanism instead). As the field and the substorms come from the day, the aurora waits until the planet's
+day is read (about half a minute near it) and then comes in over four seconds; `aurora_field` set by hand needs no day. Of the landable planets with an atmosphere 18% are under 1000 km, 31% 1000-3000 km,
 50% larger; 54% turn slowly. In all **36% have a field**: neon and the nitrogen kinds most often (large, cold,
 fast-turning worlds), carbon dioxide, ammonia, methane and water seldom (small or slow). Without a field only a faint
 patchy glow covers the night side, as on Mars and Venus, where the star's wind meets the air directly.

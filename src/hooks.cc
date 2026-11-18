@@ -1371,6 +1371,7 @@ namespace edworld
       double day{};    ///< the last read's, to be agreed by the next
       float day_s{};   ///< known: two reads in a row agreed
       float spin{};
+      ULONGLONG known_ms{};  ///< when the day became known (GetTickCount64)
       };
     atmo_turn_t atmo_turns[atmosphere_planets_t::size]{};
 
@@ -1395,6 +1396,8 @@ namespace edworld
         if(turn.ok and t.day > 0. and std::fabs(day - t.day) < 0.01 * t.day)
           {
           bool const news{t.day_s == 0.f};
+          if(news)
+            t.known_ms = GetTickCount64();
           t.day_s = static_cast<float>(day);
           t.spin = turn.about_y > 0. ? 1.f : -1.f;
           if(news)
@@ -1504,6 +1507,18 @@ namespace edworld
       }
 
     ///\brief the day read off the turn of the planet of this radius, 0 = not known
+    ///\brief how far the storms and the aurora have come in: 0 until the planet's day is read, then up to 1 over
+    /// atmo_day_fade_ms (the audit's C19: they stood on the kind's median day first and jumped once the day was read)
+    constexpr float atmo_day_fade_ms{4000.f};
+
+    auto atmo_day_fade(float radius) noexcept -> float
+      {
+      atmo_turn_t const * const t{atmo_turn_of(radius)};
+      if(not t or t->day_s <= 0.f)
+        return 0.f;
+      return std::clamp(static_cast<float>(GetTickCount64() - t->known_ms) / atmo_day_fade_ms, 0.f, 1.f);
+      }
+
     auto atmo_day_of(float radius) noexcept -> float
       {
       atmo_turn_t const * const t{atmo_turn_of(radius)};
@@ -1524,16 +1539,17 @@ namespace edworld
         return;
       float const radius{atmo_kind_radius.load(std::memory_order_relaxed)};
       float const day{atmo_day_of(radius)};
-      // the spin unknown: about -y, as 19 of the 20 planets measured
+      // no storms until the planet's day is read (they would stand on the kind's median and jump), then they grow in
+      float const fade{atmo_day_fade(radius)};
       float const spin{day > 0.f ? atmo_turn_of(radius)->spin : -1.f};
       float const rossby{rossby_ratio(kind, radius, day)};
-      cyclone_set_t const set{cyclones_of(rossby, static_cast<std::uint64_t>(std::llround(radius)), spin)};
+      cyclone_set_t const set{day > 0.f ? cyclones_of(rossby, static_cast<std::uint64_t>(std::llround(radius)), spin) : cyclone_set_t{}};
       for(std::uint32_t i{}; i != set.count; ++i)
         {
         v[i * 4u] = set.at[i].x;
         v[i * 4u + 1u] = set.at[i].y;
         v[i * 4u + 2u] = set.at[i].z;
-        v[i * 4u + 3u] = set.at[i].size;
+        v[i * 4u + 3u] = set.at[i].size * std::max(fade, 0.01f);  // the shader divides by the size
         v[32u + i] = set.at[i].twist;
         }
       v[40] = static_cast<float>(set.count);
@@ -1542,8 +1558,11 @@ namespace edworld
         atmo_cyclones_radius = radius;
         atmo_cyclones_count = set.count;
         atmo_cyclones_day = day > 0.f;
-        log_line("clouds: %u storm(s) on the planet of radius %.0f m, R/L %.2f (day %s%.2f h)", set.count, double(radius),
-                 double(rossby), day > 0.f ? "" : "not known, the kind's median, ", double(day) / 3600.);
+        if(day > 0.f)
+          log_line("clouds: %u storm(s) on the planet of radius %.0f m, R/L %.2f (day %.2f h)", set.count, double(radius),
+                   double(rossby), double(day) / 3600.);
+        else
+          log_line("clouds: the storms of the planet of radius %.0f m wait for its day", double(radius));
         }
       }
 
@@ -1596,7 +1615,10 @@ namespace edworld
       float const level{set_level >= 0.f ? std::min(set_level, 9.f) : aurora_storm_level(seed, utc_s)};
       aurora_substorm_t const sub{aurora_substorm(level, planet.substorm_s, utc_s, seed)};
       aurora_colours_t const c{aurora_colours(kind)};
-      v[0] = c.yield * std::clamp(settings().aurora_gain, 0.f, 3.f) * sub.bright;
+      // no aurora until the planet's day is read (its field and substorms come from the day), then it comes in; a field
+      // set by hand (aurora_field) needs no day
+      float const fade{set_field >= 0.f ? 1.f : atmo_day_fade(radius)};
+      v[0] = c.yield * std::clamp(settings().aurora_gain, 0.f, 3.f) * sub.bright * fade;
       v[1] = level;
       v[2] = sub.dance * std::clamp(settings().aurora_dance, 0.f, 2.f);
       v[3] = sub.shift;

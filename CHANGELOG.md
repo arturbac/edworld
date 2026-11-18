@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Storms and the aurora wait for the planet's day** (read about half a minute near the planet) and then come in over
+  four seconds, instead of standing on the kind's typical day first and jumping once it is read.
 - **Two atmospheres in view keep their own kinds.** Each planet read keeps its kind and its day; the clouds, the snow
   and the aurora follow the nearest. A single read that matches no kind no longer drops a planet's known kind for ten
   seconds (another kind takes over after three reads in a row), and the reads take each planet in view in turn.

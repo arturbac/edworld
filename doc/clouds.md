@@ -167,8 +167,9 @@ distance past it, so the clouds curve in from a distance instead of being drawn 
 the clouds gather into a dense mass; the eye is clear, its edge uneven, and a funnel: narrow at the layer's floor,
 wide at its top, with a dense eyewall all the way down, lit on the side facing the sun and shaded on the other.
 On a planet with storms the layer is twice as high, the clouds out of storms keeping its lower half. Where the
-storms stand comes from the planet's radius, so the same planet always has the same storms. Until the day is read
-(about half a minute near the planet) the kind's typical R/L is used. `clouds_cyclones = 0` turns them off.
+storms stand comes from the planet's radius, so the same planet always has the same storms. They wait for the
+planet's day (read about half a minute near the planet) and then grow in over four seconds, rather than standing on
+the kind's typical R/L first and jumping once the day is read. `clouds_cyclones = 0` turns them off.
 
 **Where to look.** R/L of the planets you can land on, from the scans (10th / median / 90th percentile):
 
