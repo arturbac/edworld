@@ -1218,6 +1218,9 @@ namespace edworld
     std::atomic<bool> atmo_kind_volcanic{};  ///< neon's second table: a neon atmosphere over volcanism
     std::atomic<bool> atmo_kind_cold{};      ///< ammonia's second table: a cold, oversaturated ammonia atmosphere
     std::atomic<ULONGLONG> atmo_kind_since{};
+    // the star's light at the last read (VS b1 row 293): red and blue over green and its level, for the star's wind
+    // on the CPU (the substorms) as the shader has it (the oval)
+    std::atomic<float> atmo_light_rg{}, atmo_light_bg{}, atmo_light_g{};
     constexpr float atmo_kind_fade_ms{2000.f};
 
     auto atmo_kind_name(atmosphere_kind_e kind) noexcept -> std::string_view
@@ -1595,7 +1598,7 @@ namespace edworld
     /// clouds_by_kind 0 or the kind unknown), how stormy (K), how much it dances, the oval's shift; the colours low and
     /// high and nitrogen's edge, whether the planet has a field of its own, the dipole in the planet's frame, the shell's
     /// floor and ceiling over the surface as parts of the radius. The star's part is the shader's, out of its light
-    auto atmo_aurora_values(float * v) noexcept -> void
+    auto atmo_aurora_values(float * v, float tower) noexcept -> void
       {
       std::fill(v, v + 20, 0.f);
       auto const kind{static_cast<atmosphere_kind_e>(atmo_kind.load(std::memory_order_relaxed))};
@@ -1612,13 +1615,21 @@ namespace edworld
       GetSystemTimeAsFileTime(&ft);
       double const utc_s{static_cast<double>((static_cast<std::uint64_t>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime) / 1e7};
       float const set_level{settings().aurora_activity};
-      float const level{set_level >= 0.f ? std::min(set_level, 9.f) : aurora_storm_level(seed, utc_s)};
+      float const raw_level{set_level >= 0.f ? std::min(set_level, 9.f) : aurora_storm_level(seed, utc_s)};
+      // a strong star's wind adds to the storm here, once, for the substorms and the shader's oval alike (C14); no light
+      // read yet: no wind added
+      float const light_g{atmo_light_g.load(std::memory_order_relaxed)};
+      float const wind{light_g > 0.f ? aurora_star_wind(atmo_light_rg.load(std::memory_order_relaxed),
+                                                         atmo_light_bg.load(std::memory_order_relaxed), light_g)
+                                     : 0.6f};
+      float const level{aurora_level_with_wind(raw_level, wind)};
       aurora_substorm_t const sub{aurora_substorm(level, planet.substorm_s, utc_s, seed)};
       aurora_colours_t const c{aurora_colours(kind)};
       // no aurora until the planet's day is read (its field and substorms come from the day), then it comes in; a field
       // set by hand (aurora_field) needs no day
       float const fade{set_field >= 0.f ? 1.f : atmo_day_fade(radius)};
-      v[0] = c.yield * std::clamp(settings().aurora_gain, 0.f, 3.f) * sub.bright * fade;
+      // without a field of its own the glow is the same in a storm as in a quiet sky (no oval, no substorms: C15)
+      v[0] = c.yield * std::clamp(settings().aurora_gain, 0.f, 3.f) * (planet.field ? sub.bright : 1.f) * fade;
       v[1] = level;
       v[2] = sub.dance * std::clamp(settings().aurora_dance, 0.f, 2.f);
       v[3] = sub.shift;
@@ -1629,7 +1640,8 @@ namespace edworld
       std::copy(planet.axis, planet.axis + 3, v + 12);
       // the shell: from where the kind's typical air over a planet of this radius thins as the Earth's over 100 km
       // (aurora_height), to three times as high
-      aurora_height_t const height{aurora_height(kind, radius)};
+      // over the clouds' top as the storms raise it (twice the layer on a planet with storms, C17)
+      aurora_height_t const height{aurora_height(kind, radius, tower)};
       v[15] = height.floor;
       v[16] = height.ceiling;
       std::copy(c.edge, c.edge + 3, v + 17);
@@ -1877,6 +1889,15 @@ namespace edworld
         ctx->Unmap(p.t0, 0);
         }
       std::size_t const slot{atmo_note_kind(radius, over, hue)};
+      {
+      float const lr{atmo_float(p, data, 1, 293, 0)}, lg{atmo_float(p, data, 1, 293, 1)}, lb{atmo_float(p, data, 1, 293, 2)};
+      if(lg > 0.f)
+        {
+        atmo_light_rg.store(lr / lg, std::memory_order_relaxed);
+        atmo_light_bg.store(lb / lg, std::memory_order_relaxed);
+        atmo_light_g.store(lg, std::memory_order_relaxed);
+        }
+      }
       // the next read tries the frame's next shell, so each planet in view is read in turn (atmo_queue)
       atmo_skip = p.shell_index + 1u;
       float const turn_rows[9]{atmo_float(p, data, 0, 9, 0),  atmo_float(p, data, 0, 9, 1),  atmo_float(p, data, 0, 9, 2),
@@ -5393,7 +5414,11 @@ namespace edworld
       clouds.volume_values[43] = std::clamp(settings().clouds_size_var, 0.f, 0.9f);
       atmo_cyclone_values(clouds.volume_values + 44);
       atmo_lump_values(clouds.volume_values + 86);
-      atmo_aurora_values(clouds.volume_values + 92);
+      // the storms' tower (values 84: their count, set just above): the aurora stands over the clouds they raise
+      atmo_aurora_values(clouds.volume_values + 92, clouds.volume_values[84] > 0.f ? 2.f : 1.f);
+      // the flicker's phase, wound in double: the shader's float seconds lose the 8 Hz after hours (C23)
+      clouds.volume_values[91] = static_cast<float>(
+        std::fmod(static_cast<double>(GetTickCount64() - clouds.wind_start) / 1000. * 50.265, 6.283185307179586));
       atmo_snow_values(clouds.volume_values + 112);
       if(clouds.volume_values[84] > 0.f)
         {

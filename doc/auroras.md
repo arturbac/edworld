@@ -20,7 +20,7 @@ channel 1, so the kinds' different yields are not shown. Nitrogen's pink edge is
 |---|---|---|
 | the atmosphere's kind | the game's own atmosphere table, matched to one of 15 prints (see [clouds.md](clouds.md)) | read off the render |
 | the planet's radius and day | the planet's shell and how its object matrix turns | read off the render |
-| the star's class | the red over green of the star's light on the planet (one value per class: M 1.044, K 1.032, G 1.012, F 1.003, A and hotter 0.982, brown dwarfs over 1.5; 80 planets of two commanders) | read off the render |
+| the star's class | the red and blue over green of the star's light on the planet (one value per class: M 1.044, K 1.032, G 1.012, F 1.003, A and hotter 0.982; brown dwarfs red over 1.5 or blue over 1.3, which no star has; 80 planets of two commanders). A planet by a dwarf lit by another star of the system shows that star's light and counts as its class | read off the render |
 | how far the star is | the level of that light, which follows the flux only weakly (about its power 0.14), so it scales the wind within 0.5-2 | read off the render, squeezed by the game |
 | the time | the game's UTC | read |
 | the oval: magnetic latitude 67° - 2° K at midnight, 77° - 1° K at noon, 3-8° wide | the Earth's | physics, carried over unscaled |
@@ -107,7 +107,10 @@ over the whole night sky, brightest near the horizon. With `aurora = 0` the same
 **The star** sets how strong the wind is: activity M 1, K 0.6, G 0.5, F 0.3, brown dwarfs 0.3, hotter 0.1. Neon
 worlds circle brown dwarfs (54%) and M stars (35%), argon M stars (56%), carbon dioxide and ammonia mostly F, G and K
 stars. A strong wind makes the storm up to 3 levels stronger, so an argon or nitrogen world by an M star storms more
-often than a carbon dioxide one by an F star.
+often than a carbon dioxide one by an F star; the substorms follow that stronger level too. Substorms come in over
+levels 2.5 to 3.5, and a substorm's dance falls off over a few minutes as it recovers: nothing brightens or stops
+in a frame. The rays keep their places along the oval as the arcs fold and move, and nothing breaks where the oval
+closes at noon.
 
 **When.** The level is drawn for each 3 hours of UTC and the planet: 0-2 six times in ten, 3-4 three, 5-6 about one,
 7-9 rarely (3 in 100); the last 20 minutes go over to the next. From level 3 substorms come every 1.5-3 hours (the

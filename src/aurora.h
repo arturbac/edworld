@@ -58,11 +58,14 @@ namespace edworld
   ///\brief how active the star is for its class, read off the red over green of its light in the game (VS b1 row 293,
   /// one value per class: M 1.044, K 1.032, G 1.012, F 1.003, A and hotter 0.982, brown dwarfs 0.67..2.43, median
   /// 2.04; 80 planets 2026-11-15), the bounds half way between: brown dwarfs 0.3, M 1, K 0.6, G 0.5, F 0.3, hotter
-  /// 0.1 (no convective envelope). clouds3d.hlsl works the same out of the light itself
+  /// 0.1 (no convective envelope). A brown dwarf's light is also bluer than any star's (2026-11-18, the same table: T and
+  /// Y 1.477 and 1.526 blue over green, A 1.061 the most of M..A, a neutron star 1.192): one of red 0.67 counts as a dwarf
+  /// by its blue (a planet by a Y dwarf lit by the system's G star shows the G star's light, and counts as G).
+  /// clouds3d.hlsl works the same out of the light itself
   [[nodiscard]]
-  constexpr auto aurora_star_activity(float red_over_green) noexcept -> float
+  constexpr auto aurora_star_activity(float red_over_green, float blue_over_green) noexcept -> float
     {
-    if(red_over_green >= 1.5f)
+    if(red_over_green >= 1.5f or blue_over_green >= 1.3f)
       return 0.3f;
     if(red_over_green >= 1.038f)
       return 1.f;
@@ -79,10 +82,20 @@ namespace edworld
   /// weakly (the game squeezes it: about the flux to the power 0.14), so within 0.5..2 of the level 468 the light has
   /// at the Earth's flux
   [[nodiscard]]
-  inline auto aurora_star_wind(float red_over_green, float green) noexcept -> float
+  inline auto aurora_star_wind(float red_over_green, float blue_over_green, float green) noexcept -> float
     {
     float const level{std::sqrt((green > 0.f ? green : 0.f) / 468.f)};
-    return aurora_star_activity(red_over_green) * (level < 0.5f ? 0.5f : level > 2.f ? 2.f : level);
+    return aurora_star_activity(red_over_green, blue_over_green) * (level < 0.5f ? 0.5f : level > 2.f ? 2.f : level);
+    }
+
+  ///\brief the storm's level as the aurora has it: a strong star's wind adds up to 3 (one place for the CPU's
+  /// substorms and the shader's oval, 2026-11-17 audit C14)
+  [[nodiscard]]
+  inline auto aurora_level_with_wind(float level, float wind) noexcept -> float
+    {
+    float const push{(wind - 0.6f) / 1.4f};
+    float const added{3.f * (push < 0.f ? 0.f : push > 1.f ? 1.f : push)};
+    return level + added > 9.f ? 9.f : level + added;
     }
 
   inline auto aurora_unit(std::uint64_t & state) noexcept -> float
@@ -167,10 +180,11 @@ namespace edworld
   /// km (0.032 Pa / 9.81 m/s2 a square metre), the air taken as at the surface's temperature all the way up, z = H
   /// ln(p0 / (column g)), H = R T / (M g), from the radius and the kind's typical planet (the Earth itself gives 126 km
   /// so). Within 20 km .. 1000 km and half the radius (past them the model fails: a small warm planet's air would
-  /// reach thousands of km), and never under the kind's clouds' top + 2 km; the ceiling three times as high (the
-  /// Earth's 100 to 300 km). An unknown kind: the Earth's 100 / 300 km
+  /// reach thousands of km), and never under the kind's clouds' top + 2 km, their top as storms raise it (`tower`: the
+  /// layer `tower` times as high, 2 on a planet with storms); the ceiling three times as high (the Earth's 100 to 300
+  /// km). An unknown kind: the Earth's 100 / 300 km
   [[nodiscard]]
-  inline auto aurora_height(atmosphere_kind_e kind, float radius_m) noexcept -> aurora_height_t
+  inline auto aurora_height(atmosphere_kind_e kind, float radius_m, float tower = 1.f) noexcept -> aurora_height_t
     {
     if(not(radius_m > 0.f))
       return {};
@@ -185,7 +199,9 @@ namespace edworld
       float const aurora_pa{0.032f / 9.81f * g};
       foot_m = a.surface_pa > aurora_pa ? scale_m * std::log(a.surface_pa / aurora_pa) : 0.f;
       foot_m = std::clamp(foot_m, 20e3f, std::max(20e3f, std::min(1000e3f, 0.5f * radius_m)));
-      foot_m = std::max(foot_m, atmosphere_clouds(kind, 1.f).top * radius_m + 2e3f);
+      atmosphere_clouds_t const clouds{atmosphere_clouds(kind, 1.f)};
+      float const top{clouds.bottom + (clouds.top - clouds.bottom) * (tower > 1.f ? tower : 1.f)};
+      foot_m = std::max(foot_m, top * radius_m + 2e3f);
       }
     return {foot_m / radius_m, 3.f * foot_m / radius_m};
     }
@@ -232,8 +248,9 @@ namespace edworld
   [[nodiscard]]
   inline auto aurora_substorm(float level, float period_s, double utc_s, std::uint64_t seed) noexcept -> aurora_substorm_t
     {
-    if(level < 3.f or not(period_s > 0.f))
-      return {1.f, 0.15f * level / 9.f, 0.f};
+    aurora_substorm_t const quiet{1.f, 0.15f * level / 9.f, 0.f};
+    if(level <= 2.5f or not(period_s > 0.f))
+      return quiet;
     double const offset{static_cast<double>(seed % 100000u)};
     float const phase{static_cast<float>(std::fmod(utc_s + offset, static_cast<double>(period_s)) / static_cast<double>(period_s))};
     auto const smooth{[](float a, float b, float x) noexcept -> float
@@ -253,12 +270,15 @@ namespace edworld
       s = {2.5f - 0.5f * smooth(0.42f, 0.6f, phase), 1.f, 3.f * smooth(0.42f, 0.6f, phase)};
     else
       {
+      // the dance falls to 0.4 within the first 3% of the recovery, never in one frame, then to the quiet sky's
       float const f{smooth(0.6f, 1.f, phase)};
-      s = {2.f - 1.f * f, 0.4f - 0.25f * f, 3.f - 3.f * f};
+      s = {2.f - 1.f * f, 1.f - 0.6f * smooth(0.6f, 0.63f, phase) - 0.25f * f, 3.f - 3.f * f};
       }
     // a weak storm dances less: three quarters of it at K 4, all from K 6
     float const strong{(level + 2.f) / 8.f};
     s.dance *= strong < 1.f ? strong : 1.f;
-    return s;
+    // from a quiet sky into substorms over K 2.5..3.5, so a level passing 3 brightens nothing in one frame (C10)
+    float const in{smooth(2.5f, 3.5f, level)};
+    return {quiet.bright + (s.bright - quiet.bright) * in, quiet.dance + (s.dance - quiet.dance) * in, s.shift * in};
     }
   }  // namespace edworld

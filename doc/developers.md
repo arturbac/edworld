@@ -507,7 +507,8 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   sphere reaches the ceiling while there is an aurora. `clouds3d.hlsl`: `ps_main` adds `aurora_along` to
   `clouds_along` (the old body, whose misses return 0 instead of discarding), times 1 - the clouds' cover when the eye
   is under the clouds' top; `aurora_along` marches the shell's part before the floor and the part past it (none when
-  the planet stands between), 32 steps near, 16 far, ending at the scene; `aurora_glow` the oval about the dipole
+  the planet stands between), 64 steps near (from in or near the shell, where the thin curtains stand close), 16 far,
+  ending at the scene; `aurora_glow` the oval about the dipole
   with the angle from midnight (the seam of what is noised along it falls at noon), up to three arcs (`aurora_arc`:
   width, foot and height by the arc's brightness there; the second from level 3, the third while the dance is over
   0.7 from level 6; `aurora_lit` and the rays only where the point is within 2.5 times the arc's widest of it), each lit where its own noise (`aurora_lit`, about 10-20 parts round the oval) passes the gaps' threshold, each

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **The aurora steadier:** its rays keep their places as the arcs fold (they ran along them at tens of km/s), no
+  seam where the oval closes at noon, substorms come in over levels 2.5 to 3.5 and their dance falls off smoothly,
+  the flicker keeps its beat after hours, it stands over the clouds that storms raise, a strong star's wind raises the
+  level for the substorms as for the oval, a planet with no field of its own glows the same in a storm, and a brown
+  dwarf whose light is red-poor is told by its blue.
 - **Storms and the aurora wait for the planet's day** (read about half a minute near the planet) and then come in over
   four seconds, instead of standing on the kind's typical day first and jumping once it is read.
 - **Two atmospheres in view keep their own kinds.** Each planet read keeps its kind and its day; the clouds, the snow

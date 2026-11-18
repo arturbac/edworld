@@ -846,11 +846,17 @@ namespace
     check(colours and aurora_colours(atmosphere_kind_e::oxygen).low[1] == 1.f and aurora_colours(atmosphere_kind_e::oxygen).high[0] == 1.f
             and aurora_colours(atmosphere_kind_e::neon_rich).edge[0] == 1.f and aurora_colours(atmosphere_kind_e::neon).edge[0] == 0.f,
           "aurora: every kind its colours and a yield, oxygen green low and red high, the Rich nitrogen kinds' pink edge; none unknown");
-    check(aurora_star_activity(2.04f) == 0.3f and aurora_star_activity(1.044f) == 1.f and aurora_star_activity(1.032f) == 0.6f
-            and aurora_star_activity(1.012f) == 0.5f and aurora_star_activity(1.003f) == 0.3f and aurora_star_activity(0.982f) == 0.1f
-            and std::fabs(aurora_star_wind(1.044f, 468.f) - 1.f) < 1e-6f and aurora_star_wind(1.044f, 1.f) == 0.5f
-            and aurora_star_wind(1.044f, 1e6f) == 2.f,
+    // the light of each class as the game gives it (2026-11-15 table, 80 planets): red and blue over green
+    check(aurora_star_activity(2.0402f, 1.4771f) == 0.3f and aurora_star_activity(2.4311f, 1.f) == 0.3f
+            and aurora_star_activity(1.044f, 0.9673f) == 1.f and aurora_star_activity(1.032f, 1.0041f) == 0.6f
+            and aurora_star_activity(1.0119f, 0.9801f) == 0.5f and aurora_star_activity(1.003f, 0.9587f) == 0.3f
+            and aurora_star_activity(0.9822f, 1.0612f) == 0.1f and aurora_star_activity(0.9141f, 1.1917f) == 0.1f
+            and std::fabs(aurora_star_wind(1.044f, 0.9673f, 468.f) - 1.f) < 1e-6f and aurora_star_wind(1.044f, 0.9673f, 1.f) == 0.5f
+            and aurora_star_wind(1.044f, 0.9673f, 1e6f) == 2.f,
           "aurora: the star's class off its light's red over green as measured, its level within 0.5..2");
+    check(aurora_star_activity(0.6737f, 1.5259f) == 0.3f, "aurora: a Y dwarf of red 0.67 a dwarf by its blue (C18)");
+    check(aurora_level_with_wind(2.f, 0.6f) == 2.f and aurora_level_with_wind(2.f, 2.f) == 5.f and aurora_level_with_wind(8.f, 2.f) == 9.f,
+          "aurora: the star's wind adds up to 3 to the level, at most 9 (C14)");
     bool heights{true};
     for(std::size_t k{1u}; k != 16u; ++k)
       for(float r{300e3f}; r < 8000e3f; r *= 1.5f)
@@ -919,6 +925,26 @@ namespace
     check(calm.bright == 1.f and calm.shift == 0.f and calm.dance < 0.1f and most_bright <= 2.5f and most_bright > 2.f
             and most_dance == 1.f and changes_slowly and aurora_substorm(4.f, 7200.f, 1.8e9 + 0.5 * 7200., 3u).dance <= 0.75f,
           "aurora: no substorm under K 3; in one the whole aurora at most 2.5 times as bright and never by more than 5% a second, the dance less at K 4");
+    // C10: no jump as the level passes 3, nor as a substorm's expansion ends (its dance at a hundredth of the period)
+    bool smooth_level{true}, smooth_dance{true};
+    for(int s{}; s != 7200; s += 30)
+      {
+      auto const below{aurora_substorm(2.99f, 7200.f, 1.8e9 + s, 3u)};
+      auto const above{aurora_substorm(3.01f, 7200.f, 1.8e9 + s, 3u)};
+      smooth_level = smooth_level and std::fabs(above.bright - below.bright) < 0.05f and std::fabs(above.dance - below.dance) < 0.05f;
+      }
+    float last_dance{aurora_substorm(6.f, 7200.f, 1.8e9, 3u).dance};
+    for(int s{1}; s != 7200; ++s)
+      {
+      float const dance{aurora_substorm(6.f, 7200.f, 1.8e9 + s, 3u).dance};
+      smooth_dance = smooth_dance and std::fabs(dance - last_dance) < 0.02f;
+      last_dance = dance;
+      }
+    check(smooth_level and smooth_dance, "aurora: the substorms come in over K 2.5..3.5, the dance never jumps (C10)");
+    auto const towered{aurora_height(atmosphere_kind_e::neon, 5400e3f, 2.f)};
+    atmosphere_clouds_t const neon_clouds{atmosphere_clouds(atmosphere_kind_e::neon, 1.f)};
+    check(towered.floor * 5400e3f >= (neon_clouds.bottom + 2.f * (neon_clouds.top - neon_clouds.bottom)) * 5400e3f + 2e3f - 1.f,
+          "aurora: over the clouds' top as the storms raise it (C17)");
     auto const small_co2{atmosphere_lumps(atmosphere_kind_e::carbon_dioxide, 563e3f)};
     auto const neon_lumps{atmosphere_lumps(atmosphere_kind_e::neon, 5435e3f)};
     auto const helium_lumps{atmosphere_lumps(atmosphere_kind_e::helium, 7711e3f)};
