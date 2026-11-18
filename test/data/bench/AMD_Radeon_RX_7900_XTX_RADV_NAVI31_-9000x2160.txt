@@ -1,0 +1,17 @@
+edworld bench 20261118T173849Z, v1.2.0-beta.13-15-gbdab267-dirty, 9000x2160, DXVK v3.10
+bench gpu: card AMD Radeon RX 7900 XTX (RADV NAVI31) (vendor 1002 device 744C)
+bench gpu: IY-B_c16-6_1_co2 orbit_day_2R 9000x2160: median 2.123 ms, min 1.989 ms, 2.63 M pixels in the volume pass
+bench gpu: IY-B_c16-6_1_co2 orbit_night_2R_k7 9000x2160: median 2.456 ms, min 2.286 ms, 2.71 M pixels in the volume pass
+bench gpu: IY-B_c16-6_1_co2 inside_day 9000x2160: median 10.665 ms, min 10.246 ms, 4.86 M pixels in the volume pass
+bench gpu: IY-B_c16-6_1_co2 orbit_day_2R_no_aurora 9000x2160: median 1.844 ms, min 1.726 ms, 2.08 M pixels in the volume pass
+bench gpu: IY-B_c16-6_1_co2 orbit_night_2R_no_aurora 9000x2160: median 1.735 ms, min 1.575 ms, 2.09 M pixels in the volume pass
+bench gpu: IY-B_c16-6_1_co2 inside_aurora_k7 9000x2160: median 14.692 ms, min 14.222 ms, 4.86 M pixels in the volume pass
+bench gpu: IY-B_c16-6_1_co2 inside_aurora_no_aurora 9000x2160: median 1.182 ms, min 1.115 ms, 0.82 M pixels in the volume pass
+bench gpu: PW-D_b32-6_2_argon orbit_day_2R 9000x2160: median 1.188 ms, min 1.121 ms, 2.46 M pixels in the volume pass
+bench gpu: PW-D_b32-6_2_argon orbit_night_2R_k7 9000x2160: median 1.784 ms, min 1.662 ms, 2.52 M pixels in the volume pass
+bench gpu: PW-D_b32-6_2_argon inside_day 9000x2160: median 9.212 ms, min 8.906 ms, 4.86 M pixels in the volume pass
+bench gpu: PW-D_b32-6_2_argon orbit_day_2R_no_aurora 9000x2160: median 0.934 ms, min 0.867 ms, 1.90 M pixels in the volume pass
+bench gpu: PW-D_b32-6_2_argon orbit_night_2R_no_aurora 9000x2160: median 1.098 ms, min 1.016 ms, 1.91 M pixels in the volume pass
+bench gpu: PW-D_b32-6_2_argon inside_aurora_k7 9000x2160: median 8.131 ms, min 7.840 ms, 4.86 M pixels in the volume pass
+bench gpu: PW-D_b32-6_2_argon inside_aurora_no_aurora 9000x2160: median 0.845 ms, min 0.790 ms, 0.51 M pixels in the volume pass
+bench cpu: a draw (VSSetShader + DrawIndexed) 0.319 us through edworld, 0.123 us without it, edworld 0.196 us

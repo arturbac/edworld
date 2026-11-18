@@ -632,6 +632,7 @@ the log is `git describe` of the tree, taken at each build. `EDWORLD_TESTS` (on)
 | `cmake/clang-cl-msvc-sdk.cmake`, `cmake/version.cmake` | the toolchain (clang-cl with MSVC's and the Windows SDK's headers and libraries), the version from `git describe` |
 | `tools/d3d11_exports.txt`, `tools/gen_exports_from_list.py` | the Windows d3d11 export names, and the run of EDVR's generator on them |
 | `tools/test.sh <build dir> <scratch>` | smoke test under wine without the game, both builds (each as `d3d11.dll`), plain and chained, patch and list pixels checked, EDSM's answer read from a saved one (`test/data/`), the shaders' catalog written (edworld_eht), game shaders' shapes read when `EDWORLD_SHADER_SAMPLE` names `.dxbc` files, `doc/settings.md` compared with the one edworld_eht makes from its table of settings (`EDWORLD_SETTINGS_DOC`; on a difference it prints the `cp` that brings the doc up to date), and the render test (below) (environment: `EDWORLD_WINEPREFIX`) |
+| `tools/bench.sh <build dir> <scratch> [<w> <h>]`, `test/data/bench/` | the cost without the game: the clouds' pass per scene under DXVK, a draw through edworld on the render thread; compared with the card's reference (see "Cost in the game and the bench") |
 | `test/render_test.cc`, `src/clouds_values.h`, `test/data/render/` | the render test: the clouds' volume shader drawn with the system d3d11 (no edworld in its folder) into a 320x160 float target for six kinds (Neon, Ammonia, CarbonDioxide, Argon, Methane, Water) from orbit by day, by night at K 7, K 3 and with no field (shown 40 times brighter), at the limb, inside the layer and, for the two that snow, on the ground; its buffer made by `clouds_values`, the same function the game's draw uses. Checked by numbers (no NaN, clouds on the disc, no aurora by day, the aurora by night and stronger at K 7 than K 3, the next frame close, the snow) and against the reference pictures (a mean difference under 1.5 of 255, under 0.5% of channels off by more than 24); `EDWORLD_RENDER_UPDATE=1 tools/test.sh ...` makes the references again, after the pictures were looked at. `render_test.exe <out> [<reference>] --shaders <dir>` draws with another build's `clouds3d_vs.cso`/`clouds3d_ps.cso` (fxc `/Fo`), to compare |
 | `tools/edworld_watch.py [path]` | live view of the shared file |
 | `tools/dump_to_png.py <dir>` | surface dumps to PNG |
@@ -737,6 +738,28 @@ default `/dev/shm/eht`).
    ONE / INV_SRC_ALPHA, RGB only, as the list does.
 10. **2026-10-05, the same, mip LOD bias -0.5 and list_gain 0.8.** Sharper, less glow; accepted as good at the
     game's supersampling of 0.77 (the list shown at about 0.7 of its texture).
+
+## Cost in the game and the bench
+
+`tools/bench.sh <build dir> <scratch> [<width> <height>]` measures edworld without the game: the clouds' volume pass
+under DXVK (its `d3d11.dll` and `dxgi.dll` from a game prefix, `EDWORLD_DXVK_DIR`) for the scenes of two planets,
+and the render thread's cost of a draw through edworld (`test_app.exe`, `EDWORLD_TEST_BENCH`). Each scene's median
+is compared with `test/data/bench/<card>-<width>x<height>.txt` (more than 15% slower: FAIL); `EDWORLD_BENCH_UPDATE=1`
+writes it again.
+
+The bench against the game (2026-11-18, RX 7900 XTX, DXVK, 9000x2160 at a 60 fps limit, Bleia Eohn IY-B c16-6 1,
+CarbonDioxide, radius 3687 km, `aurora_activity = 7`; the game's numbers are the `clouds gpu 5s` medians):
+
+| scene | the game, ms | the bench, ms | game / bench | of a 16.7 ms frame |
+|---|---|---|---|---|
+| orbit, by day | 1.4 | 2.1 | 0.67 | 8% |
+| orbit, by night | 1.0 | 2.5 | 0.41 | 6% |
+| inside the layer | 5.3 | 10.7 | 0.50 | 32% |
+| inside the aurora | 6.3 (2.3 with `aurora = 0`) | 14.7 (1.2) | 0.43 | 38% |
+
+The bench's scenes stand where the game's were only roughly (the game's heights are not logged), so the bench gives
+an upper bound: the game costs 0.4 to 0.7 of it. The aurora seen from inside it is the dearest part (about 4 ms in
+the game); the 60 fps held in every scene. A draw through edworld costs the render thread about 0.2 us.
 
 ## Not known yet
 

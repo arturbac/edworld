@@ -1877,6 +1877,78 @@ int main()
   if(FAILED(hr))
     return 2;
 
+  // EDWORLD_TEST_BENCH (tools/bench.sh): what edworld's hooks cost the game's render thread a draw - the same
+  // VSSetShader and DrawIndexed of a shader edworld does not watch, through edworld and on a device made past it (the
+  // system copy by its path), the difference a draw in microseconds; then the program ends
+  if(GetEnvironmentVariableW(L"EDWORLD_TEST_BENCH", nullptr, 0))
+    {
+    wchar_t sys[MAX_PATH]{};
+    GetSystemDirectoryW(sys, MAX_PATH);
+    HMODULE const system_d3d11{LoadLibraryW((std::wstring{sys} + L"\\d3d11.dll").c_str())};
+    auto const system_create{
+      system_d3d11 ? reinterpret_cast<decltype(&D3D11CreateDevice)>(GetProcAddress(system_d3d11, "D3D11CreateDevice")) : nullptr};
+    ID3D11Device * bare_dev{};
+    ID3D11DeviceContext * bare_ctx{};
+    if(system_create)
+      system_create(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &bare_dev, nullptr, &bare_ctx);
+    auto const per_draw{[](ID3D11Device * d, ID3D11DeviceContext * c) -> double
+                          {
+                            ID3D11VertexShader * vs{};
+                            ID3D11PixelShader * ps{};
+                            d->CreateVertexShader(g_other_vs, sizeof g_other_vs, nullptr, &vs);
+                            d->CreatePixelShader(g_panel_ps, sizeof g_panel_ps, nullptr, &ps);
+                            D3D11_TEXTURE2D_DESC td{};
+                            td.Width = td.Height = 16;
+                            td.MipLevels = td.ArraySize = 1;
+                            td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+                            td.SampleDesc.Count = 1;
+                            td.BindFlags = D3D11_BIND_RENDER_TARGET;
+                            ID3D11Texture2D * tex{};
+                            ID3D11RenderTargetView * rtv{};
+                            d->CreateTexture2D(&td, nullptr, &tex);
+                            if(tex)
+                              d->CreateRenderTargetView(tex, nullptr, &rtv);
+                            std::uint16_t const indices[3]{0, 1, 2};
+                            D3D11_BUFFER_DESC bd{};
+                            bd.ByteWidth = sizeof indices;
+                            bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+                            D3D11_SUBRESOURCE_DATA init{indices, 0, 0};
+                            ID3D11Buffer * ib{};
+                            d->CreateBuffer(&bd, &init, &ib);
+                            D3D11_VIEWPORT const port{0.f, 0.f, 16.f, 16.f, 0.f, 1.f};
+                            c->OMSetRenderTargets(1, &rtv, nullptr);
+                            c->RSSetViewports(1, &port);
+                            c->IASetIndexBuffer(ib, DXGI_FORMAT_R16_UINT, 0);
+                            c->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+                            c->PSSetShader(ps, nullptr, 0);
+                            constexpr int draws{200000};
+                            double best{1e30};
+                            for(int round{}; round != 5; ++round)
+                              {
+                              LARGE_INTEGER f{}, a{}, b{};
+                              QueryPerformanceFrequency(&f);
+                              QueryPerformanceCounter(&a);
+                              for(int i{}; i != draws; ++i)
+                                {
+                                c->VSSetShader(vs, nullptr, 0);
+                                c->DrawIndexed(3, 0, 0);
+                                }
+                              c->Flush();
+                              QueryPerformanceCounter(&b);
+                              best = std::min(best, double(b.QuadPart - a.QuadPart) * 1e6 / double(f.QuadPart) / draws);
+                              }
+                            for(IUnknown * u: std::initializer_list<IUnknown *>{ib, rtv, tex, ps, vs})
+                              if(u)
+                                u->Release();
+                            return best;
+                          }};
+    double const through{per_draw(dev, ctx)};
+    double const bare{bare_dev ? per_draw(bare_dev, bare_ctx) : 0.0};
+    std::printf("bench cpu: a draw (VSSetShader + DrawIndexed) %.3f us through edworld, %.3f us without it, edworld %.3f us\n",
+                through, bare, through - bare);
+    return bare_dev ? 0 : 1;
+    }
+
   // an overlay makes a device of its own after the game's (overlay\test_foreign.dll, beside by tools/test.sh): edworld
   // must stay with the game's device, the panels below are drawn on it
   using foreign_fn = HRESULT (*)();

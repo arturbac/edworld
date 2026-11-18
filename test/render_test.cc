@@ -7,6 +7,7 @@
 // Usage: render_test.exe <out dir> [<reference dir>] [--update] [--shaders <dir>]; exit 0 when all checks pass
 #include <windows.h>
 #include <d3d11.h>
+#include <dxgi.h>
 #include <wincodec.h>
 
 #include "blue_noise.h"
@@ -15,6 +16,8 @@
 
 #include "clouds3d_ps.h"
 #include "clouds3d_vs.h"
+#include "clouds_up_ps.h"
+#include "clouds_up_vs.h"
 
 #include <algorithm>
 #include <array>
@@ -229,8 +232,9 @@ namespace
     return g;
     }
 
-  ///\brief the scene drawn: premultiplied colour and cover, width x height x 4 floats
-  auto draw(gpu_t const & g, scene_t const & s) -> std::vector<float>
+  ///\brief the scene's constants written and the volume's pipeline bound, for a picture view_w x view_h (pixel: 2
+  /// when the volume is drawn at half size, as in the game); the target, the viewport and t0 are the caller's
+  auto set_scene(gpu_t const & g, scene_t const & s, UINT view_w, UINT view_h, float pixel) -> void
     {
     float const r{s.radius};
     vec_t const eye{s.eye * r};
@@ -242,7 +246,7 @@ namespace
     vec_t const right{normalized(cross(up_hint, forward))};
     vec_t const up{cross(forward, right)};
     float const sy{1.f / std::tan(0.5f * 1.0471976f)};  // 60 degrees high
-    float const sx{sy * static_cast<float>(height) / static_cast<float>(width)};
+    float const sx{sy * static_cast<float>(view_h) / static_cast<float>(view_w)};
 
     // the game's object constants: rows 9..11 the sphere turned (none here), scaled to the radius and placed from the eye
     std::array<float, 13 * 4> object{};
@@ -292,7 +296,8 @@ namespace
     clouds_frame_t now{};
     now.seconds = s.seconds;
     now.flicker_s = s.seconds;
-    now.port_width = static_cast<float>(width);
+    now.port_width = static_cast<float>(view_w);
+    now.pixel = pixel;
     if(s.snow)
       {
       // on foot, under the clouds: the crystals of the kind, the eye still at its reference
@@ -308,11 +313,6 @@ namespace
     g.ctx->UpdateSubresource(g.object, 0, nullptr, object.data(), 0, 0);
     g.ctx->UpdateSubresource(g.frame, 0, nullptr, frame.data(), 0, 0);
     g.ctx->UpdateSubresource(g.clouds, 0, nullptr, values.data(), 0, 0);
-    float const clear[4]{};
-    g.ctx->ClearRenderTargetView(g.rtv, clear);
-    g.ctx->OMSetRenderTargets(1, &g.rtv, nullptr);
-    D3D11_VIEWPORT const port{0.f, 0.f, static_cast<float>(width), static_cast<float>(height), 0.f, 1.f};
-    g.ctx->RSSetViewports(1, &port);
     g.ctx->RSSetState(g.raster);
     g.ctx->OMSetDepthStencilState(g.no_depth, 0);
     g.ctx->OMSetBlendState(nullptr, nullptr, 0xffffffffu);
@@ -328,8 +328,19 @@ namespace
     g.ctx->PSSetConstantBuffers(0, 2, buffers);
     g.ctx->VSSetConstantBuffers(4, 1, &g.clouds);
     g.ctx->PSSetConstantBuffers(4, 1, &g.clouds);
-    g.ctx->PSSetShaderResources(0, 1, &g.depth);
     g.ctx->PSSetShaderResources(2, 1, &g.noise);
+    }
+
+  ///\brief the scene drawn: premultiplied colour and cover, width x height x 4 floats
+  auto draw(gpu_t const & g, scene_t const & s) -> std::vector<float>
+    {
+    set_scene(g, s, width, height, 1.f);
+    float const clear[4]{};
+    g.ctx->ClearRenderTargetView(g.rtv, clear);
+    g.ctx->OMSetRenderTargets(1, &g.rtv, nullptr);
+    D3D11_VIEWPORT const port{0.f, 0.f, static_cast<float>(width), static_cast<float>(height), 0.f, 1.f};
+    g.ctx->RSSetViewports(1, &port);
+    g.ctx->PSSetShaderResources(0, 1, &g.depth);
     g.ctx->DrawIndexed(g.index_count, 0, 0);
     g.ctx->CopyResource(g.staging, g.target);
     std::vector<float> out(width * height * 4u, 0.f);
@@ -452,6 +463,152 @@ namespace
     return ok;
     }
 
+
+  ///\brief the time on the graphics card of the clouds as the game's draw does them (hooks.cc draw_volume): the copy
+  /// of the picture's depth, the volume at half size into a cleared target, then laid over the picture full size; the
+  /// median over `frames` after a few unmeasured, in ms, and the volume pass's pixels (millions), as `clouds gpu 5s`
+  struct bench_t
+    {
+    double median_ms{}, min_ms{}, megapixels{};
+    };
+
+  auto bench(gpu_t const & g, scene_t const & s, UINT full_w, UINT full_h, int frames) -> bench_t
+    {
+    bench_t result{};
+    UINT const half_w{full_w / 2u}, half_h{full_h / 2u};
+    auto const texture{[&](UINT w, UINT h, DXGI_FORMAT f, UINT bind) -> ID3D11Texture2D *
+                         {
+                           D3D11_TEXTURE2D_DESC d{};
+                           d.Width = w;
+                           d.Height = h;
+                           d.MipLevels = d.ArraySize = 1;
+                           d.Format = f;
+                           d.SampleDesc.Count = 1;
+                           d.BindFlags = bind;
+                           ID3D11Texture2D * tex{};
+                           g.device->CreateTexture2D(&d, nullptr, &tex);
+                           return tex;
+                         }};
+    // the picture's depth: nothing in front (reversed depth, 0 = far), as the render test's
+    ID3D11Texture2D * depth_src{};
+    {
+    D3D11_TEXTURE2D_DESC d{};
+    d.Width = full_w;
+    d.Height = full_h;
+    d.MipLevels = d.ArraySize = 1;
+    d.Format = DXGI_FORMAT_R32_FLOAT;
+    d.SampleDesc.Count = 1;
+    d.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    std::vector<float> zero(static_cast<std::size_t>(full_w) * full_h, 0.f);
+    D3D11_SUBRESOURCE_DATA init{zero.data(), static_cast<UINT>(full_w * sizeof(float)), 0};
+    g.device->CreateTexture2D(&d, &init, &depth_src);
+    }
+    ID3D11Texture2D * const depth_copy{texture(full_w, full_h, DXGI_FORMAT_R32_FLOAT, D3D11_BIND_SHADER_RESOURCE)};
+    ID3D11Texture2D * const half{texture(half_w, half_h, DXGI_FORMAT_R16G16B16A16_FLOAT, D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE)};
+    ID3D11Texture2D * const full{texture(full_w, full_h, DXGI_FORMAT_R16G16B16A16_FLOAT, D3D11_BIND_RENDER_TARGET)};
+    ID3D11ShaderResourceView * depth_view{};
+    ID3D11ShaderResourceView * half_view{};
+    ID3D11RenderTargetView * half_rtv{};
+    ID3D11RenderTargetView * full_rtv{};
+    ID3D11VertexShader * up_vs{};
+    ID3D11PixelShader * up_ps{};
+    ID3D11BlendState * over{};
+    if(depth_copy)
+      g.device->CreateShaderResourceView(depth_copy, nullptr, &depth_view);
+    if(half)
+      {
+      g.device->CreateShaderResourceView(half, nullptr, &half_view);
+      g.device->CreateRenderTargetView(half, nullptr, &half_rtv);
+      }
+    if(full)
+      g.device->CreateRenderTargetView(full, nullptr, &full_rtv);
+    g.device->CreateVertexShader(g_clouds_up_vs, sizeof g_clouds_up_vs, nullptr, &up_vs);
+    g.device->CreatePixelShader(g_clouds_up_ps, sizeof g_clouds_up_ps, nullptr, &up_ps);
+    D3D11_BLEND_DESC blend{};
+    blend.RenderTarget[0].BlendEnable = TRUE;
+    blend.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
+    blend.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+    blend.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+    blend.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ZERO;
+    blend.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
+    blend.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    blend.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    g.device->CreateBlendState(&blend, &over);
+    ID3D11Query * disjoint{};
+    ID3D11Query * begin{};
+    ID3D11Query * end{};
+    ID3D11Query * stats{};
+    D3D11_QUERY_DESC q{};
+    q.Query = D3D11_QUERY_TIMESTAMP_DISJOINT;
+    g.device->CreateQuery(&q, &disjoint);
+    q.Query = D3D11_QUERY_TIMESTAMP;
+    g.device->CreateQuery(&q, &begin);
+    g.device->CreateQuery(&q, &end);
+    q.Query = D3D11_QUERY_PIPELINE_STATISTICS;
+    g.device->CreateQuery(&q, &stats);
+    bool const ready{depth_src and depth_view and half_rtv and half_view and full_rtv and up_vs and up_ps and over and disjoint and begin
+                     and end and stats};
+    std::vector<double> times;
+    for(int i{}; ready and i != frames + 10; ++i)
+      {
+      g.ctx->Begin(disjoint);
+      g.ctx->End(begin);
+      // the volume: the depth copied, the half target cleared and marched into
+      g.ctx->CopyResource(depth_copy, depth_src);
+      float const clear[4]{};
+      g.ctx->ClearRenderTargetView(half_rtv, clear);
+      set_scene(g, s, full_w, full_h, 2.f);
+      g.ctx->OMSetRenderTargets(1, &half_rtv, nullptr);
+      D3D11_VIEWPORT const half_port{0.f, 0.f, static_cast<float>(half_w), static_cast<float>(half_h), 0.f, 1.f};
+      g.ctx->RSSetViewports(1, &half_port);
+      g.ctx->PSSetShaderResources(0, 1, &depth_view);
+      g.ctx->Begin(stats);
+      g.ctx->DrawIndexed(g.index_count, 0, 0);
+      g.ctx->End(stats);
+      // then over the picture: one triangle from the vertex's number
+      g.ctx->OMSetRenderTargets(1, &full_rtv, nullptr);
+      D3D11_VIEWPORT const full_port{0.f, 0.f, static_cast<float>(full_w), static_cast<float>(full_h), 0.f, 1.f};
+      g.ctx->RSSetViewports(1, &full_port);
+      g.ctx->IASetInputLayout(nullptr);
+      g.ctx->VSSetShader(up_vs, nullptr, 0);
+      g.ctx->PSSetShader(up_ps, nullptr, 0);
+      g.ctx->PSSetShaderResources(1, 1, &half_view);
+      g.ctx->OMSetBlendState(over, nullptr, 0xffffffffu);
+      g.ctx->Draw(3, 0);
+      ID3D11ShaderResourceView * const none[2]{};
+      g.ctx->PSSetShaderResources(0, 2, none);
+      g.ctx->End(end);
+      g.ctx->End(disjoint);
+      D3D11_QUERY_DATA_TIMESTAMP_DISJOINT dj{};
+      UINT64 a{}, b{};
+      D3D11_QUERY_DATA_PIPELINE_STATISTICS ps{};
+      while(g.ctx->GetData(disjoint, &dj, sizeof dj, 0) != S_OK)
+        Sleep(0);
+      while(g.ctx->GetData(begin, &a, sizeof a, 0) != S_OK)
+        Sleep(0);
+      while(g.ctx->GetData(end, &b, sizeof b, 0) != S_OK)
+        Sleep(0);
+      while(g.ctx->GetData(stats, &ps, sizeof ps, 0) != S_OK)
+        Sleep(0);
+      if(i >= 10 and not dj.Disjoint and dj.Frequency and b >= a)
+        {
+        times.push_back(static_cast<double>(b - a) * 1000. / static_cast<double>(dj.Frequency));
+        result.megapixels = static_cast<double>(ps.PSInvocations) / 1e6;
+        }
+      }
+    if(not times.empty())
+      {
+      std::sort(times.begin(), times.end());
+      result.median_ms = times[times.size() / 2u];
+      result.min_ms = times.front();
+      }
+    for(IUnknown * u: std::initializer_list<IUnknown *>{stats, end, begin, disjoint, over, up_ps, up_vs, full_rtv, half_rtv, half_view,
+                                                         depth_view, full, half, depth_copy, depth_src})
+      if(u)
+        u->Release();
+    return result;
+    }
+
   auto widen(std::string const & s) -> std::wstring { return std::wstring(s.begin(), s.end()); }
   }  // namespace
 
@@ -460,6 +617,7 @@ auto main(int argc, char ** argv) -> int
   std::vector<std::string> plain;
   bool update{};
   std::string shaders;
+  UINT bench_w{}, bench_h{};
   for(int i{1}; i < argc; ++i)
     {
     std::string const a{argv[i]};
@@ -467,6 +625,11 @@ auto main(int argc, char ** argv) -> int
       update = true;
     else if(a == "--shaders" and i + 1 < argc)
       shaders = argv[++i];
+    else if(a == "--bench" and i + 2 < argc)
+      {
+      bench_w = static_cast<UINT>(std::atoi(argv[++i]));
+      bench_h = static_cast<UINT>(std::atoi(argv[++i]));
+      }
     else
       plain.push_back(a);
     }
@@ -482,6 +645,59 @@ auto main(int argc, char ** argv) -> int
   check(g.device and g.vs and g.ps and g.layout and g.rtv and g.staging and g.depth and g.noise, "render: the device, the shaders and the targets made");
   if(failures)
     return 1;
+
+  if(bench_w and bench_h)
+    {
+    // tools/bench.sh: the scenes of the two planets the game's numbers are taken at (Sjona's, 2026-11-18), by day from
+    // orbit, by night (the aurora at K 7), inside the layer by day; the game's picture's size
+    struct planet_t
+      {
+      char const * name;
+      atmosphere_kind_e kind;
+      float radius;
+      };
+    IDXGIDevice * dxgi{};
+    IDXGIAdapter * adapter{};
+    DXGI_ADAPTER_DESC desc{};
+    if(SUCCEEDED(g.device->QueryInterface(__uuidof(IDXGIDevice), reinterpret_cast<void **>(&dxgi))) and dxgi
+       and SUCCEEDED(dxgi->GetAdapter(&adapter)) and adapter)
+      adapter->GetDesc(&desc);
+    std::printf("bench gpu: card %ls (vendor %04X device %04X)\n", desc.Description, desc.VendorId, desc.DeviceId);
+    if(adapter)
+      adapter->Release();
+    if(dxgi)
+      dxgi->Release();
+    planet_t const planets[]{{"IY-B_c16-6_1_co2", atmosphere_kind_e::carbon_dioxide, 3687046.f},
+                             {"PW-D_b32-6_2_argon", atmosphere_kind_e::argon, 2329626.f}};
+    for(planet_t const & p: planets)
+      {
+      atmosphere_clouds_t const c{atmosphere_clouds(p.kind, 1.f)};
+      float const inside_h{1.f + 0.5f * (c.bottom + c.top)};
+      // inside the aurora (the game's 2026-11-18 scene): by night at 63 degrees, where the oval lies at K 7, halfway up
+      // its curtains (the layer towering on a planet with storms), looking along the ground towards the pole
+      aurora_height_t const band{aurora_height(p.kind, p.radius, 2.f)};
+      float const up{1.f + 0.5f * (band.floor + band.ceiling)};
+      float const lat{63.f * 0.017453293f};
+      vec_t const in_aurora{-std::cos(lat) * up, std::sin(lat) * up, 0.f};
+      vec_t const ahead{-std::cos(lat) * up + 0.3f * std::sin(lat), std::sin(lat) * up + 0.3f * std::cos(lat), 0.f};
+      scene_t const scenes[]{
+        {.name = "orbit_day_2R", .kind = p.kind, .radius = p.radius, .eye = {2.f, 0.3f, 0.2f}, .look = {0.f, 0.f, 0.f}, .activity = 7.f},
+        {.name = "orbit_night_2R_k7", .kind = p.kind, .radius = p.radius, .eye = {-1.7f, 1.0f, 0.2f}, .look = {0.f, 0.2f, 0.f}, .activity = 7.f},
+        {.name = "inside_day", .kind = p.kind, .radius = p.radius, .eye = {inside_h, 0.f, 0.f}, .look = {inside_h, 0.05f, 0.3f}, .activity = 7.f},
+        {.name = "orbit_day_2R_no_aurora", .kind = p.kind, .radius = p.radius, .eye = {2.f, 0.3f, 0.2f}, .look = {0.f, 0.f, 0.f}, .aurora = false},
+        {.name = "orbit_night_2R_no_aurora", .kind = p.kind, .radius = p.radius, .eye = {-1.7f, 1.0f, 0.2f}, .look = {0.f, 0.2f, 0.f}, .aurora = false},
+        {.name = "inside_aurora_k7", .kind = p.kind, .radius = p.radius, .eye = in_aurora, .look = ahead, .activity = 7.f, .field = 1.f},
+        {.name = "inside_aurora_no_aurora", .kind = p.kind, .radius = p.radius, .eye = in_aurora, .look = ahead, .aurora = false},
+      };
+      for(scene_t const & s: scenes)
+        {
+        bench_t const b{bench(g, s, bench_w, bench_h, 100)};
+        std::printf("bench gpu: %s %s %ux%u: median %.3f ms, min %.3f ms, %.2f M pixels in the volume pass\n", p.name, s.name.c_str(),
+                    bench_w, bench_h, b.median_ms, b.min_ms, b.megapixels);
+        }
+      }
+    return 0;
+    }
 
   struct kind_t
     {
