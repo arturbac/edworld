@@ -1884,9 +1884,111 @@ namespace edworld
 
     ///\brief once a frame and at the shell's draw: the copies read back once the GPU has made them, kept when the planet
     /// and band are new
+    // ---- the atmosphere's thread (D10, 2026-11-18): one job at a time. The render thread fills the job from the
+    // read's copies and starts it (working); the thread does atmo_work and says done; the render thread takes the
+    // result in at its next look (atmo_apply), and only then may the next read be made
+    enum struct atmo_job_e : std::uint8_t
+      {
+      idle,
+      working,
+      done
+      };
+    struct atmo_job_t
+      {
+      float radius, distance, over;
+      LONGLONG qpc;
+      std::uint32_t width, height, format, pitch, table_bytes, band;
+      float turn_rows[9];
+      bool record;
+      char stamp[32];
+      std::uint32_t cb_bytes[8];
+      std::byte cbs[8][atmo_max_cb_bytes];
+      atmosphere_hue_t hue;  ///< the thread's result
+      ULONGLONG started;     ///< GetTickCount64 at the start
+      };
+    atmo_job_t atmo_job{};
+    std::uint8_t atmo_table_copy[2u * 1024u * 1024u];  ///< the table as read (256x512 R11G11B10: 512 KB)
+    std::atomic<atmo_job_e> atmo_job_state{atmo_job_e::idle};
+    HANDLE atmo_wake{};
+    bool atmo_thread_tried{};
+    bool atmo_thread_up{};
+
+    auto atmo_work() noexcept -> void;
+
+    auto atmo_thread_body(void *) -> DWORD
+      {
+      for(;;)
+        {
+        WaitForSingleObject(atmo_wake, INFINITE);
+        if(atmo_job_state.load(std::memory_order_acquire) != atmo_job_e::working)
+          continue;
+        atmo_work();
+        atmo_job_state.store(atmo_job_e::done, std::memory_order_release);
+        }
+      }
+
+    ///\brief the job filled: to the thread, or done here when there is no thread (it could not start)
+    auto atmo_start_job(LONGLONG) noexcept -> void
+      {
+      if(not atmo_thread_tried)
+        {
+        atmo_thread_tried = true;
+        atmo_wake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        auto const thread{[](LPVOID) -> DWORD { return run_guarded_thread("atmo", &atmo_thread_body, nullptr); }};
+        if(HANDLE const h{atmo_wake ? CreateThread(nullptr, 0, thread, nullptr, 0, nullptr) : nullptr})
+          {
+          CloseHandle(h);
+          atmo_thread_up = true;
+          }
+        else
+          log_line("atmo: no thread of its own (error %lu); the reads are worked out on the render thread", GetLastError());
+        }
+      atmo_job.started = GetTickCount64();
+      if(not atmo_thread_up)
+        {
+        atmo_work();
+        atmo_job_state.store(atmo_job_e::done, std::memory_order_release);
+        return;
+        }
+      atmo_job_state.store(atmo_job_e::working, std::memory_order_release);
+      SetEvent(atmo_wake);
+      }
+
+    ///\brief the job's result taken in, on the render thread: the planet's kind and day, the share (edworld_eht); then
+    /// the next read may come. A job the thread has not finished in 10 s (a fault in it) is dropped, said once
+    auto atmo_apply() noexcept -> void
+      {
+      atmo_job_e const state{atmo_job_state.load(std::memory_order_acquire)};
+      if(state == atmo_job_e::working)
+        {
+        if(GetTickCount64() - atmo_job.started < 10000u)
+          return;
+        static bool told{};
+        if(not told)
+          {
+          told = true;
+          log_line("atmo: a read not worked out in 10 s; dropped");
+          }
+        }
+      else if(state == atmo_job_e::done)
+        {
+        atmo_job_t const & j{atmo_job};
+        std::size_t const slot{atmo_note_kind(j.radius, j.over, j.hue)};
+        atmo_note_turn(slot, j.radius, j.turn_rows, j.qpc);
+#if defined(EDWORLD_EHT)
+        atmo_publish(j.radius, j.distance, j.hue);
+#endif
+        }
+      else
+        return;
+      atmo_job_state.store(atmo_job_e::idle, std::memory_order_release);
+      atmo_busy = false;
+      }
+
     auto atmo_drain(LONGLONG now) -> void
       {
-      if(not atmo_busy)
+      atmo_apply();
+      if(not atmo_busy or atmo_job_state.load(std::memory_order_acquire) != atmo_job_e::idle)
         return;
       atmo_pending_t & p{atmo_pending};
       // the copies are made in order: the last one done, all are
@@ -1938,16 +2040,20 @@ namespace edworld
         }
       atmo_misses = atmo_misses_t{};
       atmo_misses_since = p.qpc;
-      // the kind on every read, for the clouds; the record below once a session per planet and band
-      atmosphere_hue_t hue{};
-      D3D11_MAPPED_SUBRESOURCE tm{};
-      if(p.format == dxgi_r11g11b10_float and SUCCEEDED(ctx->Map(p.t0, 0, D3D11_MAP_READ, 0, &tm)) and tm.pData)
-        {
-        hue = atmosphere_hue(static_cast<std::uint8_t const *>(tm.pData), p.width, p.height, tm.RowPitch, atmo_hue_r,
-                             atmo_hue_b, atmo_hue_capacity);
-        ctx->Unmap(p.t0, 0);
-        }
-      std::size_t const slot{atmo_note_kind(radius, over, hue)};
+      // the work on what was read goes to the atmosphere's thread (atmo_work); here only the copies out of the mapped
+      // buffers. Its result comes back to this thread (atmo_apply), which alone keeps the planets, their days and the
+      // kind the clouds take
+      atmo_job_t & j{atmo_job};
+      j.radius = radius;
+      j.distance = distance;
+      j.over = over;
+      j.qpc = p.qpc;
+      j.width = p.width;
+      j.height = p.height;
+      j.format = p.format;
+      j.hue = atmosphere_hue_t{};
+      j.table_bytes = 0u;
+      j.pitch = 0u;
       {
       float const lr{atmo_float(p, data, 1, 293, 0)}, lg{atmo_float(p, data, 1, 293, 1)}, lb{atmo_float(p, data, 1, 293, 2)};
       if(lg > 0.f)
@@ -1962,46 +2068,73 @@ namespace edworld
       float const turn_rows[9]{atmo_float(p, data, 0, 9, 0),  atmo_float(p, data, 0, 9, 1),  atmo_float(p, data, 0, 9, 2),
                                atmo_float(p, data, 0, 10, 0), atmo_float(p, data, 0, 10, 1), atmo_float(p, data, 0, 10, 2),
                                atmo_float(p, data, 0, 11, 0), atmo_float(p, data, 0, 11, 1), atmo_float(p, data, 0, 11, 2)};
-      atmo_note_turn(slot, radius, turn_rows, p.qpc);
-
+      std::memcpy(j.turn_rows, turn_rows, sizeof turn_rows);
+      j.record = false;
 #if defined(EDWORLD_EHT)
-      atmo_publish(radius, distance, hue);
       // the fingerprint: at most every atmo_record_s seconds, once a session per planet and band
-      std::uint32_t const band{over < 1.f ? 0u : static_cast<std::uint32_t>(std::floor(std::log2(over)))};
-      std::uint64_t const key{(static_cast<std::uint64_t>(std::llround(radius)) << 8) | band};
+      j.band = over < 1.f ? 0u : static_cast<std::uint32_t>(std::floor(std::log2(over)));
+      std::uint64_t const key{(static_cast<std::uint64_t>(std::llround(radius)) << 8) | j.band};
       bool record{settings().atmo_record_s != 0u and atmo_seen_count != atmo_max_seen
                   and (p.qpc - atmo_recorded) * 1000 / qpc_frequency >= static_cast<LONGLONG>(settings().atmo_record_s) * 1000};
       for(std::uint32_t i{}; record and i != atmo_seen_count; ++i)
         if(atmo_seen[i] == key)
           record = false;
-      if(not record)
+      if(record)
         {
-        unmap_cbs();
-        atmo_release(p);
-        return;
+        atmo_seen[atmo_seen_count++] = key;
+        atmo_recorded = p.qpc;
+        j.record = true;
+        std::memcpy(j.stamp, p.stamp, sizeof j.stamp);
+        for(std::uint32_t c{}; c != 8; ++c)
+          {
+          j.cb_bytes[c] = data[c] ? p.bytes[c] : 0u;
+          if(j.cb_bytes[c])
+            std::memcpy(j.cbs[c], data[c], j.cb_bytes[c]);
+          }
         }
-      atmo_seen[atmo_seen_count++] = key;
-      atmo_recorded = p.qpc;
+#endif
+      unmap_cbs();
+      // the table: for the hue when it is R11G11B10, whole for the record
+      D3D11_MAPPED_SUBRESOURCE tm{};
+      if((p.format == dxgi_r11g11b10_float or j.record) and SUCCEEDED(ctx->Map(p.t0, 0, D3D11_MAP_READ, 0, &tm)) and tm.pData)
+        {
+        std::uint64_t const bytes{static_cast<std::uint64_t>(tm.RowPitch) * mapped_rows(p.format, p.height)};
+        if(bytes <= sizeof atmo_table_copy)
+          {
+          std::memcpy(atmo_table_copy, tm.pData, static_cast<std::size_t>(bytes));
+          j.table_bytes = static_cast<std::uint32_t>(bytes);
+          j.pitch = tm.RowPitch;
+          }
+        ctx->Unmap(p.t0, 0);
+        }
+      p = atmo_pending_t{};  // the copies are free for the next read once the job is back (atmo_busy stays)
+      atmo_start_job(now);
+      }
 
+    ///\brief the atmosphere thread's part (D10, 2026-11-18: on the render thread before, the hue of 32768 texels and two
+    /// medians every read, in edworld_eht the table's hash over 512 KB and the record): the hue, and the fingerprint's
+    /// files; nothing the render thread reads but the job's result
+    auto atmo_work() noexcept -> void
+      {
+      atmo_job_t & j{atmo_job};
+      if(j.format == dxgi_r11g11b10_float and j.table_bytes)
+        j.hue = atmosphere_hue(atmo_table_copy, j.width, j.height, j.pitch, atmo_hue_r, atmo_hue_b, atmo_hue_capacity);
+#if defined(EDWORLD_EHT)
+      if(not j.record)
+        return;
       std::wstring const folder{settings().dir + L"\\edworld_atmo"};
       CreateDirectoryW(folder.c_str(), nullptr);
       std::uint64_t hash{0xcbf29ce484222325ull};
-      std::uint32_t pitch{};
       bool new_table{};
-      D3D11_MAPPED_SUBRESOURCE m{};
-      if(SUCCEEDED(ctx->Map(p.t0, 0, D3D11_MAP_READ, 0, &m)) and m.pData)
+      if(j.table_bytes)
         {
-        pitch = m.RowPitch;
-        std::uint32_t const rows{mapped_rows(p.format, p.height)};
-        auto const * bytes{static_cast<std::uint8_t const *>(m.pData)};
-        for(std::uint64_t i{}, n{static_cast<std::uint64_t>(pitch) * rows}; i != n; ++i)
-          hash = (hash ^ bytes[i]) * 0x100000001b3ull;
+        for(std::uint32_t i{}; i != j.table_bytes; ++i)
+          hash = (hash ^ atmo_table_copy[i]) * 0x100000001b3ull;
         wchar_t name[MAX_PATH];
         std::swprintf(name, MAX_PATH, L"%ls\\t0_%016llx_%ux%u_f%u_pitch%u.raw", folder.c_str(),
-                      static_cast<unsigned long long>(hash), p.width, p.height, p.format, pitch);
+                      static_cast<unsigned long long>(hash), j.width, j.height, j.format, j.pitch);
         if(GetFileAttributesW(name) == INVALID_FILE_ATTRIBUTES)
-          new_table = queue_write(name, m.pData, pitch * rows);
-        ctx->Unmap(p.t0, 0);
+          new_table = queue_write(name, atmo_table_copy, j.table_bytes);
         }
 
       // EDWATMO1, then u32 width height format pitch, u64 the table's hash (0: not read), f32 radius distance, then
@@ -2013,32 +2146,26 @@ namespace edworld
                          at += n;
                        }};
       put("EDWATMO1", 8);
-      std::uint32_t const head[4]{p.width, p.height, p.format, pitch};
+      std::uint32_t const head[4]{j.width, j.height, j.format, j.pitch};
       put(head, sizeof head);
-      std::uint64_t const table{pitch ? hash : 0ull};
+      std::uint64_t const table{j.table_bytes ? hash : 0ull};
       put(&table, sizeof table);
-      float const where[2]{radius, distance};
+      float const where[2]{j.radius, j.distance};
       put(where, sizeof where);
       for(std::uint32_t c{}; c != 8; ++c)
         {
-        std::uint32_t const n{data[c] ? p.bytes[c] : 0u};
-        put(&n, sizeof n);
-        if(n)
-          put(data[c], n);
+        put(&j.cb_bytes[c], sizeof j.cb_bytes[c]);
+        if(j.cb_bytes[c])
+          put(j.cbs[c], j.cb_bytes[c]);
         }
-      unmap_cbs();
       wchar_t name[MAX_PATH];
-      std::swprintf(name, MAX_PATH, L"%ls\\%hs.atmo", folder.c_str(), p.stamp);
+      std::swprintf(name, MAX_PATH, L"%ls\\%hs.atmo", folder.c_str(), j.stamp);
       queue_write(name, atmo_record, static_cast<std::uint32_t>(at - atmo_record));
-      atmosphere_print_t const * kind{atmosphere_kind_of(hue)};
+      atmosphere_print_t const * kind{atmosphere_kind_of(j.hue)};
       log_line("atmo: %s radius %.0f m, distance %.0f km (band %u), t0 %016llx %ux%u f%u%s, kind %.*s (r/g %.4f b/g %.4f)",
-               p.stamp, double(radius), double(distance) / 1000.0, band, static_cast<unsigned long long>(table), p.width,
-               p.height, p.format, new_table ? " (new table)" : "", kind ? static_cast<int>(kind->name.size()) : 7,
-               kind ? kind->name.data() : "unknown", double(hue.r_g), double(hue.b_g));
-      atmo_release(p);
-#else
-      unmap_cbs();
-      atmo_release(p);
+               j.stamp, double(j.radius), double(j.distance) / 1000.0, j.band, static_cast<unsigned long long>(table), j.width,
+               j.height, j.format, new_table ? " (new table)" : "", kind ? static_cast<int>(kind->name.size()) : 7,
+               kind ? kind->name.data() : "unknown", double(j.hue.r_g), double(j.hue.b_g));
 #endif
       }
 

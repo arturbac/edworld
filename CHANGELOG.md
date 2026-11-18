@@ -11,7 +11,7 @@
   hologram's record pool is copied once a series instead of once a part,
   the draws between the HUD's panels take no timestamps, the corner text keeps its target's check, the galaxy map's
   names wait for their interval before looking at the target, the atmosphere's reads keep their copies instead of
-  making them each time, one cloud draw in four is timed, and a watched shader is found with one look. The EDSM
+  making them each time and are worked out on a thread of their own, one cloud draw in four is timed, and a watched shader is found with one look. The EDSM
   request runs on a thread of its own, so the charge and the flight keep coming while EDSM answers. The log's
   summary every second is off by default (`log_interval_ms = 1000` brings it back); its lines go out in one write.
 - **Clouds cheaper in storms and on the screen around them:** a ray looks only at the storms it passes, the storms'

@@ -467,7 +467,11 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   the frame's next shell draw after the last read's (`atmo_skip`), so every planet in view is read in turn.
   The copies are read back (`atmo_drain`) at a frame's start and also at the shell's next draw before a new read:
   a frame's start is found by the HUD's panels, which a commander on foot does not have (2026-11-12: a read made in
-  a settlement waited two minutes, until the ship, and no other was made meanwhile). While no read gets through, `atmo_misses` counts why (a target under 1024 wide, no table, a table of more samples
+  a settlement waited two minutes, until the ship, and no other was made meanwhile). There the render thread only
+  copies the constants and the table out (`atmo_job`, `atmo_table_copy`); the hue and, in edworld_eht, the table's
+  hash and the record are worked out on a thread of their own (`atmo_work`), and the result comes back at the next
+  `atmo_drain` (`atmo_apply`: the planet's kind and day, the share), only then the next read; a job not back in 10 s
+  is dropped with a log line. While no read gets through, `atmo_misses` counts why (a target under 1024 wide, no table, a table of more samples
   or layers, the radius not the planet's, with the last radius and distance) and logs it at most once a minute; the
   camera too far is not counted.
 - (both builds, `clouds_by_kind`, 2026-11-10) The clouds with depth by the atmosphere's kind:
