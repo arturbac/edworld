@@ -833,6 +833,16 @@ namespace
     check(not atmosphere_hue(reinterpret_cast<std::uint8_t const *>(table), 4u, 4u, 32u, sr, sb, 7u).ok
             and not atmosphere_hue(reinterpret_cast<std::uint8_t const *>(table), 4u, 4u, 8u, sr, sb, 8u).ok,
           "atmosphere: no hue past the scratch or with a pitch under a row");
+    // the exponent 31: infinity or NaN, and such a texel (here the brightest green of all) left out of the hue
+    {
+    std::uint32_t odd[4][8]{};
+    std::memcpy(odd, table, sizeof odd);
+    odd[0][1] = texel(896u, 31u << 6, 512u);
+    auto const odd_hue{atmosphere_hue(reinterpret_cast<std::uint8_t const *>(odd), 4u, 4u, 32u, sr, sb, 8u)};
+    check(std::isinf(small_float(31u << 6, 6u)) and std::isnan(small_float(31u << 6 | 1u, 6u)) and odd_hue.ok
+            and odd_hue.r_g == 0.5f and odd_hue.b_g == 2.f,
+          "atmosphere: an infinity or NaN in the table is no light of it");
+    }
     // the kinds' clouds (design v1.1)
     bool sane{true};
     for(auto const & k: atmosphere_prints)

@@ -2,7 +2,7 @@
 // where the kind read off the render says its gas condenses at the planet's cold (research of 2026-11-16: an ammonia
 // atmosphere lies on its saturation curve on most planets, a methane one near it; both below their gas' triple point,
 // so crystals, no rain). No journal: the kind from the colour, the cold ammonia from its second colour (a cold,
-// oversaturated planet, Spoihee IT-F d12-727 6 c and 7 e); on foot outdoors or in a craft in the planet's air, the
+// oversaturated planet: Spoihee IT-F d12-727 6 c and Spoihee IT-F d12-1113 7 e); on foot outdoors or in a craft in the planet's air, the
 // eye's way and the gravity from Status.json.
 #pragma once
 
@@ -36,9 +36,10 @@ namespace edworld
     {
     switch(kind)
       {
-      // 166 Pa, 165 K, 17 g/mol; 6006 Pa, 95 K, 16 g/mol
+      // the air's density p M / (R T) at the kind's typical planet (atmosphere_physics_table): 166 Pa, 165 K, 17 g/mol;
+      // 6006 Pa, 93 K, 16 g/mol
       case atmosphere_kind_e::ammonia: return cold ? snow_t{1.f, 0.05f, 0.00206f} : snow_t{0.5f, 0.f, 0.00206f};
-      case atmosphere_kind_e::methane: return snow_t{0.8f, 0.f, 0.1217f};
+      case atmosphere_kind_e::methane: return snow_t{0.8f, 0.f, 0.1243f};
       default:                         return snow_t{0.f, 0.f, 0.f};
       }
     }

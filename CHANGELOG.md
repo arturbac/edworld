@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **The docs agree with the code:** the snow's 12 samples from 1.5 m, the second and third aurora arcs coming in from
+  levels 2 and 5, ammonia's second colour as seen on the two coldest ammonia planets. Methane's snow takes its kind's
+  typical 93 K as the rest of edworld does (95 K before). A value of the atmosphere's table that is an infinity or
+  NaN no longer counts as its brightest light.
 - **Less work on the game's render thread:** the compass spheres and the faction list are drawn again only when what
   they show changes (each frame before), a hologram's record pool is copied once a series instead of once a part,
   the draws between the HUD's panels take no timestamps, the corner text keeps its target's check, the galaxy map's

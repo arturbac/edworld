@@ -15,6 +15,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <string_view>
 
 namespace edworld
@@ -55,9 +56,9 @@ namespace edworld
   /// measured 2026-11-10 (the median over each kind's planets, four digits); a kind may have more than one
   inline constexpr std::array<atmosphere_print_t, 17> atmosphere_prints{{
     {atmosphere_kind_e::ammonia, "Ammonia", 0.4897f, 1.4194f},
-    // an ammonia atmosphere with a table of its own (2026-11-15, one planet, Spoihee IT-F d12-1113 7 e): its twin 7 d,
-    // the same in every number of the scan (no volcanism, 100% ammonia, tidally locked to the same planet), has the
-    // first; why, not known
+    // ammonia's second table (2026-11-15, Spoihee IT-F d12-1113 7 e; 2026-11-17 Spoihee IT-F d12-727 6 c): both cold
+    // (156 K, 154.5 K) and well past saturation; the six read at 164..173 K, the twin 7 d and 6 b of the same systems
+    // among them, have the first. The cold one, for the snow (snow.h)
     {atmosphere_kind_e::ammonia, "Ammonia", 0.8800f, 1.6522f},
     {atmosphere_kind_e::argon, "Argon", 0.3981f, 2.5000f},
     {atmosphere_kind_e::argon_rich, "ArgonRich", 0.5158f, 2.7826f},
@@ -96,12 +97,15 @@ namespace edworld
 
   inline constexpr std::uint32_t dxgi_r11g11b10_float{26u};
 
-  ///\brief one channel of a small float without a sign (R11G11B10): mantissa bits, then five of exponent
+  ///\brief one channel of a small float without a sign (R11G11B10): mantissa bits, then five of exponent; the
+  /// exponent 31 is infinity (no mantissa) or NaN, as in the format
   [[nodiscard]]
   inline auto small_float(std::uint32_t v, std::uint32_t mantissa) noexcept -> float
     {
     std::uint32_t const e{(v >> mantissa) & 31u};
     std::uint32_t const m{v & ((1u << mantissa) - 1u)};
+    if(e == 31u)
+      return m == 0u ? std::numeric_limits<float>::infinity() : std::numeric_limits<float>::quiet_NaN();
     float const f{static_cast<float>(m) / static_cast<float>(1u << mantissa)};
     return e == 0u ? std::ldexp(f, -14) : std::ldexp(1.f + f, static_cast<int>(e) - 15);
     }
@@ -136,10 +140,14 @@ namespace edworld
                          std::memcpy(&v, rows + std::size_t{y} * pitch + x * 4u, sizeof v);
                          return v;
                        }};
+    // a texel with an infinity or a NaN in it is left out: it is no light of the table's
+    auto const finite{[](std::uint32_t v) noexcept -> bool
+                        { return ((v >> 6) & 31u) != 31u and ((v >> 17) & 31u) != 31u and ((v >> 27) & 31u) != 31u; }};
     float brightest{};
     for(std::uint32_t y{}; y != top; ++y)
       for(std::uint32_t x{}; x != width; ++x)
-        brightest = std::max(brightest, small_float((texel(x, y) >> 11) & 0x7ffu, 6u));
+        if(std::uint32_t const v{texel(x, y)}; finite(v))
+          brightest = std::max(brightest, small_float((v >> 11) & 0x7ffu, 6u));
     if(not(brightest > 0.f))
       return {};
     std::size_t n{};
@@ -147,6 +155,8 @@ namespace edworld
       for(std::uint32_t x{}; x != width; ++x)
         {
         std::uint32_t const v{texel(x, y)};
+        if(not finite(v))
+          continue;
         float const g{small_float((v >> 11) & 0x7ffu, 6u)};
         if(not(g > 0.5f * brightest))
           continue;

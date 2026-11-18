@@ -131,8 +131,8 @@ Besides, its rays grow and fade, each on its own over 2-6 seconds, in groups abo
 
 `aurora_dance` scales all of it (`0` = without the waves, the fast folds, the wiggles, the curls and the flicker; the rays still grow and fade); a weak storm dances less, three quarters at level 4.
 
-**The arcs.** One arc in a quiet sky; a second one poleward of it from level 3; a third further poleward while a
-substorm expands from level 6 (by the time alone about 7.5% of the time is at level 6 or more, and the expansion is a
+**The arcs.** One arc in a quiet sky; a second one poleward of it, coming in from level 2 and whole from level 3; a
+third further poleward while a substorm expands, coming in from level 5 and whole from level 6 (by the time alone about 7.5% of the time is at level 6 or more, and the expansion is a
 fifth of each substorm, so the third arc is rare). No arc runs all round: each has its own dark gaps, drifting over
 minutes, about half of it dark in a quiet sky, a quarter in a strong storm, more again as a substorm recovers, so in
 one place there may be none, one, two or three. Where an arc is bright it is wider and its foot lower; a faint part

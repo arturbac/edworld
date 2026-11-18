@@ -63,14 +63,14 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   `steady_clock`) for 1.5 times the last gap and 2 s at the most, then is held and the speed is 0. Value 121
   `snow_parts`: the crystals 1, the haze 2; `snow_bench = 1` steps it every 10 s through 3, 0, 2, 1 (`snow_bench_step`)
   and logs `snow bench: <part> from now`, so the `clouds gpu 5s` windows wholly inside a step give that part's cost
-  (the search for the ground, which the crystals need too, stays in every step but none). The shader samples 24 places along the ray from 0.4 to 30 m (spaced as a
+  (the search for the ground, which the crystals need too, stays in every step but none). The shader samples 12 places along the ray from 1.5 to 30 m (`snow_samples`, `snow_near`, `snow_reach`; spaced as a
   power, started at the pixel's blue noise), takes the crystal of each place's 0.8 m cell in the ground's frame (east
   from the planet's axis y and the up of the eye), kept by the cell's hash under the number; hidden past the scene's
-  depth; from 1.5 m; 1-3 mm, drawn at least half a pixel wide and as bright as it covers, a soft (Gaussian) streak of
+  depth; 1-3 mm, drawn at least half a pixel wide and as bright as it covers, a soft (Gaussian) streak of
   one frame (1/60 s) of its way against the eye (the fall, the wind and back from the eye's speed; a cell, 0.8 m, at
   the most) with fading ends, a soft hexagon once 2-4 pixels wide; albedo 0.15 in the kind's tint,
   a flash `sin^40` at 1-5 Hz each; a haze `0.5 (1 - exp(-3 / 5000 m * many / 0.15 * way))` over the way to the ground
-  (found by 6 halvings against the scene's depth, 1.5 km for the sky) laid in front of the clouds; 12 samples; lit by the star (`frame_rows[293]`), more towards it, none under the horizon.
+  (found by 6 halvings against the scene's depth, 1.5 km for the sky) laid in front of the clouds; lit by the star (`frame_rows[293]`), more towards it, none under the horizon.
   The number under the clouds follows `weather_at` over the eye (the clouds' weather, now a function of its own) with
   the kind's cover.
 - (edworld_eht only) **The atmosphere's print for EHT** (`atmosphere_t` in `src/edworld_share.h`): every read of
@@ -513,8 +513,8 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   the planet stands between), 64 steps near (from in or near the shell, where the thin curtains stand close), 16 far,
   ending at the scene; `aurora_glow` the oval about the dipole
   with the angle from midnight (the seam of what is noised along it falls at noon), up to three arcs (`aurora_arc`:
-  width, foot and height by the arc's brightness there; the second from level 3, the third while the dance is over
-  0.7 from level 6; `aurora_lit` and the rays only where the point is within 2.5 times the arc's widest of it), each lit where its own noise (`aurora_lit`, about 10-20 parts round the oval) passes the gaps' threshold, each
+  width, foot and height by the arc's brightness there; the second `0.6 saturate(level - 2)` (in from level 2, whole
+  from 3), the third while the dance is over 0.7, `0.5 saturate(level - 5)` (in from level 5, whole from 6); `aurora_lit` and the rays only where the point is within 2.5 times the arc's widest of it), each lit where its own noise (`aurora_lit`, about 10-20 parts round the oval) passes the gaps' threshold, each
   with its own local folds (`aurora_across`: a fine wiggle across the arc, about 20 round the oval, and curls, a vortex in some of 12 cells, 16 s each, that
   turns the arc's local frame by up to 2.5 radians within twice the sway, the old arcs' 0.35-0.5°), the curtains 4 km
   thin (`thick` from the planet's radius, 2026-11-16) and no thinner than half a step (as much dimmer when widened, so its light stays a thin curtain's), fading upward over 0.6 of the

@@ -691,8 +691,8 @@ float aurora_lit(float2 circle, float seed, float gaps, float time, float dance)
   }
 
 // the aurora's light at dir (the planet's frame, unit) and h (0 the shell's floor .. 1 its ceiling): the oval about the
-// dipole, lower on the night side and with the storm, one arc in a quiet sky, two from level 3 and a third toward the
-// pole as a strong substorm expands, each broken where it does not light, its curtains folded, their rays, the waves
+// dipole, lower on the night side and with the storm, one arc in a quiet sky, two from level 2..3 and a third toward the
+// pole as a strong substorm expands (level 5..6), each broken where it does not light, its curtains folded, their rays, the waves
 // running along them in a substorm, the diffuse glow beside them; per unit of the shell's height
 float3 aurora_glow(float3 dir, float h, float level, float3 sun_model, float time, float thick_least, float planet)
   {
@@ -727,7 +727,8 @@ float3 aurora_glow(float3 dir, float h, float level, float3 sun_model, float tim
   float km = degrees(1000.f / planet);
   float thick = 4.f * km;
   float sway = 0.35f + 0.15f * level / 9.f;
-  // the second arc from level 3, the third as a strong substorm expands (it dances most only then, from level 6)
+  // the second arc coming in from level 2, whole from 3; the third as a strong substorm expands (it dances most only
+  // then), coming in from level 5, whole from 6
   float second = 0.6f * saturate(level - 2.f);
   float third = 0.5f * saturate((dance - 0.7f) / 0.25f) * saturate(level - 5.f);
   float diffuse = 0.02f * exp(-pow((north - (boundary + width * 0.5f)) / (width * 0.6f), 2.f));
