@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased
+## 1.2.0-beta.14
+
+- **What it costs, measured:** in the game at 9000x2160 (RX 7900 XTX, Linux, DXVK, a CarbonDioxide planet) the clouds
+  take about 1.4 ms a frame from orbit by day, 1.0 ms by night, 5.3 ms inside the layer, and 6.3 ms inside an aurora
+  (the aurora itself about 4 ms); 60 fps held in each. A draw through edworld adds about 0.2 us to the render thread.
+  The numbers and the bench they are set against: doc/developers.md ("Cost in the game and the bench").
+- **Tests without the game:** the render test draws the clouds, the aurora and the snow of six kinds with the game's
+  own buffer and compares them with reference pictures; tools/bench.sh measures the cost per scene under DXVK.
+- edloader 1.2.1 in the zip.
 
 - **After a second audit:** the atmosphere's reads no longer wait for good behind the shell drawn for reflections
   (no day read, so no storms and no aurora); a read of no known kind never takes a known kind away; the weather's
