@@ -26,6 +26,16 @@ foreach(variant edworld edworld_eht)
   add_dependencies(${variant}_test_app edworld_test_shaders)
 endforeach()
 
+# the render test: the clouds' volume shader drawn with the system d3d11 for scenes of several atmospheres, its buffer
+# by src/clouds_values.h, checked by numbers and against test/data/render/*.png
+add_executable(render_test render_test.cc)
+target_compile_definitions(render_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS EDWORLD_EHT)
+target_include_directories(render_test PRIVATE "${CMAKE_SOURCE_DIR}/src" "${CMAKE_BINARY_DIR}/gen")
+target_compile_options(render_test PRIVATE /W4)
+target_link_libraries(render_test PRIVATE d3d11 windowscodecs ole32)
+set_target_properties(render_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${test_gen}")
+add_dependencies(render_test edworld_eht)
+
 add_library(fake_next SHARED fake_next.cc)
 target_compile_definitions(fake_next PRIVATE WIN32_LEAN_AND_MEAN)
 target_compile_options(fake_next PRIVATE /W4)

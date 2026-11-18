@@ -12,7 +12,7 @@ BUILD=$(cd "${1:?build dir}" && pwd)
 SCR=${2:?scratch dir}
 need() { [[ -n ${!1:-} ]] || { echo "$0: set $1 ($2)" >&2; exit 1; }; }
 need EDWORLD_WINEPREFIX "a wine prefix kept between runs"
-for f in edworld/edworld.dll edworld_eht/edworld_eht.dll test/fake_next.dll test/edworld/test_app.exe test/edworld_eht/test_app.exe; do
+for f in edworld/edworld.dll edworld_eht/edworld_eht.dll test/fake_next.dll test/edworld/test_app.exe test/edworld_eht/test_app.exe test/render_test.exe; do
   [[ -f $BUILD/$f ]] || { echo "$0: no $BUILD/$f (build first)" >&2; exit 1; }
 done
 cd "$HERE"
@@ -160,7 +160,30 @@ run_variant() {  # $1 = edworld | edworld_eht; sets rc on failure
   [[ $V != edworld_eht ]] || doc_case
   popd >/dev/null
 }
+# the clouds' volume shader drawn for scenes of several atmospheres (test/render_test.cc), with the system d3d11 (no
+# edworld in its folder), compared with test/data/render/*.png; EDWORLD_RENDER_UPDATE=1 makes those again
+render_case() {
+  local RUN r
+  RUN=$(mktemp -d "$SCR/render-test.XXXXXX")
+  cp "$BUILD/test/render_test.exe" "$RUN/"
+  mkdir -p "$RUN/reference"
+  cp test/data/render/*.png "$RUN/reference/" 2>/dev/null || true
+  set +e
+  (cd "$RUN" && WINEDEBUG=-all wine render_test.exe pictures reference ${EDWORLD_RENDER_UPDATE:+--update} > render.out 2>&1)
+  r=$?
+  set -e
+  cat "$RUN/render.out"
+  if [[ -n ${EDWORLD_RENDER_UPDATE:-} && $r -eq 0 ]]; then
+    mkdir -p test/data/render
+    cp "$RUN"/reference/*.png test/data/render/
+    echo "--- render: references made again in test/data/render"
+  fi
+  echo "--- render: pictures in $RUN/pictures: $([[ $r -eq 0 ]] && echo ok || echo FAIL)"
+  [[ $r -eq 0 ]] || rc=1
+}
+
 run_variant edworld
 run_variant edworld_eht
+render_case
 echo "=== overall: $([[ $rc -eq 0 ]] && echo PASSED || echo FAILED)"
 exit $rc

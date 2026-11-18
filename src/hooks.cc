@@ -21,6 +21,7 @@
 #include "holo_models.h"
 #include "panel_math.h"
 #include "cb_binding.h"
+#include "clouds_values.h"
 #include "panel_patch.h"
 #include "runtime.h"
 #include "snow.h"
@@ -1466,29 +1467,6 @@ namespace edworld
       return nullptr;
       }
 
-    ///\brief the clouds' values 33..42 (clouds3d.hlsl; 43, the lumps' size, is set beside it): the planet whose kind is known and its clouds, none when
-    /// clouds_by_kind is 0 or the kind unknown
-    auto atmo_kind_values(float * v) noexcept -> void
-      {
-      std::fill(v, v + 11, 0.f);
-      auto const kind{static_cast<atmosphere_kind_e>(atmo_kind.load(std::memory_order_relaxed))};
-      if(not settings().clouds_by_kind or kind == atmosphere_kind_e::unknown)
-        return;
-      atmosphere_clouds_t const c{
-        atmosphere_clouds_tinted(atmosphere_clouds(kind, settings().clouds_physics_intensity), settings().clouds_tint)};
-      float const since{static_cast<float>(GetTickCount64() - atmo_kind_since.load(std::memory_order_relaxed))};
-      v[0] = atmo_kind_radius.load(std::memory_order_relaxed);
-      v[1] = std::clamp(since / atmo_kind_fade_ms, 0.f, 1.f);
-      v[2] = c.bottom;
-      v[3] = c.top;
-      v[4] = c.cover;
-      v[5] = c.opacity * settings().clouds_opacity;
-      v[6] = c.detail * settings().clouds_detail;
-      v[7] = c.tint[0];
-      v[8] = c.tint[1];
-      v[9] = c.tint[2];
-      }
-
     snow_walk_t snow_walk{};
     snow_drift_t snow_drift{};
     snow_gravity_t snow_g{};
@@ -1583,147 +1561,61 @@ namespace edworld
       return t ? t->day_s : 0.f;
       }
 
+    // the planet the clouds are for, as read: what clouds_values (clouds_values.h) makes the clouds' buffer of
+    auto atmo_clouds_planet() noexcept -> clouds_planet_t
+      {
+      clouds_planet_t p{};
+      p.kind = static_cast<atmosphere_kind_e>(atmo_kind.load(std::memory_order_relaxed));
+      p.radius = atmo_kind_radius.load(std::memory_order_relaxed);
+      float const since{static_cast<float>(GetTickCount64() - atmo_kind_since.load(std::memory_order_relaxed))};
+      p.kind_weight = std::clamp(since / atmo_kind_fade_ms, 0.f, 1.f);
+      p.day_s = atmo_day_of(p.radius);
+      p.day_fade = atmo_day_fade(p.radius);
+      p.spin = p.day_s > 0.f ? atmo_turn_of(p.radius)->spin : -1.f;
+      p.volcanic = atmo_kind_volcanic.load(std::memory_order_relaxed);
+      p.light_rg = atmo_light_rg.load(std::memory_order_relaxed);
+      p.light_bg = atmo_light_bg.load(std::memory_order_relaxed);
+      p.light_g = atmo_light_g.load(std::memory_order_relaxed);
+      FILETIME ft{};
+      GetSystemTimeAsFileTime(&ft);
+      p.utc_s = static_cast<double>((static_cast<std::uint64_t>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime) / 1e7;
+      return p;
+      }
+
     float atmo_cyclones_radius{};
     std::uint32_t atmo_cyclones_count{~0u};
     bool atmo_cyclones_day{};
-
-    ///\brief the clouds' values 44..85 (clouds3d.hlsl; 86 and 87 are the lumps' and set after it): the storms of the planet whose kind is known (design v1), each
-    /// its centre and size, then their twists, then their count; none when clouds_cyclones or clouds_by_kind is 0
-    auto atmo_cyclone_values(float * v) noexcept -> void
-      {
-      std::fill(v, v + 44, 0.f);
-      auto const kind{static_cast<atmosphere_kind_e>(atmo_kind.load(std::memory_order_relaxed))};
-      if(not settings().clouds_cyclones or not settings().clouds_by_kind or kind == atmosphere_kind_e::unknown)
-        return;
-      float const radius{atmo_kind_radius.load(std::memory_order_relaxed)};
-      float const day{atmo_day_of(radius)};
-      // no storms until the planet's day is read (they would stand on the kind's median and jump), then they grow in
-      float const fade{atmo_day_fade(radius)};
-      float const spin{day > 0.f ? atmo_turn_of(radius)->spin : -1.f};
-      float const rossby{rossby_ratio(kind, radius, day)};
-      cyclone_set_t const set{day > 0.f ? cyclones_of(rossby, static_cast<std::uint64_t>(std::llround(radius)), spin) : cyclone_set_t{}};
-      for(std::uint32_t i{}; i != set.count; ++i)
-        {
-        v[i * 4u] = set.at[i].x;
-        v[i * 4u + 1u] = set.at[i].y;
-        v[i * 4u + 2u] = set.at[i].z;
-        v[i * 4u + 3u] = set.at[i].size * std::max(fade, 0.01f);  // the shader divides by the size
-        v[32u + i] = set.at[i].twist;
-        }
-      v[40] = static_cast<float>(set.count);
-      if(atmo_cyclones_radius != radius or atmo_cyclones_count != set.count or atmo_cyclones_day != (day > 0.f))
-        {
-        atmo_cyclones_radius = radius;
-        atmo_cyclones_count = set.count;
-        atmo_cyclones_day = day > 0.f;
-        if(day > 0.f)
-          log_line("clouds: %u storm(s) on the planet of radius %.0f m, R/L %.2f (day %.2f h)", set.count, double(radius),
-                   double(rossby), double(day) / 3600.);
-        else
-          log_line("clouds: the storms of the planet of radius %.0f m wait for its day", double(radius));
-        }
-      }
-
-    ///\brief the clouds' values 86..91 (clouds3d.hlsl, design v2): the lumps' scale, the fine shape's size and how
-    /// high the lumps reach for the planet whose kind is known (0 = as before, clouds_lumps_by_layer 0), then how far
-    /// the weather moves a cloud's edge (0 = none, clouds_weather 0) and the planet's R/L it follows
-    auto atmo_lump_values(float * v) noexcept -> void
-      {
-      std::fill(v, v + 6, 0.f);
-      auto const kind{static_cast<atmosphere_kind_e>(atmo_kind.load(std::memory_order_relaxed))};
-      if(not settings().clouds_by_kind or kind == atmosphere_kind_e::unknown)
-        return;
-      float const radius{atmo_kind_radius.load(std::memory_order_relaxed)};
-      if(settings().clouds_lumps_by_layer)
-        {
-        atmosphere_lumps_t const l{atmosphere_lumps(kind, radius)};
-        v[0] = l.scale;
-        v[1] = l.detail_m;
-        v[2] = l.lean;
-        }
-      v[3] = atmosphere_weather_shift * std::clamp(settings().clouds_weather, 0.f, 2.f);
-      v[4] = rossby_ratio(kind, radius, atmo_day_of(radius));
-      }
-
-    ///\brief the clouds' values 124..127: the weather's R/L from the kind's median (before the planet's day was read)
-    /// and how far the R/L of the day read has come in, 0..1 over the same 4 s as the storms (C19, Artur 2026-11-18
-    /// „62 a”: the weather's pattern changed in one frame, the day side's deck to bands or back)
-    auto atmo_weather_fade_values(float * v) noexcept -> void
-      {
-      std::fill(v, v + 4, 0.f);
-      auto const kind{static_cast<atmosphere_kind_e>(atmo_kind.load(std::memory_order_relaxed))};
-      if(not settings().clouds_by_kind or kind == atmosphere_kind_e::unknown)
-        return;
-      float const radius{atmo_kind_radius.load(std::memory_order_relaxed)};
-      v[0] = rossby_ratio(kind, radius, 0.f);
-      v[1] = atmo_day_of(radius) > 0.f ? atmo_day_fade(radius) : 1.f;  // no day yet: the median is the R/L itself
-      }
-
     float atmo_aurora_radius{};
     bool atmo_aurora_day{};
     bool atmo_aurora_field{};
 
-    ///\brief the clouds' values 92..111 (clouds3d.hlsl, the aurora's design v1): its strength (0 = none: aurora 0,
-    /// clouds_by_kind 0 or the kind unknown), how stormy (K), how much it dances, the oval's shift; the colours low and
-    /// high and nitrogen's edge, whether the planet has a field of its own, the dipole in the planet's frame, the shell's
-    /// floor and ceiling over the surface as parts of the radius. The star's part is the shader's, out of its light
-    auto atmo_aurora_values(float * v, float tower) noexcept -> void
+    ///\brief the log lines of a change in what the clouds' buffer was made of: the storms, the aurora
+    auto atmo_report_changes(clouds_planet_t const & p, clouds_report_t const & r) noexcept -> void
       {
-      std::fill(v, v + 20, 0.f);
-      auto const kind{static_cast<atmosphere_kind_e>(atmo_kind.load(std::memory_order_relaxed))};
-      if(not settings().aurora or not settings().clouds_by_kind or kind == atmosphere_kind_e::unknown)
+      if(p.kind == atmosphere_kind_e::unknown or not settings().clouds_by_kind)
         return;
-      float const radius{atmo_kind_radius.load(std::memory_order_relaxed)};
-      float const day{atmo_day_of(radius)};
-      std::uint64_t const seed{static_cast<std::uint64_t>(std::llround(radius))};
-      aurora_planet_t planet{aurora_planet(radius, day, rossby_ratio(kind, radius, day), atmo_kind_volcanic.load(std::memory_order_relaxed), seed)};
-      float const set_field{settings().aurora_field};
-      if(set_field >= 0.f)
-        planet.field = set_field >= 0.5f;
-      FILETIME ft{};
-      GetSystemTimeAsFileTime(&ft);
-      double const utc_s{static_cast<double>((static_cast<std::uint64_t>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime) / 1e7};
-      float const set_level{settings().aurora_activity};
-      float const raw_level{set_level >= 0.f ? std::min(set_level, 9.f) : aurora_storm_level(seed, utc_s)};
-      // a strong star's wind adds to the storm here, once, for the substorms and the shader's oval alike (C14); no light
-      // read yet: no wind added
-      float const light_g{atmo_light_g.load(std::memory_order_relaxed)};
-      float const wind{light_g > 0.f ? aurora_star_wind(atmo_light_rg.load(std::memory_order_relaxed),
-                                                         atmo_light_bg.load(std::memory_order_relaxed), light_g)
-                                     : 0.6f};
-      float const level{aurora_level_with_wind(raw_level, wind)};
-      aurora_substorm_t const sub{aurora_substorm(level, planet.substorm_s, utc_s, seed)};
-      aurora_colours_t const c{aurora_colours(kind)};
-      // no aurora until the planet's day is read (its field and substorms come from the day), then it comes in; a field
-      // set by hand (aurora_field) needs no day
-      float const fade{set_field >= 0.f ? 1.f : atmo_day_fade(radius)};
-      // without a field of its own the glow is the same in a storm as in a quiet sky (no oval, no substorms: C15)
-      v[0] = c.yield * std::clamp(settings().aurora_gain, 0.f, 3.f) * (planet.field ? sub.bright : 1.f) * fade;
-      v[1] = level;
-      v[2] = sub.dance * std::clamp(settings().aurora_dance, 0.f, 2.f);
-      v[3] = sub.shift;
-      std::copy(c.low, c.low + 3, v + 4);
-      v[7] = settings().aurora_flicker ? 1.f : 0.f;
-      std::copy(c.high, c.high + 3, v + 8);
-      v[11] = planet.field ? 1.f : 0.f;
-      std::copy(planet.axis, planet.axis + 3, v + 12);
-      // the shell: from where the kind's typical air over a planet of this radius thins as the Earth's over 100 km
-      // (aurora_height), to three times as high
-      // over the clouds' top as the storms raise it (twice the layer on a planet with storms, C17)
-      aurora_height_t const height{aurora_height(kind, radius, tower)};
-      v[15] = height.floor;
-      v[16] = height.ceiling;
-      std::copy(c.edge, c.edge + 3, v + 17);
-      if(atmo_aurora_radius != radius or atmo_aurora_day != (day > 0.f) or atmo_aurora_field != planet.field)
+      bool const day{p.day_s > 0.f};
+      if(settings().clouds_cyclones
+         and (atmo_cyclones_radius != p.radius or atmo_cyclones_count != r.storms.count or atmo_cyclones_day != day))
         {
-        atmo_aurora_radius = radius;
-        atmo_aurora_day = day > 0.f;
-        atmo_aurora_field = planet.field;
+        atmo_cyclones_radius = p.radius;
+        atmo_cyclones_count = r.storms.count;
+        atmo_cyclones_day = day;
+        if(day)
+          log_line("clouds: %u storm(s) on the planet of radius %.0f m, R/L %.2f (day %.2f h)", r.storms.count, double(p.radius),
+                   double(r.rossby), double(p.day_s) / 3600.);
+        else
+          log_line("clouds: the storms of the planet of radius %.0f m wait for its day", double(p.radius));
+        }
+      if(r.aurora_on and (atmo_aurora_radius != p.radius or atmo_aurora_day != day or atmo_aurora_field != r.aurora.field))
+        {
+        atmo_aurora_radius = p.radius;
+        atmo_aurora_day = day;
+        atmo_aurora_field = r.aurora.field;
         log_line("aurora: the planet of radius %.0f m %s, the dipole leaning %.0f degrees, substorms each %.1f h, K %.1f now, %.0f..%.0f km high%s",
-                 double(radius), planet.field ? "has a field of its own" : "has no field of its own (a faint glow only)",
-                 double(planet.lean_deg), double(planet.substorm_s) / 3600., double(level), double(height.floor * radius) / 1000.,
-                 double(height.ceiling * radius) / 1000.,
-                 day > 0.f ? "" : " (its day not read yet)");
+                 double(p.radius), r.aurora.field ? "has a field of its own" : "has no field of its own (a faint glow only)",
+                 double(r.aurora.lean_deg), double(r.aurora.substorm_s) / 3600., double(r.level), double(r.height.floor * p.radius) / 1000.,
+                 double(r.height.ceiling * p.radius) / 1000., day ? "" : " (its day not read yet)");
         }
       }
 
@@ -5694,40 +5586,18 @@ namespace edworld
       if(device)
         device->Release();
 
-      clouds.volume_values[15] = static_cast<float>(GetTickCount64() - clouds.wind_start) / 1000.f;
-      clouds.volume_values[18] = half ? 2.f : 1.f;
-      clouds.volume_values[19] = static_cast<float>(settings().clouds_game_fade);
-      clouds.volume_values[20] = static_cast<float>(settings().clouds_mode);
-      clouds.volume_values[21] = std::max(1.f, settings().clouds_far_steps);
-      clouds.volume_values[22] = settings().clouds_near_from;
-      clouds.volume_values[23] = std::max(settings().clouds_near_to, settings().clouds_near_from + 0.001f);
-      clouds.volume_values[24] = static_cast<float>(settings().clouds_debug);
-      clouds.volume_values[25] = game_port_count != 0u ? game_ports[0].Width : 0.f;
-      clouds.volume_values[26] = settings().clouds_hide_below_px;
-      clouds.volume_values[27] = std::max(settings().clouds_full_from_px, settings().clouds_hide_below_px + 1.f);
-      clouds.volume_values[28] = std::max(settings().clouds_max_steps, 1.f);
-      clouds.volume_values[29] = settings().clouds_edge_hide_px;
-      clouds.volume_values[30] = std::max(settings().clouds_edge_full_px, settings().clouds_edge_hide_px + 0.01f);
-      clouds.volume_values[31] = std::max(settings().clouds_edge_band_px, 0.01f);
-      clouds.volume_values[32] = std::max(settings().clouds_haze, 0.f);
-      atmo_kind_values(clouds.volume_values + 33);
-      clouds.volume_values[43] = std::clamp(settings().clouds_size_var, 0.f, 0.9f);
-      atmo_cyclone_values(clouds.volume_values + 44);
-      atmo_lump_values(clouds.volume_values + 86);
-      // the storms' tower (values 84: their count, set just above): the aurora stands over the clouds they raise
-      atmo_aurora_values(clouds.volume_values + 92, clouds.volume_values[84] > 0.f ? 2.f : 1.f);
-      // the flicker's phase, wound in double: the shader's float seconds lose the 8 Hz after hours (C23)
-      clouds.volume_values[91] = static_cast<float>(
-        std::fmod(static_cast<double>(GetTickCount64() - clouds.wind_start) / 1000. * 50.265, 6.283185307179586));
-      atmo_snow_values(clouds.volume_values + 112);
-      atmo_weather_fade_values(clouds.volume_values + 124);
-      if(clouds.volume_values[84] > 0.f)
-        {
-        // the storms tower to twice the layer's height (v1.4s): the kind's top raised, the tower told to the shader
-        float const floor_at{clouds.volume_values[35]};
-        clouds.volume_values[36] = floor_at + (clouds.volume_values[36] - floor_at) * 2.f;
-        clouds.volume_values[85] = 2.f;
-        }
+      // the buffer from the settings, the planet as read and the frame (clouds_values.h, the render test's too)
+      clouds_frame_t now{};
+      double const seconds{static_cast<double>(GetTickCount64() - clouds.wind_start) / 1000.};
+      now.seconds = static_cast<float>(seconds);
+      now.flicker_s = seconds;
+      now.pixel = half ? 2.f : 1.f;
+      now.port_width = game_port_count != 0u ? game_ports[0].Width : 0.f;
+      atmo_snow_values(now.snow.data());
+      clouds_planet_t const planet{atmo_clouds_planet()};
+      std::array<float, clouds_value_count> values{};
+      atmo_report_changes(planet, clouds_values(settings(), planet, now, values));
+      std::copy(values.begin(), values.end(), clouds.volume_values);
       ctx->UpdateSubresource(clouds.volume_params, 0, nullptr, clouds.volume_values, 0, 0);
       if(half)
         {
