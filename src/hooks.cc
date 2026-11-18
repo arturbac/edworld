@@ -238,6 +238,11 @@ namespace edworld
     auto fault_filter(EXCEPTION_POINTERS const * e) noexcept -> int
       {
       creating_own = false;  // a fault while edworld made its own shaders must not mark the game's as edworld's for good
+      // the stack used up: nothing more on it here (a log line and a module's name take kilobytes), the guard's handler
+      // runs on the stack unwound (2026-11-18, the second audit)
+      if(e and e->ExceptionRecord and e->ExceptionRecord->ExceptionCode == EXCEPTION_STACK_OVERFLOW)
+        return EXCEPTION_EXECUTE_HANDLER;
+      log_batch_end();  // a fault inside the summary's batch (log_batch_begin) must not leave the thread's lines held
       static std::atomic<std::uint32_t> told{};
       if(told.fetch_add(1) < 16u and e and e->ExceptionRecord)
         {
@@ -858,7 +863,7 @@ namespace edworld
     SLIST_HEADER write_queue;
     HANDLE write_wake{};
     INIT_ONCE writer_once = INIT_ONCE_STATIC_INIT;  ///< the queue made once, before any thread pushes to it
-    bool writer_running{};                          ///< the thread started; without it nothing is queued
+    std::atomic<bool> writer_running{};             ///< the thread runs; without it nothing is queued
     std::atomic<std::uint32_t> writes_queued{}, writes_done{};
 
     auto writer_body(void *) -> DWORD
@@ -920,7 +925,14 @@ namespace edworld
           {
           InitializeSListHead(&write_queue);
           write_wake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-          auto const writer_thread{[](LPVOID) -> DWORD { return run_guarded_thread("writer", &writer_body, nullptr); }};
+          auto const writer_thread{[](LPVOID) -> DWORD
+                                   {
+                                     DWORD const r{run_guarded_thread("writer", &writer_body, nullptr)};
+                                     // stopped after its faults: nothing more is queued for no one to write
+                                     writer_running.store(false);
+                                     log_line("dump: the writer thread stopped; files are no longer written");
+                                     return r;
+                                   }};
           if(HANDLE const t{write_wake ? CreateThread(nullptr, 0, writer_thread, nullptr, 0, nullptr) : nullptr})
             {
             CloseHandle(t);
@@ -1273,7 +1285,7 @@ namespace edworld
         log_line("clouds: the planet of radius %.0f m is %.*s (r/g %.4f b/g %.4f)", double(radius),
                  found ? static_cast<int>(found->name.size()) : 7, found ? found->name.data() : "unknown", double(hue.r_g),
                  double(hue.b_g));
-      else if(note.held and planet.other_reads == 1u)
+      else if(note.held and (planet.other_reads == 1u or note.first_unknown))
         {
         std::string_view const kept{atmo_kind_name(planet.kind)};
         log_line("clouds: the planet of radius %.0f m stays %.*s (a read gave %.*s, r/g %.4f b/g %.4f)", double(radius),
@@ -1283,7 +1295,11 @@ namespace edworld
       // the planet the clouds are for: the nearest of those read lately
       if(atmosphere_planet_t const * const closest{atmosphere_planet_nearest(atmo_planets, now)})
         {
-        atmo_kind_since.store(closest->kind_since_ms, std::memory_order_relaxed);
+        // another planet the nearest now: its clouds come in from now, as a new kind's (the second audit, 2026-11-18:
+        // they stood whole at once, the planet's kind being older)
+        bool const other_planet{closest->radius != atmo_kind_radius.load(std::memory_order_relaxed)};
+        atmo_kind_since.store(other_planet ? std::max<ULONGLONG>(closest->kind_since_ms, now) : closest->kind_since_ms,
+                              std::memory_order_relaxed);
         atmo_kind_volcanic.store(closest->volcanic, std::memory_order_relaxed);
         atmo_kind_cold.store(closest->cold, std::memory_order_relaxed);
         atmo_kind.store(static_cast<std::uint8_t>(closest->kind), std::memory_order_relaxed);
@@ -1297,7 +1313,7 @@ namespace edworld
     atmosphere_t * atmo_share{};
     bool atmo_share_failed{};
 
-    auto atmo_share_open() noexcept -> atmosphere_t *
+    auto atmo_share_open() -> atmosphere_t *
       {
       if(atmo_share or atmo_share_failed)
         return atmo_share;
@@ -1339,7 +1355,7 @@ namespace edworld
       }
 
     ///\brief every read: the planet, its print and whether it is one edworld knows
-    auto atmo_publish(float radius, float distance, atmosphere_hue_t const & hue) noexcept -> void
+    auto atmo_publish(float radius, float distance, atmosphere_hue_t const & hue) -> void
       {
       atmosphere_t * const share{atmo_share_open()};
       if(not share)
@@ -1629,6 +1645,20 @@ namespace edworld
       v[4] = rossby_ratio(kind, radius, atmo_day_of(radius));
       }
 
+    ///\brief the clouds' values 124..127: the weather's R/L from the kind's median (before the planet's day was read)
+    /// and how far the R/L of the day read has come in, 0..1 over the same 4 s as the storms (C19, Artur 2026-11-18
+    /// „62 a”: the weather's pattern changed in one frame, the day side's deck to bands or back)
+    auto atmo_weather_fade_values(float * v) noexcept -> void
+      {
+      std::fill(v, v + 4, 0.f);
+      auto const kind{static_cast<atmosphere_kind_e>(atmo_kind.load(std::memory_order_relaxed))};
+      if(not settings().clouds_by_kind or kind == atmosphere_kind_e::unknown)
+        return;
+      float const radius{atmo_kind_radius.load(std::memory_order_relaxed)};
+      v[0] = rossby_ratio(kind, radius, 0.f);
+      v[1] = atmo_day_of(radius) > 0.f ? atmo_day_fade(radius) : 1.f;  // no day yet: the median is the R/L itself
+      }
+
     float atmo_aurora_radius{};
     bool atmo_aurora_day{};
     bool atmo_aurora_field{};
@@ -1753,9 +1783,19 @@ namespace edworld
       if(period == 0u)
         return;
       LONGLONG const now{qpc_now()};
+      // the shell drawn into a small target too, for the reflections: not counted among the frame's shells, or a read
+      // waiting for a shell past it waited for good (2026-11-18, the second audit)
+      D3D11_VIEWPORT port{};
+      UINT ports{1u};
+      ctx->RSGetViewports(&ports, &port);
+      if(port.Width < 1024.f)
+        {
+        ++atmo_misses.small_target;
+        return;
+        }
       // the shell's draws of one frame come within milliseconds: count them, so the reads take each planet in view in
-      // turn (atmo_skip, set by the last read), back to the first when a frame has fewer
-      if((now - atmo_shell_qpc) * 1000000 / qpc_frequency > 5000)
+      // turn (atmo_skip, set by the last try), back to the first when a frame has fewer
+      if(atmo_shell_qpc == 0 or (now - atmo_shell_qpc) * 1000000 / qpc_frequency > 5000)
         {
         if(atmo_shells_in_frame <= atmo_skip)
           atmo_skip = 0;
@@ -1774,15 +1814,8 @@ namespace edworld
       if(shell_index < atmo_skip)
         return;
       atmo_misses_log(now);
-      D3D11_VIEWPORT port{};
-      UINT ports{1u};
-      ctx->RSGetViewports(&ports, &port);
-      if(port.Width < 1024.f)  // the shell drawn into a small target too, for the reflections
-        {
-        ++atmo_misses.small_target;
-        return;
-        }
       atmo_last = now;
+      atmo_skip = shell_index + 1u;  // a try that gives nothing goes on to the next shell; a read sets it the same
 
       ID3D11ShaderResourceView * srv{};
       ctx->PSGetShaderResources(0, 1, &srv);
@@ -1886,8 +1919,9 @@ namespace edworld
     /// and band are new
     // ---- the atmosphere's thread (D10, 2026-11-18): one job at a time. The render thread fills the job from the
     // read's copies and starts it (working); the thread does atmo_work and says done; the render thread takes the
-    // result in at its next look (atmo_apply), and only then may the next read be made
-    enum struct atmo_job_e : std::uint8_t
+    // result in at its next look (atmo_apply), and only then may the next read be made. The state and the job's number
+    // share one word (atmo_job_word): a thread late with a job dropped meanwhile cannot mark the next one done
+    enum struct atmo_job_e : std::uint32_t
       {
       idle,
       working,
@@ -1908,67 +1942,92 @@ namespace edworld
       };
     atmo_job_t atmo_job{};
     std::uint8_t atmo_table_copy[2u * 1024u * 1024u];  ///< the table as read (256x512 R11G11B10: 512 KB)
-    std::atomic<atmo_job_e> atmo_job_state{atmo_job_e::idle};
+    std::atomic<std::uint32_t> atmo_job_word{};          ///< the job's number << 2 | its state
     HANDLE atmo_wake{};
     bool atmo_thread_tried{};
-    bool atmo_thread_up{};
+    std::atomic<bool> atmo_thread_up{};  ///< the thread runs: false when it could not start, stopped or was given up
+    std::uint32_t atmo_dropped{};
 
-    auto atmo_work() noexcept -> void;
+    auto atmo_job_state() noexcept -> atmo_job_e
+      {
+      return static_cast<atmo_job_e>(atmo_job_word.load(std::memory_order_acquire) & 3u);
+      }
+
+    auto atmo_job_set(atmo_job_e state) noexcept -> void
+      {
+      std::uint32_t const w{atmo_job_word.load(std::memory_order_relaxed)};
+      atmo_job_word.store((w & ~3u) | static_cast<std::uint32_t>(state), std::memory_order_release);
+      }
+
+    auto atmo_work() -> void;
 
     auto atmo_thread_body(void *) -> DWORD
       {
       for(;;)
         {
         WaitForSingleObject(atmo_wake, INFINITE);
-        if(atmo_job_state.load(std::memory_order_acquire) != atmo_job_e::working)
+        std::uint32_t const w{atmo_job_word.load(std::memory_order_acquire)};
+        if(static_cast<atmo_job_e>(w & 3u) != atmo_job_e::working)
           continue;
         atmo_work();
-        atmo_job_state.store(atmo_job_e::done, std::memory_order_release);
+        std::uint32_t expected{w};
+        atmo_job_word.compare_exchange_strong(expected, (w & ~3u) | static_cast<std::uint32_t>(atmo_job_e::done),
+                                              std::memory_order_acq_rel);
         }
       }
 
-    ///\brief the job filled: to the thread, or done here when there is no thread (it could not start)
-    auto atmo_start_job(LONGLONG) noexcept -> void
+    ///\brief the job filled: to the thread, or done here when there is no thread (it could not start, stopped or was
+    /// given up)
+    auto atmo_start_job(LONGLONG) -> void
       {
       if(not atmo_thread_tried)
         {
         atmo_thread_tried = true;
         atmo_wake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-        auto const thread{[](LPVOID) -> DWORD { return run_guarded_thread("atmo", &atmo_thread_body, nullptr); }};
+        auto const thread{[](LPVOID) -> DWORD
+                            {
+                              DWORD const r{run_guarded_thread("atmo", &atmo_thread_body, nullptr)};
+                              atmo_thread_up.store(false);  // stopped after its faults: the reads are worked out in place
+                              return r;
+                            }};
+        atmo_thread_up.store(true);
         if(HANDLE const h{atmo_wake ? CreateThread(nullptr, 0, thread, nullptr, 0, nullptr) : nullptr})
-          {
           CloseHandle(h);
-          atmo_thread_up = true;
-          }
         else
+          {
+          atmo_thread_up.store(false);
           log_line("atmo: no thread of its own (error %lu); the reads are worked out on the render thread", GetLastError());
+          }
         }
       atmo_job.started = GetTickCount64();
-      if(not atmo_thread_up)
+      // a new number, working
+      std::uint32_t const number{(atmo_job_word.load(std::memory_order_relaxed) >> 2) + 1u};
+      if(not atmo_thread_up.load())
         {
+        atmo_job_word.store(number << 2 | static_cast<std::uint32_t>(atmo_job_e::working), std::memory_order_release);
         atmo_work();
-        atmo_job_state.store(atmo_job_e::done, std::memory_order_release);
+        atmo_job_set(atmo_job_e::done);
         return;
         }
-      atmo_job_state.store(atmo_job_e::working, std::memory_order_release);
+      atmo_job_word.store(number << 2 | static_cast<std::uint32_t>(atmo_job_e::working), std::memory_order_release);
       SetEvent(atmo_wake);
       }
 
     ///\brief the job's result taken in, on the render thread: the planet's kind and day, the share (edworld_eht); then
-    /// the next read may come. A job the thread has not finished in 10 s (a fault in it) is dropped, said once
-    auto atmo_apply() noexcept -> void
+    /// the next read may come. A job the thread has not finished in 10 s is dropped and the thread given up: the next
+    /// reads are worked out in place (a thread late with the dropped one may still read the copies while they are
+    /// filled again; its result no longer counts)
+    auto atmo_apply() -> void
       {
-      atmo_job_e const state{atmo_job_state.load(std::memory_order_acquire)};
+      atmo_job_e const state{atmo_job_state()};
       if(state == atmo_job_e::working)
         {
         if(GetTickCount64() - atmo_job.started < 10000u)
           return;
-        static bool told{};
-        if(not told)
-          {
-          told = true;
-          log_line("atmo: a read not worked out in 10 s; dropped");
-          }
+        ++atmo_dropped;
+        atmo_thread_up.store(false);
+        log_line("atmo: a read not worked out in 10 s, dropped (%u so far); the reads are worked out on the render thread "
+                 "from now on", atmo_dropped);
         }
       else if(state == atmo_job_e::done)
         {
@@ -1981,14 +2040,16 @@ namespace edworld
         }
       else
         return;
-      atmo_job_state.store(atmo_job_e::idle, std::memory_order_release);
+      // idle under a new number: a late "done" for the old one no longer matches
+      std::uint32_t const number{(atmo_job_word.load(std::memory_order_relaxed) >> 2) + 1u};
+      atmo_job_word.store(number << 2 | static_cast<std::uint32_t>(atmo_job_e::idle), std::memory_order_release);
       atmo_busy = false;
       }
 
     auto atmo_drain(LONGLONG now) -> void
       {
       atmo_apply();
-      if(not atmo_busy or atmo_job_state.load(std::memory_order_acquire) != atmo_job_e::idle)
+      if(not atmo_busy or atmo_job_state() != atmo_job_e::idle)
         return;
       atmo_pending_t & p{atmo_pending};
       // the copies are made in order: the last one done, all are
@@ -2034,6 +2095,7 @@ namespace edworld
           atmo_misses.radius = radius;
           atmo_misses.distance = distance;
           }
+        atmo_skip = p.shell_index + 1u;
         unmap_cbs();
         atmo_release(p);
         return;
@@ -2114,7 +2176,7 @@ namespace edworld
     ///\brief the atmosphere thread's part (D10, 2026-11-18: on the render thread before, the hue of 32768 texels and two
     /// medians every read, in edworld_eht the table's hash over 512 KB and the record): the hue, and the fingerprint's
     /// files; nothing the render thread reads but the job's result
-    auto atmo_work() noexcept -> void
+    auto atmo_work() -> void
       {
       atmo_job_t & j{atmo_job};
       if(j.format == dxgi_r11g11b10_float and j.table_bytes)
@@ -2828,7 +2890,7 @@ namespace edworld
       return GetTickCount64() - last_watched_ms.load(std::memory_order_relaxed) < static_cast<std::uint64_t>(panel_less_ms);
       }
 
-    auto full_dump_wanted(LONGLONG now) noexcept -> bool
+    auto full_dump_wanted(LONGLONG now) -> bool
       {
       if(full_armed or full_done_waiting or pending_count or pending_buffer_count or full_dump_request.load(std::memory_order_relaxed))
         return true;
@@ -3673,7 +3735,6 @@ namespace edworld
       std::uint32_t pool_bytes{};
       std::uint32_t pool_first{};
       std::uint32_t pool_stride{};
-      ID3D11Buffer const * pool_from{};  ///< the game's pool copied for this series (compared, not held)
       LONGLONG qpc{};
       std::uint32_t parts{};
       std::uint32_t count[holo_parts]{};
@@ -4505,18 +4566,12 @@ namespace edworld
           s.pool = nullptr;
         ok = s.pool != nullptr;
         }
-      // one copy of the pool a series (D4, 2026-11-18): its later parts draw from the same pool, which the copy holds
-      // already; each part took the whole pool before, up to six times every 50 ms
-      if(ok and p != 0 and s.pool_from == buf and s.pool_first == first_element and s.pool_bytes == bd.ByteWidth)
-        {
-        buf->Release();
-        return true;
-        }
+      // each part copies the pool again (the second audit, 2026-11-18: one copy a series, at its first part, would miss
+      // records the game writes between the own ship's hologram and the target's); the last copy is the one read
       if(ok)
         {
         D3D11_BOX const box{0, 0, 0, bd.ByteWidth, 1, 1};
         ctx->CopySubresourceRegion(s.pool, 0, 0, 0, 0, buf, 0, &box);
-        s.pool_from = buf;
         s.pool_bytes = bd.ByteWidth;
         s.pool_first = first_element;
         s.pool_stride = bd.StructureByteStride ? bd.StructureByteStride : 336u;
@@ -5186,7 +5241,7 @@ namespace edworld
       ID3D11DepthStencilState * volume_depth_state{};
       ID3D11Buffer * volume_params{};
       // the volume's parameters, the wind's seconds among them, written again for each draw
-      float volume_values[124]{};
+      float volume_values[128]{};
       ULONGLONG wind_start{};
       ID3D11Texture2D * depth_copy{};
       ID3D11ShaderResourceView * depth_view{};
@@ -5228,7 +5283,7 @@ namespace edworld
       edworld::gpu_span_window_t window{};
       ULONGLONG window_start{};
       std::uint32_t busy{};  // draws not timed as every slot still waited for the GPU
-      std::uint32_t calls{};  // the shell's draws with the volume, one in four of them timed
+      std::uint32_t calls{};  // the shell's draws with the volume, one in five of them timed
       };
     clouds_timing_t clouds_timing;
 
@@ -5282,7 +5337,7 @@ namespace edworld
       if(now - clouds_timing.window_start < 5000u)
         return;
       auto const s{edworld::span_summary(clouds_timing.window)};
-      log_line("clouds gpu 5s: draws %u (1 in 4 timed), ms median %.2f mean %.2f max %.2f, pixels %.2f M a draw, %.2f ms per million pixels, untimed %u",
+      log_line("clouds gpu 5s: draws %u (1 in 5 timed), ms median %.2f mean %.2f max %.2f, pixels %.2f M a draw, %.2f ms per million pixels, untimed %u",
                s.count, s.ms_median, s.ms_mean, s.ms_max, s.megapixels_mean, s.ms_per_megapixel, clouds_timing.busy);
       clouds_timing.window = {};
       clouds_timing.busy = 0u;
@@ -5294,9 +5349,9 @@ namespace edworld
       {
       if(not make_clouds_timing(ctx))
         return nullptr;
-      // one draw in four timed, and the finished ones taken in only then (D11, 2026-11-18: four queries begun and up to
-      // 24 asked for at each draw of a shell before); the median and the mean stand as they were
-      if(clouds_timing.calls++ % 4u != 0u)
+      // one draw in five timed, and the finished ones taken in only then (D11, 2026-11-18: four queries begun and up to
+      // 24 asked for at each draw of a shell before); five, not four: with two shells a frame each is timed in turn
+      if(clouds_timing.calls++ % 5u != 0u)
         return nullptr;
       collect_clouds_timing(ctx);
       auto & s{clouds_timing.slots[clouds_timing.next]};
@@ -5448,15 +5503,15 @@ namespace edworld
       // 19..32 (the game's fade, near and far, the debug colour, the planet's size on the screen, the steps' most, the
       // edge, the haze) and 33..42 (the atmosphere's kind) are written again for each draw, as they change while the game
       // runs, 43 the lumps' size, 44..85 the storms, 86..91 the lumps by the layer and the weather, 92..111 the aurora,
-      // 112..123 the snow
-      float const values[124]{
+      // 112..123 the snow, 124..127 the weather's R/L before the day was read and how far it has come in
+      float const values[128]{
         settings().clouds_bottom, settings().clouds_top, settings().clouds_cover, settings().clouds_light,
         settings().clouds_steps, settings().clouds_density, settings().clouds_opacity, settings().clouds_top_gain,
         settings().clouds_min_light, settings().clouds_under_gain, settings().clouds_detail, settings().clouds_detail_size,
         settings().clouds_detail_range, settings().clouds_detail_edge, settings().clouds_detail_gap, 0.f,
         settings().clouds_wind_low / 3.6f, settings().clouds_wind_high / 3.6f, 1.f, 0.f,
         0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f
-      };  // the rest, 44..123, zero
+      };  // the rest, 44..127, zero
       std::memcpy(clouds.volume_values, values, sizeof values);
       clouds.wind_start = GetTickCount64();
       D3D11_BUFFER_DESC desc{};
@@ -5665,6 +5720,7 @@ namespace edworld
       clouds.volume_values[91] = static_cast<float>(
         std::fmod(static_cast<double>(GetTickCount64() - clouds.wind_start) / 1000. * 50.265, 6.283185307179586));
       atmo_snow_values(clouds.volume_values + 112);
+      atmo_weather_fade_values(clouds.volume_values + 124);
       if(clouds.volume_values[84] > 0.f)
         {
         // the storms tower to twice the layer's height (v1.4s): the kind's top raised, the tower told to the shader

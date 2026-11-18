@@ -103,6 +103,10 @@ cbuffer clouds : register(b4)
   float snow_parts;
   float snow_drift_east;
   float snow_drift_north;
+  // the weather's R/L before the planet's day was read (the kind's median) and how far the day's R/L has come in, 0..1
+  float cloud_rossby_before;
+  float cloud_weather_fade;
+  float2 cloud_spare;
   };
 
 Texture2D<float> scene_depth : register(t0);
@@ -318,9 +322,8 @@ float storm_density(float3 p, float bottom, float top, float kind, float tower, 
 // the weather (design v2) at a place of the planet: -1 clear .. 1 overcast. A slow turn for the planet's size (R/L
 // under 0.3): clouds over the day side about the point under the star, held to the ground (ground_dir); a faster one:
 // bands by latitude and patches drifting with the wind (middle_dir, the place blown)
-float weather_at(float3 ground_dir, float3 middle_dir, float3 seed, float3 sun_model)
+float weather_for(float rossby, float3 ground_dir, float3 middle_dir, float3 seed, float3 sun_model)
   {
-  float rossby = cloud_kind_rossby;
   if(rossby < 0.3f)
     return 2.f * smoothstep(-0.2f, 0.8f, dot(ground_dir, sun_model)) - 1.f;
   float latitude = degrees(asin(clamp(middle_dir.y, -1.f, 1.f)));
@@ -328,6 +331,16 @@ float weather_at(float3 ground_dir, float3 middle_dir, float3 seed, float3 sun_m
   float band = cos(latitude / period * 6.2831853f) * (1.f - 0.7f * smoothstep(60.f, 85.f, abs(latitude)));
   float patch = (fbm(middle_dir * max(rossby * 1.5f, 1.5f) + seed + 57.f, 2) - 0.375f) / 0.375f;
   return clamp(0.5f * band + 0.5f * patch, -1.f, 1.f);
+  }
+
+// the weather by the planet's R/L; once its day is read, the pattern of the R/L from the kind's median goes over into
+// the day's over 4 s (C19, 2026-11-18), as the storms come in
+float weather_at(float3 ground_dir, float3 middle_dir, float3 seed, float3 sun_model)
+  {
+  float now = weather_for(cloud_kind_rossby, ground_dir, middle_dir, seed, sun_model);
+  if(cloud_weather_fade >= 1.f)
+    return now;
+  return lerp(weather_for(cloud_rossby_before, ground_dir, middle_dir, seed, sun_model), now, cloud_weather_fade);
   }
 
 float4 clouds_along(ps_in input, float3 ray, float3 centre)

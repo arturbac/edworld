@@ -666,6 +666,11 @@ namespace
     atmosphere_note_t const held{read(1'200'000.f, 2.f, k::unknown)};
     check(held.held and atmosphere_planet_find(p, 1'200'000.f)->kind == k::carbon_dioxide,
           "atmosphere planets: an unknown read keeps the known kind");
+    read(1'200'000.f, 2.f, k::unknown);
+    read(1'200'000.f, 2.f, k::unknown);
+    read(1'200'000.f, 2.f, k::unknown);
+    check(atmosphere_planet_find(p, 1'200'000.f)->kind == k::carbon_dioxide,
+          "atmosphere planets: unknown reads in a row keep the known kind too");
     read(1'200'000.f, 2.f, k::methane);
     read(1'200'000.f, 2.f, k::methane);
     check(atmosphere_planet_find(p, 1'200'000.f)->kind == k::carbon_dioxide, "atmosphere planets: two reads of another kind change nothing");
@@ -792,6 +797,14 @@ namespace
     (void)snow_walked(far_walk, 9990.0 * deg_per_m, 0.0, 1000.0, false, 1109282.75, 1.0, 1.0);
     auto const across{snow_walked(far_walk, 10020.0 * deg_per_m, 0.0, 1000.0, false, 1109282.75, 1.003, 1.003)};
     check(std::fabs(across.place[1] - 9990.0) < 40.0, "snow: a new reference past 10 km carries the way on (C6)");
+    // the same at 200 m/s with each fix seen 80 ms after its write: the way at the new reference goes on from where
+    // it stood at the fix, not from where it was shown (the second audit: that counted 80 ms of the way twice)
+    snow_walk_t fast{};
+    snow_eye_t last_eye{};
+    for(int i{}; i <= 201; ++i)
+      last_eye = snow_walked(fast, 50.0 * i * deg_per_m, 0.0, 1000.0, false, 1109282.75, 0.25 * i + 0.08, 0.25 * i);
+    check(std::fabs(last_eye.place[1] - (50.0 * 201 + 200.0 * 0.08)) < 1.0,
+          "snow: a new reference at speed, fixes seen late: no jump");
     snow_walk_t late{};
     (void)snow_walked(late, 0.0, 0.0, 1000.0, false, 1109282.75, 0.0, 0.0);
     (void)snow_walked(late, 100.0 * deg_per_m, 0.0, 1000.0, false, 1109282.75, 1.0, 1.0);

@@ -243,7 +243,7 @@ namespace edworld
     float compass_info_y{24.f};
     float compass_info_size{18.f};
     ///\brief a line of the reading in the log at most this often; 0 = never
-    std::uint32_t compass_log_ms{1000};
+    std::uint32_t compass_log_ms{};  // 0 for players since 2026-11-18 (Artur „63 b”), as log_interval_ms
     ///\brief 1: two spheres of the target's direction as quads of edworld's own on the dashboard, in the planes of the two
     /// panels drawn first from the 2048x1280 surface (12 indices; the left one, then the right one): on the left the
     /// sphere seen from the front (as the compass, larger), on the right seen from behind, the left and above, with the
@@ -391,6 +391,9 @@ namespace edworld
     };
 
   auto settings() noexcept -> settings_t const &;
+  ///\brief one more at each change of the live settings (refresh_live_settings): a key of what was drawn from them
+  /// (the two copies take turns, so their address comes back)
+  auto settings_generation() noexcept -> std::uint32_t;
   auto load_settings(std::wstring const & config_dir, std::wstring const & output_dir) -> void;
   ///\brief the ini made if there is none, and every setting it does not name yet added as a comment with the value edworld
   /// runs on; a line already there, comment or not, stays as it is. After log_open: a failure is logged, the game goes on

@@ -31,6 +31,7 @@ namespace edworld
     settings_t slots[2];
     settings_t & current{slots[0]};
     std::atomic<settings_t const *> live{&slots[0]};
+    std::atomic<std::uint32_t> settings_serial{};  ///< one more at each publication of the live settings
     FILETIME ini_written{};  ///< the ini's last write as last read (load_settings, complete_settings, refresh_live_settings)
 
     auto ini_write_time(std::wstring const & path) noexcept -> FILETIME
@@ -578,6 +579,7 @@ namespace edworld
     }  // namespace
 
   auto settings() noexcept -> settings_t const & { return *live.load(std::memory_order_acquire); }
+  auto settings_generation() noexcept -> std::uint32_t { return settings_serial.load(std::memory_order_acquire); }
 
   namespace
     {
@@ -607,14 +609,17 @@ namespace edworld
           }
         std::string_view const key{trim(text.substr(0, eq))};
         std::string_view value{trim(text.substr(eq + 1))};
-        // a comment after the value, `clouds = 1 ; on`: the value stops before it (a ';' or '#' after a space)
-        for(std::size_t i{1}; i < value.size(); ++i)
+        auto const found{std::find_if(std::begin(keys), std::end(keys), [&](key_t const & k) { return k.name == key; })};
+        // a comment after the value, `clouds = 1 ; on`: the value stops before it (a ';' or '#' after a space); not in
+        // a path, a folder or a dll's name, which may hold them (`D:\Games #2\...`; the second audit, 2026-11-18)
+        std::string_view const range{found != std::end(keys) and found->range ? found->range : ""};
+        bool const names_a_file{range.starts_with("a path") or range.starts_with("a folder") or range.starts_with("a dll")};
+        for(std::size_t i{1}; not names_a_file and i < value.size(); ++i)
           if((value[i] == ';' or value[i] == '#') and (value[i - 1] == ' ' or value[i - 1] == '\t'))
             {
             value = trim(value.substr(0, i));
             break;
             }
-        auto const found{std::find_if(std::begin(keys), std::end(keys), [&](key_t const & k) { return k.name == key; })};
         if(found == std::end(keys))
           notes.push_back("line " + std::to_string(number) + ": no setting '" + std::string{key} + "' (a typo?): ignored");
         else if(not read_value(s, found->field, value))
@@ -675,6 +680,7 @@ namespace edworld
         values += value_text(next, key.field);
         }
       live.store(&next, std::memory_order_release);
+      settings_serial.fetch_add(1u, std::memory_order_release);
       log_line("settings: read again: %s", values.c_str());
       }
     catch(std::exception const & e)

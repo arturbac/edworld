@@ -280,8 +280,8 @@ namespace edworld
     float scale, detail_m, lean;
     };
 
-  ///\brief how far the weather moves a cloud's edge at most (design v2, the readable variant): the clouds' cover
-  /// within +- this between the clear and the overcast regions
+  ///\brief how far the weather moves a cloud's edge at most (design v2, the readable variant), in the edge's terms
+  /// (edge = 0.62 - 0.3 cover: 0.2 of the edge is 0.67 of the cover) between the clear and the overcast regions
   inline constexpr float atmosphere_weather_shift{0.20f};
 
   [[nodiscard]]

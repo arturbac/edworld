@@ -1128,8 +1128,7 @@ namespace edworld
       // the list, its size, the settings and the target (made again: another): the same as at the last draw, the
       // texture still holds it
       std::uint64_t key{fnv1a64(reinterpret_cast<std::uint8_t const *>(&list), sizeof list)};
-      settings_t const * const settings_at{&s};
-      std::uintptr_t const parts[]{reinterpret_cast<std::uintptr_t>(settings_at), w, h, test, reinterpret_cast<std::uintptr_t>(r.list_rtv)};
+      std::uintptr_t const parts[]{settings_generation(), w, h, test, reinterpret_cast<std::uintptr_t>(r.list_rtv)};
       for(std::uintptr_t const part: parts)
         key = (key ^ part) * 0x100000001b3ull;
       if(target and key == list_key and list_used > 0.f)
@@ -2473,9 +2472,9 @@ namespace edworld
       std::uint8_t const hb[]{h.have, h.ship, static_cast<std::uint8_t>(h.place)};
       mix(hb, sizeof hb);
       }
-      settings_t const * const settings_at{&s};
+      std::uint32_t const generation{settings_generation()};
       ID3D11Texture2D * const targets[]{cs.sphere_tex[0], cs.sphere_tex[1]};
-      mix(&settings_at, sizeof settings_at);
+      mix(&generation, sizeof generation);
       mix(targets, sizeof targets);
       if(cs.spheres_drawn and key == cs.spheres_key and now_ms - cs.spheres_at < 250u)
         return;

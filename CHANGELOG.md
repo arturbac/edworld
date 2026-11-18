@@ -2,16 +2,24 @@
 
 ## Unreleased
 
+- **After a second audit:** the atmosphere's reads no longer wait for good behind the shell drawn for reflections
+  (no day read, so no storms and no aurora); a read of no known kind never takes a known kind away; the weather's
+  pattern comes in over 4 s once the planet's day is read, as the storms do; the clouds come in when another planet
+  becomes the nearest; the snow no longer jumps 10-20 m every 10 km at speed; each part of a hologram copies the
+  record pool again (the target's records written after the own ship's); a read the atmosphere's thread does not finish
+  in 10 s, or a thread that stops, hands the work to the render thread; a writer thread that stops says so and
+  nothing more piles up; no out-of-memory in a few functions ends the game; a path in the ini may hold ` #` or ` ;`;
+  `clouds gpu 5s` times one draw in five, so two shells are both timed; the compass's line every second is off by
+  default (`compass_log_ms = 1000` brings it back).
 - **The docs agree with the code:** the snow's 12 samples from 1.5 m, the second and third aurora arcs coming in from
   levels 2 and 5, ammonia's second colour as seen on the two coldest ammonia planets. Methane's snow takes its kind's
   typical 93 K as the rest of edworld does (95 K before). A value of the atmosphere's table that is an infinity or
   NaN no longer counts as its brightest light.
 - **Less work on the game's render thread:** the compass spheres and the faction list are drawn again only when what
-  they show changes (each frame before), the panels' part of the game's record pool is copied each frame instead of all of it (0.7 to 3.4 MB), a
-  hologram's record pool is copied once a series instead of once a part,
+  they show changes (each frame before), the panels' part of the game's record pool is copied each frame instead of all of it (0.7 to 3.4 MB),
   the draws between the HUD's panels take no timestamps, the corner text keeps its target's check, the galaxy map's
   names wait for their interval before looking at the target, the atmosphere's reads keep their copies instead of
-  making them each time and are worked out on a thread of their own, one cloud draw in four is timed, and a watched shader is found with one look. The EDSM
+  making them each time and are worked out on a thread of their own, one cloud draw in five is timed, and a watched shader is found with one look. The EDSM
   request runs on a thread of its own, so the charge and the flight keep coming while EDSM answers. The log's
   summary every second is off by default (`log_interval_ms = 1000` brings it back); its lines go out in one write.
 - **Clouds cheaper in storms and on the screen around them:** a ray looks only at the storms it passes, the storms'
@@ -35,14 +43,14 @@
   seconds (another kind takes over after three reads in a row), and the reads take each planet in view in turn.
 - **The ini says what it cannot read.** A value edworld cannot read (`0,45`, a word, NaN, a number too large) keeps
   its default and the log names the line; an unknown name (a typo) is logged too; a comment after a value
-  (`clouds = 1 ; on`) is taken off. The ini edworld writes leaves `status_file` empty (the Saved Games folder), so it
+  (`clouds = 1 ; on`) is taken off, but not from a path or a dll's name. The ini edworld writes leaves `status_file` empty (the Saved Games folder), so it
   holds no Windows user name.
 - **The game's state kept whole around edworld's drawing:** constant buffers with their offsets, the pixel shader's
   UAVs and the hull, domain and compute shaders are put back as the game had them. edworld follows only the game's
   first device (a second is logged, not followed). A surface's size is read anew at each draw.
 - **No error of edworld's own takes the game down.** A C++ exception (out of memory) in edworld's work on the
   render thread now reaches its guard instead of ending the process; every fault or exception caught is logged with
-  its code and place. edworld's own threads are guarded too and start again after a fault, eight times at most.
+  its code and place. edworld's own threads are guarded too and the lasting ones start again after a fault, eight times at most.
   Files and the log are written with Windows' own calls (a file not written whole is removed), the live settings
   are read into a second copy and then published, a change of the ini before the first clouds is no longer missed,
   and edworld's own draws pass its hooks unobserved.

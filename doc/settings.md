@@ -136,7 +136,7 @@ None.
 | `compass_filled_max` | `320` |  | a filled dot's pixels at most; more is not the dot |
 | `compass_hollow_min` | `20` | up to compass_hollow_max | a hollow dot's (the target behind) pixels at least |
 | `compass_hollow_max` | `180` |  | a hollow dot's pixels at most |
-| `compass_log_ms` | `1000` | 0 and more | a line of the compass's reading in the log at most this often, in milliseconds; `0` = never |
+| `compass_log_ms` | `0` | 0 and more | a line of the compass's reading in the log at most this often, in milliseconds; `0` = never |
 | `gate_dive` | `17` | 0..90 | (PoC, not drawn yet) the gates down to a place: the dive, in degrees below the planet's visible edge |
 | `gate_dive_height` | `0.3` | over 0 | (PoC) the gates: the height of the point the dive starts from, in planet radii |
 | `gate_arc` | `30` | 0..180 | (PoC) the gates: the largest turn, in degrees, onto the flat line before the dive |

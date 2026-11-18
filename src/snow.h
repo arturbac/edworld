@@ -156,18 +156,29 @@ namespace edworld
     constexpr double to_rad{3.14159265358979323846 / 180.0};
     double const height{on_foot ? 0.0 : altitude};
     bool const switched{from.have and from.from_mean != from_mean};
-    // a new reference here: the way shown so far carried on, the speed kept
-    auto const reference{[&](bool first)
+    // a new reference here, the speed kept: the way carried on from where it stood at this fix's time (not from where
+    // it was shown, which is extrapolated past the fix: the new reference's own extrapolation from the fix would add
+    // that part again, 10-20 m at 200 m/s; the second audit, 2026-11-18). Held (`held`, no speed after it): from where
+    // it was shown, so nothing moves
+    auto const reference{[&](bool first, bool held = false)
                            {
                            snow_walk_t const kept{from};
                            from = snow_walk_t{.latitude = latitude, .longitude = longitude, .altitude = height, .have = true,
                                               .on_foot = on_foot, .at = fix_at, .gap = kept.gap,
                                               .v_east = kept.v_east, .v_north = kept.v_north, .v_up = kept.v_up};
-                           if(not first)
+                           if(not first and held)
                              {
-                             from.carry_east = kept.shown_east;
-                             from.carry_north = kept.shown_north;
-                             from.carry_up = kept.shown_up;
+                             from.carry_east = from.shown_east = kept.shown_east;
+                             from.carry_north = from.shown_north = kept.shown_north;
+                             from.carry_up = from.shown_up = kept.shown_up;
+                             }
+                           else if(not first)
+                             {
+                             double const ahead{std::min(std::max(fix_at - kept.at, 0.0), std::min(1.5 * kept.gap, snow_coast_s))};
+                             double const settle{std::max(0.0, 1.0 - (now - kept.settle_from) / snow_settle_s)};
+                             from.carry_east = kept.carry_east + kept.east + kept.v_east * ahead + kept.settle_east * settle;
+                             from.carry_north = kept.carry_north + kept.north + kept.v_north * ahead + kept.settle_north * settle;
+                             from.carry_up = kept.carry_up + kept.up + kept.v_up * ahead + kept.settle_up * settle;
                              from.shown_east = kept.shown_east;
                              from.shown_north = kept.shown_north;
                              from.shown_up = kept.shown_up;
@@ -177,7 +188,7 @@ namespace edworld
       reference(true);
     else if(from.on_foot != on_foot or switched)
       {
-      reference(false);
+      reference(false, switched);
       if(switched)  // the altitude's reference moved, the eye did not: no speed out of it
         from.v_east = from.v_north = from.v_up = 0.0;
       }

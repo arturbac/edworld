@@ -102,17 +102,19 @@ decides it is how stable the atmosphere is, not its temperature.
 | Neon | 5435 km | 24 km | 776 / 46 km | 611 / 36 km |
 | Helium | 7711 km | 35 km | 1102 / 65 km | 867 / 51 km |
 
-**Weather (PoC, `clouds_weather`).** The cover is moved up or down by region, by at most 0.2, so some regions are
-overcast and others clear. What shapes it is R/L, as for the storms below: under 0.3
+**Weather (PoC, `clouds_weather`).** A cloud's edge is moved up or down by region, by at most 0.2 (the edge is
+`0.62 - 0.3 cover`, so 0.2 of it is as much as 0.67 of the cover), so some regions are overcast and others clear. What shapes it is R/L, as for the storms below: under 0.3
 (a slow turn for the planet's size) the clouds gather on the day side around the point under the star, where it heats
 most, as models of slowly turning planets give, and they stay with the star as the planet turns. There the clear
-part is the larger: over the whole planet the cover is lower by 0.3 of the weather's strength (0.06 at 0.2), so a
+part is the larger: over the whole planet the edge stands higher by 0.3 of the weather's strength (0.06 at 0.2, as
+if the cover were 0.2 lower), so a
 slowly turning planet has fewer clouds than its kind's cover, most of them over its day side. Above 0.3 they lie
 in bands by latitude, the equator overcast where the air meets and rises, about 25° clearer where it sinks, the middle
 latitudes overcast again with their fronts (past R/L 4 more and narrower bands), with patches the size of the Rossby
 radius, the planet's highs and lows, drifting with the wind. How strong it is (0.2) is chosen to be seen, not given
 by the physics; `clouds_weather` scales it (`0` = none, `2` = twice). In a storm the weather is given back, as a storm
-brings its own clouds: it looks the same in a clear band as in an overcast one.
+brings its own clouds: it looks the same in a clear band as in an overcast one. Until the planet's day is read its R/L is the kind's
+median one; once the day is read the pattern goes over to the day's R/L in 4 s, as the storms come in.
 
 **The physics behind the weather.** Clouds form where air rises and cools, and they clear where it sinks and
 warms. So the weather mask is a map of where a planet's air goes up and where it comes down. That pattern depends

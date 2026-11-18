@@ -28,6 +28,7 @@ namespace edworld
     bool other_volcanic{};
     bool other_cold{};
     std::uint32_t other_reads{};  ///< reads in a row of `other`
+    bool unknown_told{};          ///< a read of no known kind said since the last read of its kind
     };
 
   struct atmosphere_planets_t
@@ -46,6 +47,7 @@ namespace edworld
     bool fresh{};
     bool changed{};
     bool held{};  ///< a read of another kind (or none) that did not change the kind kept
+    bool first_unknown{};  ///< held by a read of no known kind, the first since a read of its kind
     };
 
   ///\brief the slot of the planet of this radius; none when it is not there
@@ -92,6 +94,7 @@ namespace edworld
     if(same)
       {
       s.other_reads = 0;
+      s.unknown_told = false;
       return note;
       }
     // an unknown planet takes the first kind read; a known one only what three reads in a row agree on
@@ -103,6 +106,15 @@ namespace edworld
       s.kind_since_ms = now_ms;
       s.other_reads = 0;
       note.changed = true;
+      return note;
+      }
+    // a read of no known kind never takes a known kind away, however many come (as the header and developers.md say;
+    // three in a row did before the second audit, 2026-11-18); it does not break a run of another kind either
+    if(kind == atmosphere_kind_e::unknown)
+      {
+      note.held = true;
+      note.first_unknown = not s.unknown_told;  // said once until a read of its kind again
+      s.unknown_told = true;
       return note;
       }
     if(s.other_reads != 0 and kind == s.other and volcanic == s.other_volcanic and cold == s.other_cold)

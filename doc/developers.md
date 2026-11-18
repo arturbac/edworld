@@ -45,8 +45,8 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   275 is the world-rebase origin; anchor = cb0 rows 4..7 (the camera) applied to (position - rebase, 1). The
   pool is GPU-copied once a frame, only the window of records the last read frames' panels used (64 records either
   side; `panel_pool`): a record outside it, another pool or the first frame copy the whole pool once (the summary's
-  `pool` is the bytes copied). A hologram's series copies it once, at its first part (its later parts
-  draw from the same pool). The compass spheres and the faction list's texture are drawn again only when what they
+  `pool` is the bytes copied). A hologram's series copies the whole pool at each part (records written between the
+  own ship's hologram and the target's are in the last copy). The compass spheres and the faction list's texture are drawn again only when what they
   show changes (a key of their lines, directions, flags, notes, the hologram and the settings; the spheres at least
   every 250 ms), and a draw takes no timestamp while panels come (`panels_recent`).
 - (edworld_eht only) Reads the copies 1-3 frames later with `Map(DO_NOT_WAIT)` (never a CPU read of a mapped dynamic buffer:
@@ -572,8 +572,10 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   one would end the process before reaching the guard (a 2026-11-18 test under clang-cl /EHsc: hardware faults below
   `noexcept` frames are caught, a C++ exception through one is not). While a guard runs (`own_depth`, per thread),
   edworld's own draws and shader binds (ImGui's, the state put back) pass the hooks straight to the context.
-  edworld's own threads (state, writer, probe, census, machine, shader catalog) run under `run_guarded_thread`: a
-  fault or exception is logged and the thread started again a second later, eight times at most. Files are written
+  edworld's own threads run under `run_guarded_thread`: a fault or exception is logged, and the state, writer, probe,
+  atmosphere and shader catalog threads start again a second later, eight times at most; the census, machine and
+  EDSM threads, one-off work, end there. A writer that stops says so and nothing more is queued; an atmosphere
+  thread that stops, or keeps a read over 10 s, is given up and the reads are worked out on the render thread. Files are written
   and the log appended with Windows' own calls (`write_whole_file`, `append_to_file`; a file not written whole is
   removed), never CRT streams: a thread killed at the game's exit must leave nothing for the CRT's closing of all
   streams at edworld's unload (0xC0000409, 2026-11-17). `EDWORLD_TEST_FAULT` (`draw-seh`, `draw-cpp`, `thread`)
@@ -644,7 +646,7 @@ Loaded through edloader, `<plugin>.ini` is in edloader's `config\` and `<plugin>
 folders edloader hands its plugins in `EDLOADER_CONFIG_DIR` and `EDLOADER_LOG_DIR`). Installed alone as the
 game's `d3d11.dll`, both are beside the dll.
 
-Comments are whole lines starting with `;` or `#`; a comment after a value would become part of the value.
+Comments are whole lines starting with `;` or `#`, or follow a value after a space (`clouds = 1 ; on`); in a path, a folder or a dll's name (`status_file`, `shm_dir`, `next`) the whole rest of the line is the value.
 
 ```ini
 ; the next d3d11 in the chain; empty = system copy
