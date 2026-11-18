@@ -7,7 +7,8 @@
   typical 93 K as the rest of edworld does (95 K before). A value of the atmosphere's table that is an infinity or
   NaN no longer counts as its brightest light.
 - **Less work on the game's render thread:** the compass spheres and the faction list are drawn again only when what
-  they show changes (each frame before), a hologram's record pool is copied once a series instead of once a part,
+  they show changes (each frame before), the panels' part of the game's record pool is copied each frame instead of all of it (0.7 to 3.4 MB), a
+  hologram's record pool is copied once a series instead of once a part,
   the draws between the HUD's panels take no timestamps, the corner text keeps its target's check, the galaxy map's
   names wait for their interval before looking at the target, the atmosphere's reads keep their copies instead of
   making them each time, one cloud draw in four is timed, and a watched shader is found with one look. The EDSM

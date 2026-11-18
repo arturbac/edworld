@@ -286,9 +286,10 @@ namespace edworld
       {
       ID3D11Buffer * staging{};
       ID3D11Buffer * side{};  ///< VB0 entries at panel * 16, then cb1 rows 268..275
-      ID3D11Buffer * pool{};  ///< the whole t33 record pool of the frame
+      ID3D11Buffer * pool{};  ///< the frame's t33 record pool, the window of it the panels' records lie in (panel_pool)
       std::uint32_t pool_capacity{};
-      std::uint32_t pool_bytes{};
+      std::uint32_t pool_bytes{};  ///< the bytes copied, from pool_base of the game's pool
+      std::uint32_t pool_base{};
       std::uint32_t pool_first{};
       std::uint32_t pool_stride{};
       bool have_pool{};
@@ -619,6 +620,25 @@ namespace edworld
       }
 #endif
 
+    // the panels' records lie in a small part of the pool (D4, 2026-11-18: the whole pool, 0.7..3.4 MB, was copied each
+    // frame): the records the last read frames used, with a margin, are copied; a record outside them, a new pool or
+    // the first frame copy the whole pool once. Render thread only
+    struct pool_window_t
+      {
+      std::uint64_t seen_lo{~0ull}, seen_hi{};  ///< record numbers (from the pool's start) read since the last copy
+      std::uint64_t lo{}, hi{};                 ///< the window of the next copies, records
+      bool known{};
+      bool missed{true};
+      };
+    pool_window_t panel_pool{};
+    constexpr std::uint64_t pool_margin_records{64};
+
+    auto pool_note(std::uint64_t record) noexcept -> void
+      {
+      panel_pool.seen_lo = std::min(panel_pool.seen_lo, record);
+      panel_pool.seen_hi = std::max(panel_pool.seen_hi, record);
+      }
+
     struct mapped_t
       {
       std::uint8_t const * cb0{};   ///< the cb0 rows of every panel draw
@@ -633,10 +653,14 @@ namespace edworld
       if(not m.side or not m.pool or not slot.have_entry[i] or not slot.pool_stride)
         return false;
       std::memcpy(&index, m.side + i * entry_bytes, 4);
-      std::uint64_t const at{(static_cast<std::uint64_t>(slot.pool_first) + index) * slot.pool_stride};
-      if(at + 28u > slot.pool_bytes)
+      std::uint64_t const in_pool{(static_cast<std::uint64_t>(slot.pool_first) + index) * slot.pool_stride};
+      pool_note(in_pool / slot.pool_stride);
+      if(in_pool < slot.pool_base or in_pool - slot.pool_base + 28u > slot.pool_bytes)
+        {
+        panel_pool.missed = true;  // outside the window copied: the whole pool next frame
         return false;
-      out = decode_record(m.pool + at);
+        }
+      out = decode_record(m.pool + (in_pool - slot.pool_base));
       return true;
       }
 
@@ -2485,12 +2509,35 @@ namespace edworld
           }
         slot.pool_capacity = bd.ByteWidth;
         }
-      D3D11_BOX const box{0, 0, 0, bd.ByteWidth, 1, 1};
+      std::uint32_t const stride{bd.StructureByteStride ? bd.StructureByteStride : 336u};
+      pool_window_t & w{panel_pool};
+      if(w.seen_lo <= w.seen_hi)
+        {
+        w.lo = w.seen_lo > pool_margin_records ? w.seen_lo - pool_margin_records : 0u;
+        w.hi = w.seen_hi + pool_margin_records;
+        w.known = true;
+        w.seen_lo = ~0ull;
+        w.seen_hi = 0u;
+        }
+      std::uint64_t from{0u}, to{bd.ByteWidth};
+      if(w.known and not w.missed and stride == slot.pool_stride and first_element == slot.pool_first)
+        {
+        from = std::min<std::uint64_t>(w.lo * stride, bd.ByteWidth);
+        to = std::min<std::uint64_t>((w.hi + 1u) * stride, bd.ByteWidth);
+        }
+      w.missed = false;
+      if(to <= from)
+        {
+        from = 0u;
+        to = bd.ByteWidth;
+        }
+      D3D11_BOX const box{static_cast<UINT>(from), 0, 0, static_cast<UINT>(to), 1, 1};
       ctx->CopySubresourceRegion(slot.pool, 0, 0, 0, 0, buf, 0, &box);
       buf->Release();
-      slot.pool_bytes = bd.ByteWidth;
+      slot.pool_base = static_cast<std::uint32_t>(from);
+      slot.pool_bytes = static_cast<std::uint32_t>(to - from);
       slot.pool_first = first_element;
-      slot.pool_stride = bd.StructureByteStride ? bd.StructureByteStride : 336u;
+      slot.pool_stride = stride;
       slot.have_pool = true;
       }
 

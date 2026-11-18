@@ -43,7 +43,9 @@ The ini and log names are fixed by the build, not taken from the dll's file name
 - (edworld_eht only) The panel's place comes from its instance record, as the game's own shader reads it: the VB0 instance entry
   at `start_instance` names a 336-byte record in the VS t33 pool (scale, orientation, position), and VS cb1 row
   275 is the world-rebase origin; anchor = cb0 rows 4..7 (the camera) applied to (position - rebase, 1). The
-  pool is GPU-copied whole once a frame; a hologram's series copies it once, at its first part (its later parts
+  pool is GPU-copied once a frame, only the window of records the last read frames' panels used (64 records either
+  side; `panel_pool`): a record outside it, another pool or the first frame copy the whole pool once (the summary's
+  `pool` is the bytes copied). A hologram's series copies it once, at its first part (its later parts
   draw from the same pool). The compass spheres and the faction list's texture are drawn again only when what they
   show changes (a key of their lines, directions, flags, notes, the hologram and the settings; the spheres at least
   every 250 ms), and a draw takes no timestamp while panels come (`panels_recent`).
