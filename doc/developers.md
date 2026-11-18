@@ -545,7 +545,13 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   using all of it; the eyewall lit by how it faces the sun; and in a storm the clouds' own shadow, two looks toward
   the sun (a quarter and 0.8 of the layer's height) at the large shape alone (`storm_density`, two octaves), at half
   the sheet's strength. The storms stand still on the planet (design v1 had them turning once an hour: a turn growing with time winds
-  the arms up without end, left out).
+  the arms up without end, left out). The ray's middle is wound by the storms first and then blown by the mean wind,
+  as each step's place is, and the snow's cover over the eye the same way. `storms_near_ray` picks the storms a ray
+  may meet once for the ray (a bit each: the arc of its places on the unit sphere within 2.5 sizes of a centre, plus
+  five sizes for each storm kept before it, the most a turn moves a place), so a step outside them costs no
+  storm at all; the storms' own shadow is looked at on every other cloudy step in a storm and held between. The
+  half size picture's upsampling (`clouds_up.hlsl`) reads the nine cloud texels first and discards a pixel none of
+  them covers, before its ten depth reads.
 - Logs to `<plugin>.log` in the log folder: chain, attach, watched shaders, the patch's first draw and the
   destination's allegiance and factions (how many, from which source), and once a second (`log_interval_ms`) a summary: in edworld_eht the frame's panel draws
   with surface size and anchor in NDC, in edworld the draw and fault totals. A fault in edworld's own work is caught; eight of them switch the observer off, never the game call.

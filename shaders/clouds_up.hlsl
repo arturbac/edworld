@@ -29,9 +29,21 @@ float4 ps_main(ps_in input) : SV_TARGET
   int2 full_max = int2(full_w, full_h) - 1;
   int2 half_max = int2(half_w, half_h) - 1;
 
-  float depth = scene_depth.Load(int3(input.pos.xy, 0));
   float2 at = input.pos.xy * 0.5f - 0.5f;
   int2 middle = int2(floor(at + 0.5f));
+  // the clouds first: where none of the nine has any (most of the picture, all of it for a planet a few pixels
+  // across) nothing is blended and the ten reads of the depth are saved (D1, 2026-11-18)
+  float4 near_clouds[9];
+  float most = 0.f;
+  [unroll]
+  for(int n = 0; n != 9; ++n)
+    {
+    near_clouds[n] = half_clouds.Load(int3(clamp(middle + int2(n % 3, n / 3) - 1, 0, half_max), 0));
+    most = max(most, max(near_clouds[n].a, max(near_clouds[n].r, max(near_clouds[n].g, near_clouds[n].b))));
+    }
+  if(most <= 0.f)
+    discard;
+  float depth = scene_depth.Load(int3(input.pos.xy, 0));
   float4 sum = 0.f;
   float weights = 0.f;
   [unroll]
@@ -46,7 +58,7 @@ float4 ps_main(ps_in input) : SV_TARGET
     // reversed depth is a reciprocal of the distance: the relative difference is the same near and far
     float apart = abs(its_depth - depth) / max(max(its_depth, depth), 1e-7f);
     float w = (near + 1e-3f) / (1e-3f + apart);
-    sum += half_clouds.Load(int3(texel, 0)) * w;
+    sum += near_clouds[k] * w;
     weights += w;
     }
   return sum / weights;

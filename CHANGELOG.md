@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Clouds cheaper in storms and on the screen around them:** a ray looks only at the storms it passes, the storms'
+  own shadow is worked out on every other step, and the pass laying the half size clouds over the picture skips the
+  pixels with no clouds. The weather's swirls and the lumps' size follow the storms as the clouds themselves do, and
+  the weak, low lumps of the coldest kinds keep their whole column. clouds.md says why helium's clouds are thinner
+  than its pressure gives and that slowly turning planets have fewer clouds than their kind's cover.
 - **Snow without jumps:** the crystals keep their places after hours of play and across 10 km of flight, the eye's
   way is timed by when the game wrote Status.json and held where it went when you stop, a switch of the altitude's
   reference (a pad, the ground under the ship) moves nothing, the snow follows the clouds straight above as they are

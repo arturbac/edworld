@@ -32,7 +32,9 @@ The layer, its cover and its opacity follow the physics of the kind's typical pl
   one H spans three orders of magnitude, so edworld presses it into a layer from 0.6% to 4% of the radius
   (`0.012 sqrt((H/R) / 0.0025)`), its floor a quarter of its top.
 - **Opacity.** From the typical pressure: `log10(p / 0.001 atm) / 2`, at least 0.3 - an atmosphere of a
-  thousandth of the Earth's shows a haze, one of a tenth shows clouds.
+  thousandth of the Earth's shows a haze, one of a tenth shows clouds. Helium is the one exception: the formula gives
+  it 0.92 (0.068 atm), the table keeps 0.30. A gas that never condenses, with little else in it, shows a thin haze,
+  not a deck as dense as carbon dioxide's; this is a choice, not the formula.
 - **Cover.** Clouds form where the main gas condenses at the planet's temperature. A gas that condenses there gets
   clouds (cover 0.55); one that does not gets a haze of what else is in the air (0.45); helium, which never
   condenses, the least (0.35).
@@ -100,10 +102,12 @@ decides it is how stable the atmosphere is, not its temperature.
 | Helium | 7711 km | 35 km | 1102 / 65 km | 867 / 51 km |
 
 **Weather (PoC, `clouds_weather`).** The cover is moved up or down by region, by at most 0.2, so some regions are
-overcast and others clear, the planet's mean the same. What shapes it is R/L, as for the storms below: under 0.3
+overcast and others clear. What shapes it is R/L, as for the storms below: under 0.3
 (a slow turn for the planet's size) the clouds gather on the day side around the point under the star, where it heats
-most, as models of slowly turning planets give, and they stay with the star as the planet turns; above it they lie in
-bands by latitude, the equator overcast where the air meets and rises, about 25° clearer where it sinks, the middle
+most, as models of slowly turning planets give, and they stay with the star as the planet turns. There the clear
+part is the larger: over the whole planet the cover is lower by 0.3 of the weather's strength (0.06 at 0.2), so a
+slowly turning planet has fewer clouds than its kind's cover, most of them over its day side. Above 0.3 they lie
+in bands by latitude, the equator overcast where the air meets and rises, about 25° clearer where it sinks, the middle
 latitudes overcast again with their fronts (past R/L 4 more and narrower bands), with patches the size of the Rossby
 radius, the planet's highs and lows, drifting with the wind. How strong it is (0.2) is chosen to be seen, not given
 by the physics; `clouds_weather` scales it (`0` = none, `2` = twice). In a storm the weather is given back, as a storm
