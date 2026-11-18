@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Two atmospheres in view keep their own kinds.** Each planet read keeps its kind and its day; the clouds, the snow
+  and the aurora follow the nearest. A single read that matches no kind no longer drops a planet's known kind for ten
+  seconds (another kind takes over after three reads in a row), and the reads take each planet in view in turn.
 - **The ini says what it cannot read.** A value edworld cannot read (`0,45`, a word, NaN, a number too large) keeps
   its default and the log names the line; an unknown name (a typo) is logged too; a comment after a value
   (`clouds = 1 ; on`) is taken off. The ini edworld writes leaves `status_file` empty (the Saved Games folder), so it

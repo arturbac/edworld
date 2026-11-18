@@ -8,6 +8,7 @@
 //  - never read a mapped dynamic buffer on the CPU (write-combined under DXVK); copy on the GPU into staging
 //    and map it frames later with DO_NOT_WAIT;
 //  - GetType before GetDesc; a fault in edworld's code disables edworld, never the game call.
+#include "atmosphere_planets.h"
 #include "atmosphere_kind.h"
 #include "aurora.h"
 #include "blue_noise.h"
@@ -1176,12 +1177,16 @@ namespace edworld
       std::uint32_t width, height, format;
       LONGLONG qpc;
       char stamp[32];
+      std::uint32_t shell_index;  ///< which of the frame's shell draws it was (0 = the first)
       };
     constexpr std::uint32_t atmo_max_cb_bytes{8192};
     constexpr std::uint32_t atmo_furthest_band{7};  ///< the camera further than 2^8 radii: the planet a few pixels
     atmo_pending_t atmo_pending{};
     bool atmo_busy{};
     LONGLONG atmo_last{};
+    LONGLONG atmo_shell_qpc{};             ///< the last shell draw seen
+    std::uint32_t atmo_shells_in_frame{};  ///< the shell's draws in this frame so far
+    std::uint32_t atmo_skip{};             ///< the frame's shell draws to pass over before the next read
 #if defined(EDWORLD_EHT)
     constexpr std::uint32_t atmo_max_seen{1024};
     LONGLONG atmo_recorded{};
@@ -1204,8 +1209,10 @@ namespace edworld
       }
     constexpr std::size_t atmo_hue_capacity{256u * 256u};  ///< the upper half of a 256x512 table
     float atmo_hue_r[atmo_hue_capacity], atmo_hue_b[atmo_hue_capacity];
-    // the kind last told and the planet it is of (its radius in metres), since when (GetTickCount64): the clouds take
-    // it in over atmo_kind_fade_ms. Written when the copies are read back, read at the clouds' draw
+    // the planets read, each with its kind (atmosphere_planets.h); the nearest one's is published below for the clouds
+    atmosphere_planets_t atmo_planets{};
+    // the kind told to the clouds and the planet it is of (its radius in metres), since when (GetTickCount64): the
+    // clouds take it in over atmo_kind_fade_ms. Written when the copies are read back, read at the clouds' draw
     std::atomic<float> atmo_kind_radius{};
     std::atomic<std::uint8_t> atmo_kind{};
     std::atomic<bool> atmo_kind_volcanic{};  ///< neon's second table: a neon atmosphere over volcanism
@@ -1213,23 +1220,46 @@ namespace edworld
     std::atomic<ULONGLONG> atmo_kind_since{};
     constexpr float atmo_kind_fade_ms{2000.f};
 
-    ///\brief the kind just read for the planet of this radius: a new planet or another kind starts again from the
-    /// clouds above; logged when it changes
-    auto atmo_note_kind(float radius, atmosphere_hue_t const & hue) noexcept -> void
+    auto atmo_kind_name(atmosphere_kind_e kind) noexcept -> std::string_view
+      {
+      for(atmosphere_print_t const & print: atmosphere_prints)
+        if(print.kind == kind)
+          return print.name;
+      return "unknown";
+      }
+
+    ///\brief the kind just read for the planet of this radius, kept with that planet (atmosphere_planets.h): a new
+    /// planet, or another kind three reads in a row, logged; then the nearest planet's kind told to the clouds
+    auto atmo_note_kind(float radius, float closeness, atmosphere_hue_t const & hue) noexcept -> std::size_t
       {
       atmosphere_print_t const * found{atmosphere_kind_of(hue)};
       atmosphere_kind_e const kind{found ? found->kind : atmosphere_kind_e::unknown};
-      if(std::fabs(radius - atmo_kind_radius.load(std::memory_order_relaxed)) < 4.f
-         and kind == static_cast<atmosphere_kind_e>(atmo_kind.load(std::memory_order_relaxed)))
-        return;
-      atmo_kind_since.store(GetTickCount64(), std::memory_order_relaxed);
-      atmo_kind_volcanic.store(found and kind == atmosphere_kind_e::neon and found->r_g > 1.f, std::memory_order_relaxed);
-      atmo_kind_cold.store(found and kind == atmosphere_kind_e::ammonia and found->r_g > 0.7f, std::memory_order_relaxed);
-      atmo_kind.store(static_cast<std::uint8_t>(kind), std::memory_order_relaxed);
-      atmo_kind_radius.store(radius, std::memory_order_relaxed);
-      log_line("clouds: the planet of radius %.0f m is %.*s (r/g %.4f b/g %.4f)", double(radius),
-               found ? static_cast<int>(found->name.size()) : 7, found ? found->name.data() : "unknown", double(hue.r_g),
-               double(hue.b_g));
+      bool const volcanic{found and kind == atmosphere_kind_e::neon and found->r_g > 1.f};
+      bool const cold{found and kind == atmosphere_kind_e::ammonia and found->r_g > 0.7f};
+      ULONGLONG const now{GetTickCount64()};
+      atmosphere_note_t const note{atmosphere_planet_note(atmo_planets, radius, closeness, kind, volcanic, cold, now)};
+      atmosphere_planet_t const & planet{atmo_planets.slot[note.index]};
+      if(note.fresh or note.changed)
+        log_line("clouds: the planet of radius %.0f m is %.*s (r/g %.4f b/g %.4f)", double(radius),
+                 found ? static_cast<int>(found->name.size()) : 7, found ? found->name.data() : "unknown", double(hue.r_g),
+                 double(hue.b_g));
+      else if(note.held and planet.other_reads == 1u)
+        {
+        std::string_view const kept{atmo_kind_name(planet.kind)};
+        log_line("clouds: the planet of radius %.0f m stays %.*s (a read gave %.*s, r/g %.4f b/g %.4f)", double(radius),
+                 static_cast<int>(kept.size()), kept.data(), found ? static_cast<int>(found->name.size()) : 7,
+                 found ? found->name.data() : "unknown", double(hue.r_g), double(hue.b_g));
+        }
+      // the planet the clouds are for: the nearest of those read lately
+      if(atmosphere_planet_t const * const closest{atmosphere_planet_nearest(atmo_planets, now)})
+        {
+        atmo_kind_since.store(closest->kind_since_ms, std::memory_order_relaxed);
+        atmo_kind_volcanic.store(closest->volcanic, std::memory_order_relaxed);
+        atmo_kind_cold.store(closest->cold, std::memory_order_relaxed);
+        atmo_kind.store(static_cast<std::uint8_t>(closest->kind), std::memory_order_relaxed);
+        atmo_kind_radius.store(closest->radius, std::memory_order_relaxed);
+        }
+      return note.index;
       }
 
 #if defined(EDWORLD_EHT)
@@ -1332,15 +1362,21 @@ namespace edworld
     // model's y with the planet: 2026-11-10, the day of 20 planets as the scans give it to 0.1%). Known once two reads
     // in a row agree to 1%; a read across the game's change of its frame (a turn of 30 to 180 degrees) agrees with
     // nothing. spin: +1 the planet turns about +y, -1 about -y
-    std::atomic<float> atmo_day_s{};
-    std::atomic<float> atmo_spin{};
-    float atmo_turn_radius{};
-    float atmo_turn_rows[9]{};
-    LONGLONG atmo_turn_qpc{};
-    double atmo_turn_day{};
-
-    auto atmo_note_turn(float radius, float const (&rows)[9], LONGLONG qpc) noexcept -> void
+    // per planet (the slots of atmo_planets), render thread only
+    struct atmo_turn_t
       {
+      float radius{};
+      float rows[9]{};
+      LONGLONG qpc{};
+      double day{};    ///< the last read's, to be agreed by the next
+      float day_s{};   ///< known: two reads in a row agreed
+      float spin{};
+      };
+    atmo_turn_t atmo_turns[atmosphere_planets_t::size]{};
+
+    auto atmo_note_turn(std::size_t slot, float radius, float const (&rows)[9], LONGLONG qpc) noexcept -> void
+      {
+      atmo_turn_t & t{atmo_turns[slot]};
       float unit[9];
       for(std::uint32_t r{}; r != 3u; ++r)
         {
@@ -1348,33 +1384,37 @@ namespace edworld
         for(std::uint32_t c{}; c != 3u; ++c)
           unit[r * 3 + c] = n > 0.f ? rows[r * 3 + c] / n : 0.f;
         }
-      bool const same{std::fabs(radius - atmo_turn_radius) < 4.f};
-      double const seconds{static_cast<double>(qpc - atmo_turn_qpc) / static_cast<double>(qpc_frequency)};
+      bool const same{std::fabs(radius - t.radius) < 4.f};
+      double const seconds{static_cast<double>(qpc - t.qpc) / static_cast<double>(qpc_frequency)};
       if(not same)
-        {
-        atmo_day_s.store(0.f, std::memory_order_relaxed);
-        atmo_turn_day = 0.;
-        }
+        t = atmo_turn_t{};  // the slot taken by another planet
       else if(seconds > 1. and seconds < 120.)
         {
-        planet_turn_t const t{planet_turn(atmo_turn_rows, unit, seconds)};
-        double const day{t.day_s};
-        double const about_y{t.about_y};
-        bool const turn{t.ok};
-        if(turn and atmo_turn_day > 0. and std::fabs(day - atmo_turn_day) < 0.01 * atmo_turn_day)
+        planet_turn_t const turn{planet_turn(t.rows, unit, seconds)};
+        double const day{turn.day_s};
+        if(turn.ok and t.day > 0. and std::fabs(day - t.day) < 0.01 * t.day)
           {
-          bool const news{atmo_day_s.load(std::memory_order_relaxed) == 0.f};
-          atmo_day_s.store(static_cast<float>(day), std::memory_order_relaxed);
-          atmo_spin.store(about_y > 0. ? 1.f : -1.f, std::memory_order_relaxed);
+          bool const news{t.day_s == 0.f};
+          t.day_s = static_cast<float>(day);
+          t.spin = turn.about_y > 0. ? 1.f : -1.f;
           if(news)
             log_line("clouds: the planet of radius %.0f m turns in %.2f h (about %sy)", double(radius), day / 3600.,
-                     about_y > 0. ? "+" : "-");
+                     turn.about_y > 0. ? "+" : "-");
           }
-        atmo_turn_day = turn ? day : 0.;
+        t.day = turn.ok ? day : 0.;
         }
-      atmo_turn_radius = radius;
-      std::memcpy(atmo_turn_rows, unit, sizeof unit);
-      atmo_turn_qpc = qpc;
+      t.radius = radius;
+      std::memcpy(t.rows, unit, sizeof unit);
+      t.qpc = qpc;
+      }
+
+    ///\brief the turn known for the planet of this radius; none (day 0) while not known
+    auto atmo_turn_of(float radius) noexcept -> atmo_turn_t const *
+      {
+      for(atmo_turn_t const & t: atmo_turns)
+        if(t.radius > 0.f and std::fabs(radius - t.radius) < 4.f)
+          return &t;
+      return nullptr;
       }
 
     ///\brief the clouds' values 33..42 (clouds3d.hlsl; 43, the lumps' size, is set beside it): the planet whose kind is known and its clouds, none when
@@ -1466,7 +1506,8 @@ namespace edworld
     ///\brief the day read off the turn of the planet of this radius, 0 = not known
     auto atmo_day_of(float radius) noexcept -> float
       {
-      return std::fabs(radius - atmo_turn_radius) < 4.f ? atmo_day_s.load(std::memory_order_relaxed) : 0.f;
+      atmo_turn_t const * const t{atmo_turn_of(radius)};
+      return t ? t->day_s : 0.f;
       }
 
     float atmo_cyclones_radius{};
@@ -1484,7 +1525,7 @@ namespace edworld
       float const radius{atmo_kind_radius.load(std::memory_order_relaxed)};
       float const day{atmo_day_of(radius)};
       // the spin unknown: about -y, as 19 of the 20 planets measured
-      float const spin{day > 0.f ? atmo_spin.load(std::memory_order_relaxed) : -1.f};
+      float const spin{day > 0.f ? atmo_turn_of(radius)->spin : -1.f};
       float const rossby{rossby_ratio(kind, radius, day)};
       cyclone_set_t const set{cyclones_of(rossby, static_cast<std::uint64_t>(std::llround(radius)), spin)};
       for(std::uint32_t i{}; i != set.count; ++i)
@@ -1632,6 +1673,16 @@ namespace edworld
       if(period == 0u)
         return;
       LONGLONG const now{qpc_now()};
+      // the shell's draws of one frame come within milliseconds: count them, so the reads take each planet in view in
+      // turn (atmo_skip, set by the last read), back to the first when a frame has fewer
+      if((now - atmo_shell_qpc) * 1000000 / qpc_frequency > 5000)
+        {
+        if(atmo_shells_in_frame <= atmo_skip)
+          atmo_skip = 0;
+        atmo_shells_in_frame = 0;
+        }
+      std::uint32_t const shell_index{atmo_shells_in_frame++};
+      atmo_shell_qpc = now;
       // the copies read back here too, not only at a frame's start: that is found by the HUD's panels, which a
       // commander on foot does not have (2026-11-12: a read made in a settlement waited two minutes for the ship)
       if(atmo_busy)
@@ -1639,6 +1690,8 @@ namespace edworld
       if(atmo_busy)
         return;
       if((now - atmo_last) * 1000 / qpc_frequency < static_cast<LONGLONG>(period) * 1000)
+        return;
+      if(shell_index < atmo_skip)
         return;
       atmo_misses_log(now);
       D3D11_VIEWPORT port{};
@@ -1717,6 +1770,7 @@ namespace edworld
           cbs[c]->Release();
         }
       p.qpc = now;
+      p.shell_index = shell_index;
       SYSTEMTIME t;
       GetSystemTime(&t);
       std::snprintf(p.stamp, sizeof p.stamp, "%04u%02u%02uT%02u%02u%02u_%03uZ", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute,
@@ -1800,11 +1854,13 @@ namespace edworld
                              atmo_hue_b, atmo_hue_capacity);
         ctx->Unmap(p.t0, 0);
         }
-      atmo_note_kind(radius, hue);
+      std::size_t const slot{atmo_note_kind(radius, over, hue)};
+      // the next read tries the frame's next shell, so each planet in view is read in turn (atmo_queue)
+      atmo_skip = p.shell_index + 1u;
       float const turn_rows[9]{atmo_float(p, data, 0, 9, 0),  atmo_float(p, data, 0, 9, 1),  atmo_float(p, data, 0, 9, 2),
                                atmo_float(p, data, 0, 10, 0), atmo_float(p, data, 0, 10, 1), atmo_float(p, data, 0, 10, 2),
                                atmo_float(p, data, 0, 11, 0), atmo_float(p, data, 0, 11, 1), atmo_float(p, data, 0, 11, 2)};
-      atmo_note_turn(radius, turn_rows, p.qpc);
+      atmo_note_turn(slot, radius, turn_rows, p.qpc);
 
 #if defined(EDWORLD_EHT)
       atmo_publish(radius, distance, hue);

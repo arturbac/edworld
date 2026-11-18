@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "../src/atmosphere_kind.h"
+#include "../src/atmosphere_planets.h"
 #include "../src/aurora.h"
 #include "../src/compass_math.h"
 #include "../src/edworld_share.h"
@@ -648,6 +649,34 @@ namespace
   auto atmosphere_tests() -> void
     {
     using namespace edworld;
+    // the planets read: two in view each keep their kind, the nearest one's is the clouds'; an unknown read keeps a known
+    // kind, three reads in a row of another change it (2026-11-17 audit, C2 and C3)
+    {
+    using k = atmosphere_kind_e;
+    atmosphere_planets_t p{};
+    std::uint64_t t{1000};
+    auto const read = [&](float radius, float closeness, k kind) { return atmosphere_planet_note(p, radius, closeness, kind, false, false, t += 10000); };
+    read(1'200'000.f, 2.f, k::carbon_dioxide);   // the twin the commander is at
+    read(1'210'000.f, 40.f, k::methane);          // its neighbour, drawn first in some frames
+    read(1'200'002.f, 2.1f, k::carbon_dioxide);
+    read(1'210'001.f, 41.f, k::methane);
+    atmosphere_planet_t const * near_one{atmosphere_planet_nearest(p, t)};
+    check(near_one and near_one->kind == k::carbon_dioxide and std::fabs(near_one->radius - 1'200'000.f) < 1.f,
+          "atmosphere planets: two in view, the near one's kind kept");
+    atmosphere_note_t const held{read(1'200'000.f, 2.f, k::unknown)};
+    check(held.held and atmosphere_planet_find(p, 1'200'000.f)->kind == k::carbon_dioxide,
+          "atmosphere planets: an unknown read keeps the known kind");
+    read(1'200'000.f, 2.f, k::methane);
+    read(1'200'000.f, 2.f, k::methane);
+    check(atmosphere_planet_find(p, 1'200'000.f)->kind == k::carbon_dioxide, "atmosphere planets: two reads of another kind change nothing");
+    atmosphere_note_t const third{read(1'200'000.f, 2.f, k::methane)};
+    check(third.changed and atmosphere_planet_find(p, 1'200'000.f)->kind == k::methane, "atmosphere planets: the third in a row changes it");
+    atmosphere_planets_t q{};
+    atmosphere_planet_note(q, 900'000.f, 3.f, k::unknown, false, false, 1);
+    atmosphere_note_t const learnt{atmosphere_planet_note(q, 900'000.f, 3.f, k::argon, false, false, 2)};
+    check(learnt.changed and atmosphere_planet_find(q, 900'000.f)->kind == k::argon, "atmosphere planets: an unknown planet takes the first kind read");
+    check(atmosphere_planet_nearest(q, 2 + atmosphere_planets_t::recent_ms + 1) == nullptr, "atmosphere planets: none read lately, none near");
+    }
     bool apart{true};
     for(std::size_t i{}; i != atmosphere_prints.size(); ++i)
       for(std::size_t j{i + 1u}; j != atmosphere_prints.size(); ++j)

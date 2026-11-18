@@ -455,6 +455,11 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   clouds with depth take it (below). Since 1.2.0-beta.9 both builds read the shell, every `clouds_kind_read_s`
   seconds (`atmo_period_s`: in edworld_eht the shorter of it and `atmo_record_s`), for the kind and the day; only
   edworld_eht keeps the fingerprint (`atmo_record_s` apart, once a session per planet and band).
+  Each planet read keeps its own kind and day (`src/atmosphere_planets.h`, eight by radius): the clouds, the snow
+  and the aurora take the nearest one's (distance over radius) among those read in the last minute, so a second
+  atmosphere in view (twin moons) no longer takes the near one's place. A planet's kind changes only after three reads
+  in a row of another; a read of no known kind keeps a known one (`clouds: ... stays ...` in the log). Each read takes
+  the frame's next shell draw after the last read's (`atmo_skip`), so every planet in view is read in turn.
   The copies are read back (`atmo_drain`) at a frame's start and also at the shell's next draw before a new read:
   a frame's start is found by the HUD's panels, which a commander on foot does not have (2026-11-12: a read made in
   a settlement waited two minutes, until the ship, and no other was made meanwhile). While no read gets through, `atmo_misses` counts why (a target under 1024 wide, no table, a table of more samples
