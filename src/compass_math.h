@@ -80,11 +80,13 @@ namespace edworld
   ///\brief the dot in an RGBA copy (pixel (x, y) at data + y * pitch + x * 4) whose disc's centre is (cx, cy) in the
   /// copy, within limit of the centre, told by colour against the disc, not by a colour of its own: the disc's hue is
   /// the most common hue of its coloured pixels this frame (orange in the game's own HUD, any colour in an EDHM theme),
-  /// the dot is what is bright and either of another hue (more than 60 degrees off) or white. So it holds in every
+  /// the dot is what is bright and either of another hue (more than hue_gap degrees off) or white. So it holds in every
   /// theme. last_dot_hue: the dot's hue in the last reading shown (-1 none): a disc of that hue is a flash, not read.
+  /// hue_gap was 60 until 2026-11-18: a player's EDHM theme (a red disc at 355-4, a yellow dot at 38-40) was 40-45 apart,
+  /// and not one pixel of the dot was read
   [[nodiscard]]
   inline auto read_compass(std::uint8_t const * data, std::uint32_t pitch, std::int32_t width, std::int32_t height, float cx,
-                           float cy, float limit, float last_dot_hue = -1.f) noexcept -> compass_reading_t
+                           float cy, float limit, float last_dot_hue = -1.f, float hue_gap = 30.f) noexcept -> compass_reading_t
     {
     compass_reading_t out{};
     out.disc_hue = out.dot_hue = -1.f;
@@ -115,7 +117,7 @@ namespace edworld
         top = i;
     // a disc without colour (none drawn, a grey theme): then only what is white or coloured and bright is the dot
     out.disc_hue = top < 0 ? -1.f : static_cast<float>(top) * 10.f + 5.f;
-    if(out.disc_hue >= 0.f and last_dot_hue >= 0.f and hue_distance(out.disc_hue, last_dot_hue) < 60.f)
+    if(out.disc_hue >= 0.f and last_dot_hue >= 0.f and hue_distance(out.disc_hue, last_dot_hue) < hue_gap)
       {
       out.flash = true;
       return out;
@@ -127,7 +129,7 @@ namespace edworld
         return false;
       if(c.s <= 0.2f)
         return c.v > 0.67f;
-      return out.disc_hue < 0.f or hue_distance(c.h, out.disc_hue) > 60.f;
+      return out.disc_hue < 0.f or hue_distance(c.h, out.disc_hue) > hue_gap;
       };
     double sx{}, sy{}, hx{}, hy{};
     std::uint32_t n{}, coloured{};

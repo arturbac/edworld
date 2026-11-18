@@ -313,6 +313,9 @@ namespace edworld
     std::uint32_t compass_filled_max{320};
     std::uint32_t compass_hollow_min{20};
     std::uint32_t compass_hollow_max{180};
+    ///\brief a coloured pixel is the dot's when its hue is more than this many degrees from the disc's (compass_math.h
+    /// read_compass); 60 until 2026-11-18, too far for a red disc with a yellow dot
+    float compass_dot_hue_gap{30.f};
     ///\brief the gates down to a place (PoC, not drawn yet; src/gate_math.h approach_path): the dive, degrees below the
     /// planet's visible edge (both recorded dives 2026-10-11 started at 16-18), the dive point's height in planet radii
     /// (Kisekka dived at 0.22, Moller at 0.44), and the largest turn onto the flat line, degrees (Kisekka's arc ~26)

@@ -2699,7 +2699,8 @@ namespace edworld
           // a flash is told by the hue of the dot shown, while it holds: a stale one (another theme since) tells nothing
           cs.reading = compass_reading_at_base(
             read_compass(static_cast<std::uint8_t const *>(m.pData), m.RowPitch, static_cast<std::int32_t>(cw), static_cast<std::int32_t>(ch),
-                         disc_x - static_cast<float>(left), disc_y - static_cast<float>(top), disc_radius * 1.25f, fresh ? cs.dot_hue : -1.f),
+                         disc_x - static_cast<float>(left), disc_y - static_cast<float>(top), disc_radius * 1.25f, fresh ? cs.dot_hue : -1.f,
+                         s.compass_dot_hue_gap),
             k
           );
           cs.have_reading = true;

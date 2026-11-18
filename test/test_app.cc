@@ -1240,6 +1240,40 @@ int main()
         "compass: an EDHM theme's hollow dot of 26 pixels is the dot, 15 is not");
   clear();
   check(not edworld::read_compass(area.data(), w * 4u, w, h, cx, cy, radius * 1.25f).found, "compass: no dot on a bare disc");
+  // a player's EDHM theme (sebnandex, 2026-11-18, his screenshots): a red disc (hue ~0), a yellow dot (hue ~40)
+  {
+  auto const red_disc = [&]
+    {
+    for(std::size_t i{}; i != area.size(); i += 4)
+      {
+      area[i] = 200; area[i + 1] = 20; area[i + 2] = 20; area[i + 3] = 255;
+      }
+    };
+  auto const yellow = [&](float x, float y, float outer, float inner)
+    {
+    for(std::int32_t py{}; py != h; ++py)
+      for(std::int32_t px{}; px != w; ++px)
+        {
+        float const d{std::hypot(static_cast<float>(px) - x, static_cast<float>(py) - y)};
+        if(d <= outer and d >= inner)
+          {
+          std::uint8_t * const q{&area[(static_cast<std::size_t>(py) * w + px) * 4u]};
+          q[0] = 255, q[1] = 170, q[2] = 0, q[3] = 255;
+          }
+        }
+    };
+  red_disc();
+  yellow(cx + 15.f, cy + 5.f, 6.6f, 0.f);
+  auto const red_filled{edworld::read_compass(area.data(), w * 4u, w, h, cx, cy, radius * 1.25f)};
+  auto const red_old{edworld::read_compass(area.data(), w * 4u, w, h, cx, cy, radius * 1.25f, -1.f, 60.f)};
+  red_disc();
+  yellow(cx - 10.f, cy - 20.f, 7.f, 4.4f);
+  auto const red_hollow{edworld::read_compass(area.data(), w * 4u, w, h, cx, cy, radius * 1.25f)};
+  check(red_filled.found and red_filled.filled and std::fabs(red_filled.x - 15.f) < 0.3f and edworld::compass_plausible(red_filled)
+          and red_hollow.found and not red_hollow.filled and edworld::compass_plausible(red_hollow),
+        "compass: a yellow dot on a red disc (an EDHM theme) found, filled and hollow");
+  check(not red_old.found, "compass: with the old 60 degrees it was not (the player's NO DOT)");
+  }
   check(filled.dot_hue < 0.f and filled.disc_hue > 200.f and filled.disc_hue < 240.f, "compass: a white dot has no hue, the disc its blue");
   // the game's own HUD since its update of 2026-10-20: an orange disc, a cyan dot (130, 255, 255), read off Sjona's
   // surface dumps; the same reading, no colour of its own

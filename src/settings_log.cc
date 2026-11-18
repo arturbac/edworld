@@ -304,6 +304,7 @@ namespace edworld
       {"compass_filled_max", &settings_t::compass_filled_max, g::navballs, r::at_start, "", "a filled dot's pixels at most; more is not the dot"},
       {"compass_hollow_min", &settings_t::compass_hollow_min, g::navballs, r::at_start, "up to compass_hollow_max", "a hollow dot's (the target behind) pixels at least"},
       {"compass_hollow_max", &settings_t::compass_hollow_max, g::navballs, r::at_start, "", "a hollow dot's pixels at most"},
+      {"compass_dot_hue_gap", &settings_t::compass_dot_hue_gap, g::navballs, r::at_start, "0 to 180", "a coloured pixel is the dot's when its hue is this many degrees or more from the compass disc's; white always is (a red disc with a yellow dot is ~40 apart)"},
       {"compass_log_ms", &settings_t::compass_log_ms, g::navballs, r::at_start, "0 and more", "a line of the compass's reading in the log at most this often, in milliseconds; `0` = never"},
       {"gate_dive", &settings_t::gate_dive, g::navballs, r::at_start, "0..90", "(PoC, not drawn yet) the gates down to a place: the dive, in degrees below the planet's visible edge"},
       {"gate_dive_height", &settings_t::gate_dive_height, g::navballs, r::at_start, "over 0", "(PoC) the gates: the height of the point the dive starts from, in planet radii"},
