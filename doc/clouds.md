@@ -221,10 +221,12 @@ The second colour of ammonia comes with a cold planet whose air is well past sat
 (156 K and 154.5 K) had it, and none of the six from 164 to 173 K, one of them in the same system.
 
 Where it snows is where the clouds above have their overcast: the weather of the clouds (a slow planet's deck over
-the day side, a faster one's bands and patches) over the place you stand, together with the kind's cover. Only then
+the day side, a faster one's bands and patches) over the place you stand, as the clouds straight above have it (moved
+by the wind and wound by the storms as they are), together with the kind's cover. Only then
 on foot outdoors (`Status.json` Flags2: on foot, on a planet, outdoors), in a building of a settlement never; or in a
 ship, a fighter or an SRV with an altitude in `Status.json`, out of supercruise and not docked (a port's pads may lie
-in a hangar), up to 5 km over the planet's radius, so the snow is there as soon as the ship comes down into the air. The
+in a hangar), up to 5 km over the planet's mean radius in a craft (on foot wherever the ground stands, a pad lies up to
+6 km over it), so the snow is there as soon as the ship comes down into the air. The
 crystals are specks of 1-3 mm from 1.5 to 30 m before you, one in some of the cells of 0.8 m held to the ground (at
 most about one cell in 7 under a full cloud), each its own size and brightness, drawn soft, no smaller than half a pixel
 and as bright as they cover of it, with a streak of one frame's way (against you as you fly, a cell's size at the most); one near enough to show its shape is a soft
@@ -238,7 +240,9 @@ with the square root of the gravity over the air's density, so in an ammonia wor
 Earth's) some 25 times faster - 2.6 m/s at 0.13 g, a slow wind only leaning it - and in methane's (1/10) 0.23 m/s at
 0.06 g, the wind carrying it. The gravity comes from `Status.json` on foot (in a craft the last one read on foot on that planet, else
 0.1 g), the air's density from the kind's typical planet. They stay in the air as you turn, walk and fly (your way from
-`Status.json`'s latitude, longitude and altitude, carried on at its last speed between the file's updates for up to 2 s,
-so a fast flight does not jump). The star
+`Status.json`'s latitude, longitude and altitude, each fix timed when the game wrote it, carried on at its last speed
+between the file's updates for up to 2 s and then held where that took it, a late fix's difference taken in over half a
+second, so a fast flight does not jump; a new reference every 10 km, or when the altitude's reference changes, moves no
+crystal; their fall and the wind's drift are summed in double precision, so they keep their millimetres after hours). The star
 lights them, brighter as you look towards it, as ice glints; at night there are none to see. The ground and buildings
 hide those behind them. `snow_gain` scales how many. A PoC: their look and their number are to be tuned in the game.

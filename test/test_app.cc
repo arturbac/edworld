@@ -767,22 +767,50 @@ namespace
             and snow_gravity(g, false, 0.0, 1109282.75) == 0.13 and snow_gravity(g, false, 0.0, 600000.0) == 0.1,
           "snow: the gravity read on foot stands in a craft on the same planet, 0.1 g elsewhere");
     snow_walk_t walk{};
-    auto const here{snow_walked(walk, 1.5908, 109.0544, 0.0, true, 1109282.75, 10.0)};
-    auto const there{snow_walked(walk, 1.5908, 109.0554, 0.0, true, 1109282.75, 11.0)};
-    check(here.place[0] == 0.f and here.place[1] == 0.f and std::fabs(there.place[0] - 19.353f) < 0.01f and there.place[1] == 0.f
+    auto const here{snow_walked(walk, 1.5908, 109.0544, 0.0, true, 1109282.75, 10.0, 10.0)};
+    auto const there{snow_walked(walk, 1.5908, 109.0554, 0.0, true, 1109282.75, 11.0, 11.0)};
+    check(here.place[0] == 0.0 and here.place[1] == 0.0 and std::fabs(there.place[0] - 19.353) < 0.01 and there.place[1] == 0.0
             and std::fabs(there.speed[0] - 19.353f) < 0.01f,
           "snow: the walk east from the first fix, metres, and its speed");
     // in a ship: 100 m up and 200 m east in a second, then on at that speed between the fixes, held once they stop
     snow_walk_t flying{};
     double const east_deg{200.0 / (1109282.75 * std::cos(1.5908 * 3.14159265358979323846 / 180.0)) * 180.0 / 3.14159265358979323846};
-    auto const boarded{snow_walked(flying, 1.5908, 109.0544, 1000.0, false, 1109282.75, 20.0)};
-    auto const second{snow_walked(flying, 1.5908, 109.0544 + east_deg, 1100.0, false, 1109282.75, 21.0)};
-    auto const between{snow_walked(flying, 1.5908, 109.0544 + east_deg, 1100.0, false, 1109282.75, 21.5)};
-    auto const stopped{snow_walked(flying, 1.5908, 109.0544 + east_deg, 1100.0, false, 1109282.75, 23.0)};
-    check(boarded.place[2] == 0.f and std::fabs(second.place[0] - 200.f) < 0.01f and std::fabs(second.place[2] - 100.f) < 0.01f
-            and std::fabs(between.place[0] - 300.f) < 0.01f and std::fabs(between.place[2] - 150.f) < 0.01f
-            and std::fabs(between.speed[2] - 100.f) < 0.01f and std::fabs(stopped.place[0] - 200.f) < 0.01f and stopped.speed[0] == 0.f,
-          "snow: the flight's way up and east, on between the fixes, held when they stop");
+    auto const boarded{snow_walked(flying, 1.5908, 109.0544, 1000.0, false, 1109282.75, 20.0, 20.0)};
+    auto const second{snow_walked(flying, 1.5908, 109.0544 + east_deg, 1100.0, false, 1109282.75, 21.0, 21.0)};
+    auto const between{snow_walked(flying, 1.5908, 109.0544 + east_deg, 1100.0, false, 1109282.75, 21.5, 21.5)};
+    auto const stopped{snow_walked(flying, 1.5908, 109.0544 + east_deg, 1100.0, false, 1109282.75, 23.0, 23.0)};
+    // held where the way went on to (1.5 times the fixes' second), not taken back to the last fix (C11)
+    check(boarded.place[2] == 0.0 and std::fabs(second.place[0] - 200.0) < 0.01 and std::fabs(second.place[2] - 100.0) < 0.01
+            and std::fabs(between.place[0] - 300.0) < 0.01 and std::fabs(between.place[2] - 150.0) < 0.01
+            and std::fabs(between.speed[2] - 100.f) < 0.01f and std::fabs(stopped.place[0] - 500.0) < 0.01 and stopped.speed[0] == 0.f,
+          "snow: the flight's way up and east, on between the fixes, held where it went once they stop");
+    // past 10 km a new reference: the way carries on, no jump (C6); a fix late against the way extrapolated is taken in
+    // over half a second (C8)
+    snow_walk_t far_walk{};
+    double const deg_per_m{180.0 / (3.14159265358979323846 * 1109282.75)};
+    (void)snow_walked(far_walk, 0.0, 0.0, 1000.0, false, 1109282.75, 0.0, 0.0);
+    (void)snow_walked(far_walk, 9990.0 * deg_per_m, 0.0, 1000.0, false, 1109282.75, 1.0, 1.0);
+    auto const across{snow_walked(far_walk, 10020.0 * deg_per_m, 0.0, 1000.0, false, 1109282.75, 1.003, 1.003)};
+    check(std::fabs(across.place[1] - 9990.0) < 40.0, "snow: a new reference past 10 km carries the way on (C6)");
+    snow_walk_t late{};
+    (void)snow_walked(late, 0.0, 0.0, 1000.0, false, 1109282.75, 0.0, 0.0);
+    (void)snow_walked(late, 100.0 * deg_per_m, 0.0, 1000.0, false, 1109282.75, 1.0, 1.0);
+    auto const before_fix{snow_walked(late, 100.0 * deg_per_m, 0.0, 1000.0, false, 1109282.75, 1.9, 1.9)};
+    auto const at_fix{snow_walked(late, 180.0 * deg_per_m, 0.0, 1000.0, false, 1109282.75, 1.9, 1.8)};
+    check(std::fabs(before_fix.place[1] - 190.0) < 0.1 and std::fabs(at_fix.place[1] - before_fix.place[1]) < 1.0,
+          "snow: a fix timed by its write; what it differs from the way is taken in, no jump (C8)");
+    // a pad's one-off fix with Flags bit 29 (the altitude from the mean radius, 2.6 km more): a new reference, no climb
+    snow_walk_t pad{};
+    (void)snow_walked(pad, 0.0, 0.0, 300.0, false, 1109282.75, 0.0, 0.0, false);
+    (void)snow_walked(pad, 0.0, 0.0, 290.0, false, 1109282.75, 1.0, 1.0, false);
+    auto const jump{snow_walked(pad, 0.0, 0.0, 2890.0, false, 1109282.75, 2.0, 2.0, true)};
+    check(std::fabs(jump.place[2] - (-10.0)) < 0.5 and jump.speed[2] == 0.f,
+          "snow: a switch of the altitude's reference moves no crystal and gives no speed (C7)");
+    snow_drift_t drift{};
+    (void)snow_drift_step(drift, 2.f, 100.0);
+    (void)snow_drift_step(drift, 2.f, 100.1);
+    check(std::fabs(drift.fall - 0.2) < 1e-9 and snow_wrapped(-1.0) > 1022.f and snow_wrapped(1025.0) < 2.f,
+          "snow: the fall summed in double, wrapped to 1024 m (C5)");
     check(snow_bench_step(0u).parts == snow_parts_all and snow_bench_step(10u).parts == 0.f and snow_bench_step(25u).parts == 2.f
             and snow_bench_step(39u).parts == 1.f and snow_bench_step(40u).parts == snow_parts_all,
           "snow: the bench's steps of 10 s, all, none, the haze, the crystals, then again");

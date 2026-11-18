@@ -88,8 +88,9 @@ cbuffer clouds : register(b4)
   float aurora_ceiling;
   float3 aurora_edge;       // nitrogen's pink lower edge, 0 = none
   // the snow (PoC, src/snow.h) near the ground, on foot or in a craft: crystals under a full cloud and in a clear sky
-  // (0 = none), how fast they fall (m/s), where the eye went up, east and north since a reference fix (metres,
-  // wrapped), then how fast it goes east, north and up (m/s), then the parts drawn: the crystals 1, the haze 2 (both 3)
+  // (0 = none), how fast they fall (m/s), where the cells stand up, east and north (the eye's way since a reference fix,
+  // the fall and the wind's drift, all worked out on the CPU in double and wrapped to snow_wrap_m), then how fast the eye
+  // goes east, north and up (m/s), then the parts drawn: the crystals 1, the haze 2 (both 3), then the wind's drift (m/s)
   float snow_under;
   float snow_clear;
   float snow_fall;
@@ -100,8 +101,8 @@ cbuffer clouds : register(b4)
   float snow_v_north;
   float snow_v_up;
   float snow_parts;
-  float snow_pad1;
-  float snow_pad2;
+  float snow_drift_east;
+  float snow_drift_north;
   };
 
 Texture2D<float> scene_depth : register(t0);
@@ -855,15 +856,19 @@ static const float snow_haze_most = 0.5f; // the haze never hides more than this
 
 float4 snow_along(ps_in input, float3 ray, float3 centre)
   {
-  if(snow_under <= 0.f && snow_clear <= 0.f || snow_parts < 0.5f)
+  // snow_parts: the crystals 1, the haze 2, and 4 on foot
+  float parts = fmod(snow_parts, 4.f);
+  bool on_foot = snow_parts >= 3.5f;
+  if(snow_under <= 0.f && snow_clear <= 0.f || parts < 0.5f)
     return 0.f;
-  bool with_crystals = fmod(snow_parts, 2.f) > 0.5f;
-  bool with_haze = snow_parts > 1.5f;
+  bool with_crystals = fmod(parts, 2.f) > 0.5f;
+  bool with_haze = parts > 1.5f;
   float planet = frame_rows[126].x;
   float kind = abs(planet - cloud_kind_radius) < 4.f ? cloud_kind_weight : 0.f;
   // near that planet's ground only (Status.json says on foot outdoors or in a craft, but the planet is the one whose
-  // kind was read)
-  if(kind <= 0.f || length(centre) - planet > 5000.f)
+  // kind was read): in a craft up to 5 km over the planet's mean radius; on foot wherever the ground stands (a pad lies
+  // up to 6.3 km over the mean radius, research of 2026-10-10, C21)
+  if(kind <= 0.f || (!on_foot && length(centre) - planet > 5000.f))
     return 0.f;
   float inverse_square = 1.f / dot(object_rows[9].xyz, object_rows[9].xyz);
   float3 eye_model = -(object_rows[9].xyz * centre.x + object_rows[10].xyz * centre.y + object_rows[11].xyz * centre.z) * inverse_square;
@@ -874,12 +879,19 @@ float4 snow_along(ps_in input, float3 ray, float3 centre)
   float3 sun = -frame_rows[291].xyz;
   float3 sun_model = normalize(object_rows[9].xyz * sun.x + object_rows[10].xyz * sun.y + object_rows[11].xyz * sun.z);
 
-  // how much cloud over the eye: the weather there, as the clouds above have it
+  // how much cloud over the eye: the weather there as the clouds straight above have it (clouds_along: the place blown
+  // by the mean wind and wound by the storms, the edge moved by the weather times the kind), as a cover (edge = 0.62 -
+  // 0.3 cover)
   float cover = lerp(cloud_cover, cloud_kind_cover, kind);
   if(cloud_weather > 0.f)
     {
     float3 seed = frac(planet / float3(977.f, 1543.f, 2111.f)) * 50.f;
-    cover = saturate(cover + 0.5f * cloud_weather * weather_at(up, up, seed, sun_model) / 0.3f);
+    float wind_angle = (seed.x > 25.f ? 1.f : -1.f) * cloud_wind_seconds / planet;
+    float3 over = blown(up, wind_angle * (cloud_wind_low + cloud_wind_high) * 0.5f);
+    float storm_eye = 1.f, storm_wall = 0.f, storm_inner = 0.f, storm_wallness = 0.f;
+    float3 storm_inward = 0.f;
+    over = storms(over, kind, 0.5f, storm_eye, storm_wall, storm_inner, storm_wallness, storm_inward);
+    cover = saturate(cover + cloud_weather * weather_at(up, over, seed, sun_model) * kind / 0.3f);
     }
   float many = snow_under * smoothstep(0.35f, 0.75f, cover) + snow_clear;
   if(many <= 0.f)
@@ -922,9 +934,10 @@ float4 snow_along(ps_in input, float3 ray, float3 centre)
   // the ray in the ground's frame; the cells fall and drift with the time, and move against the eye's way
   float3 dir = float3(dot(ray_model, east), dot(ray_model, north), dot(ray_model, up));
   float time = cloud_wind_seconds;
-  float wind_angle = 6.2831853f * noise(float3(time * 0.01f, 3.1f, 7.7f));
-  float2 drift = float2(cos(wind_angle), sin(wind_angle)) * (0.3f + 1.2f * noise(float3(time * 0.03f, 5.3f, 1.9f)));
-  float3 shift = float3(snow_east + drift.x * time, snow_north + drift.y * time, snow_up + snow_fall * time);
+  float2 drift = float2(snow_drift_east, snow_drift_north);
+  // the cells' place, its fall and drift summed on the CPU (they grew with the session in float and lost the crystals'
+  // millimetres after an hour, C5)
+  float3 shift = float3(snow_east, snow_north, snow_up);
   // how a crystal moves against the eye: down with the fall, along with the wind, back from the eye's own way; a streak
   // of one frame's way, no longer than a cell (only the crystal of the cell a sample stands in is seen)
   float3 moving = -float3(drift.x + snow_v_east, drift.y + snow_v_north, snow_fall + snow_v_up);
@@ -946,10 +959,13 @@ float4 snow_along(ps_in input, float3 ray, float3 centre)
     if(t > way)
       break;
     float3 at = shift + dir * t;
+    // the cells numbered round snow_wrap_m (1280 of them), so the CPU's wrap and a new reference change no crystal (C6)
     float3 cell = floor(at / snow_cell);
+    cell -= 1280.f * floor(cell / 1280.f);
     if(hash(cell + 17.f) > many)
       continue;
-    float3 crystal = (cell + 0.15f + 0.7f * float3(hash(cell), hash(cell + 3.f), hash(cell + 7.f))) * snow_cell;
+    // the crystal in the sample's own cell, where the cell stands (not its number round the wrap)
+    float3 crystal = (floor(at / snow_cell) + 0.15f + 0.7f * float3(hash(cell), hash(cell + 3.f), hash(cell + 7.f))) * snow_cell;
     float along = dot(crystal - shift, dir);
     if(along < snow_near || along > way)
       continue;

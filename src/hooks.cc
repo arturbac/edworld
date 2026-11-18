@@ -1447,6 +1447,7 @@ namespace edworld
       }
 
     snow_walk_t snow_walk{};
+    snow_drift_t snow_drift{};
     snow_gravity_t snow_g{};
     ///\brief snow_bench: when it was switched on (steady seconds) and the step logged last (-1 = none)
     double snow_bench_from{-1.0};
@@ -1500,13 +1501,24 @@ namespace edworld
         snow_bench_logged = -1;
         log_line("snow bench: off");
         }
-      snow_eye_t const eye{snow_walked(snow_walk, f.latitude, f.longitude, f.altitude, f.has_ground, f.planet_radius, now)};
-      v[3] = eye.place[2];
-      v[4] = eye.place[0];
-      v[5] = eye.place[1];
+      // the fix's own time on this clock: when the state thread read it, less the file's age then (C8)
+      double const fix_at{now - static_cast<double>(GetTickCount64() - std::min<std::uint64_t>(GetTickCount64(), f.fix_tick_ms) + f.fix_age_ms) / 1000.0};
+      // Flags bit 29: the altitude from the mean radius (1) or from the ground under the ship (0); a switch moves it by the
+      // ground's height and is a new reference, no move (research 2026-10-10: pads' one-off fixes, C7)
+      bool const from_mean{((f.flags >> 29) & 1u) != 0u};
+      snow_eye_t const eye{snow_walked(snow_walk, f.latitude, f.longitude, f.altitude, f.has_ground, f.planet_radius, now, fix_at, from_mean)};
+      // the fall and the wind's drift summed here in double, the whole wrapped for the shader (C5)
+      std::array<double, 2> const drift{snow_drift_step(snow_drift, v[2], now)};
+      v[3] = snow_wrapped(eye.place[2] + snow_drift.fall);
+      v[4] = snow_wrapped(eye.place[0] + snow_drift.east);
+      v[5] = snow_wrapped(eye.place[1] + snow_drift.north);
       v[6] = eye.speed[0];
       v[7] = eye.speed[1];
       v[8] = eye.speed[2];
+      v[10] = static_cast<float>(drift[0]);
+      v[11] = static_cast<float>(drift[1]);
+      if(f.has_ground)
+        v[9] += 4.f;  // on foot: the shader drops its 5 km limit over the mean radius (C21)
       }
 
     ///\brief the day read off the turn of the planet of this radius, 0 = not known

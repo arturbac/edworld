@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Snow without jumps:** the crystals keep their places after hours of play and across 10 km of flight, the eye's
+  way is timed by when the game wrote Status.json and held where it went when you stop, a switch of the altitude's
+  reference (a pad, the ground under the ship) moves nothing, the snow follows the clouds straight above as they are
+  drawn, and it falls on foot also where the ground stands over 5 km above the planet's mean radius.
 - **The aurora steadier:** its rays keep their places as the arcs fold (they ran along them at tens of km/s), no
   seam where the oval closes at noon, substorms come in over levels 2.5 to 3.5 and their dance falls off smoothly,
   the flicker keeps its beat after hours, it stands over the clouds that storms raise, a strong star's wind raises the

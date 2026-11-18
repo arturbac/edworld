@@ -48,7 +48,7 @@ namespace edworld
     /// is killed wherever it is when the game exits, and a stream it left half open (a failed open of a status_file in
     /// a folder that does not exist) made the CRT's closing of all streams at edworld's unload end the process
     /// (0xC0000409, the invalid parameter of _fcloseall)
-    auto read_file(std::wstring const & path) -> std::string
+    auto read_file(std::wstring const & path, FILETIME * written = nullptr) -> std::string
       {
       std::string text;
       // shared every way: the game rewrites the file while it is read
@@ -56,6 +56,8 @@ namespace edworld
                                  OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr)};
       if(f == INVALID_HANDLE_VALUE)
         return text;
+      if(written and not GetFileTime(f, nullptr, nullptr, written))
+        *written = FILETIME{};
       char buf[4096];
       DWORD n{};
       while(ReadFile(f, buf, sizeof buf, &n, nullptr) and n > 0)
@@ -117,9 +119,11 @@ namespace edworld
       }
 
     ///\brief the flight fields of a complete Status.json; the path angle from the previous fix that differed
-    auto read_flight(std::string_view text, std::uint64_t flags, std::uint64_t flags2, flight_t & last) -> void
+    auto read_flight(std::string_view text, std::uint64_t flags, std::uint64_t flags2, std::uint32_t age_ms, flight_t & last) -> void
       {
       flight_t f{};
+      f.fix_tick_ms = GetTickCount64();
+      f.fix_age_ms = age_ms;
       f.flags = flags;
       f.flags2 = flags2;
       bool la{}, lo{}, al{}, pr{}, hd{}, gr{}, te{};
@@ -503,7 +507,8 @@ namespace edworld
           dump_known = true;
           }
 #endif
-        std::string const text{read_file(path)};
+        FILETIME written{};
+        std::string const text{read_file(path, &written)};
         if(not text.empty())
           {
           bool ok{};
@@ -522,7 +527,12 @@ namespace edworld
           charging.store(now_charging, std::memory_order_relaxed);
           if(complete)
             {
-            read_flight(text, flags, flags2, last_fix);
+            // how long ago the game wrote the file: the fix's time is its write, not this read (up to a poll later)
+            FILETIME now_ft{};
+            GetSystemTimeAsFileTime(&now_ft);
+            auto const ticks{[](FILETIME const & t) { return (static_cast<std::uint64_t>(t.dwHighDateTime) << 32) | t.dwLowDateTime; }};
+            std::uint64_t const age_100ns{written.dwHighDateTime or written.dwLowDateTime ? ticks(now_ft) - std::min(ticks(now_ft), ticks(written)) : 0u};
+            read_flight(text, flags, flags2, static_cast<std::uint32_t>(std::min<std::uint64_t>(age_100ns / 10000u, 2000u)), last_fix);
             apply_place(last_fix);
             }
           auto const dest_at{text.find("\"Destination\"")};

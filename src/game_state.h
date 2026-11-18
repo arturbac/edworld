@@ -58,6 +58,10 @@ namespace edworld
     std::int64_t docking_granted_ms;
     std::uint32_t docking_pad;
     char station_type[32];
+    ///\brief when this fix was read (GetTickCount64) and how old the file was then (ms since the game wrote it): the
+    /// fix's own time is the first less the second
+    std::uint64_t fix_tick_ms;
+    std::uint32_t fix_age_ms;
     };
 
   ///\brief the pad the HUD's notice gave (render thread, pad_text_read.h) and when (unix ms); 0 = none. edworld alone takes
