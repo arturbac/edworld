@@ -43,7 +43,10 @@ The ini and log names are fixed by the build, not taken from the dll's file name
 - (edworld_eht only) The panel's place comes from its instance record, as the game's own shader reads it: the VB0 instance entry
   at `start_instance` names a 336-byte record in the VS t33 pool (scale, orientation, position), and VS cb1 row
   275 is the world-rebase origin; anchor = cb0 rows 4..7 (the camera) applied to (position - rebase, 1). The
-  pool is GPU-copied whole once a frame.
+  pool is GPU-copied whole once a frame; a hologram's series copies it once, at its first part (its later parts
+  draw from the same pool). The compass spheres and the faction list's texture are drawn again only when what they
+  show changes (a key of their lines, directions, flags, notes, the hologram and the settings; the spheres at least
+  every 250 ms), and a draw takes no timestamp while panels come (`panels_recent`).
 - (edworld_eht only) Reads the copies 1-3 frames later with `Map(DO_NOT_WAIT)` (never a CPU read of a mapped dynamic buffer:
   write-combined under DXVK) and publishes the latest frame to `panels` in `shm_dir` (seqlock; layout in
   `src/edworld_share.h`).
@@ -553,8 +556,10 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   half size picture's upsampling (`clouds_up.hlsl`) reads the nine cloud texels first and discards a pixel none of
   them covers, before its ten depth reads.
 - Logs to `<plugin>.log` in the log folder: chain, attach, watched shaders, the patch's first draw and the
-  destination's allegiance and factions (how many, from which source), and once a second (`log_interval_ms`) a summary: in edworld_eht the frame's panel draws
-  with surface size and anchor in NDC, in edworld the draw and fault totals. A fault in edworld's own work is caught; eight of them switch the observer off, never the game call.
+  destination's allegiance and factions (how many, from which source), and, when `log_interval_ms` is set (`0`, off,
+  by default; `1000` once a second), a summary: in edworld_eht the frame's panel draws
+  with surface size and anchor in NDC, in edworld the draw and fault totals. A line is written at once (one queued for
+  later would be lost in a crash of the game); the summary's lines go out in one write (`log_batch_begin`/`_end`). A fault in edworld's own work is caught; eight of them switch the observer off, never the game call.
   Each guard (`guarded_*` in `src/hooks.cc`) catches hardware faults and C++ exceptions alike, and its filter
   (`fault_filter`) logs each of the first 16 with its code and place (`hooks: a fault caught (exception ... at
   <module>+<offset>)`). The functions a guard calls are not `noexcept`: a C++ exception (out of memory) thrown below
@@ -646,7 +651,7 @@ shader_catalog = 1
 ; (edworld_eht) the atmosphere's fingerprint to edworld_atmo at most this often, seconds; 0 = never
 atmo_record_s = 10
 ; 0 = no per-frame summary
-log_interval_ms = 1000
+log_interval_ms = 0
 frame_gap_us = 2500
 ; 1 = log every vertex shader hash the game creates
 log_all_vs = 0

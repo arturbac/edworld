@@ -49,7 +49,7 @@ namespace edworld
     std::uint32_t atmo_record_s{10};
 #endif
     ///\brief a summary line of the frame's panels at most this often; 0 = never
-    std::uint32_t log_interval_ms{1000};
+    std::uint32_t log_interval_ms{};  // 0 for players since 2026-11-18 (D6): the summary only when asked for
     ///\brief a gap between two panel draws longer than this starts a new frame
     std::uint32_t frame_gap_us{2500};
     ///\brief log the hash of every vertex shader the game creates (discovery)
@@ -403,8 +403,12 @@ namespace edworld
   auto write_settings_doc() noexcept -> void;
 
   auto log_open(std::wstring const & dir) -> void;
-  ///\brief one line, time-stamped (UTC), flushed
+  ///\brief one line, time-stamped (UTC), written at once (a line queued for later would be lost in a crash of the
+  /// game, the very lines a player's log is read for); between log_batch_begin and log_batch_end on the same thread
+  /// the lines are gathered and written in one go (the summary's lines, D6 2026-11-18)
   auto log_line(char const * fmt, ...) noexcept -> void;
+  auto log_batch_begin() noexcept -> void;
+  auto log_batch_end() noexcept -> void;
 
   ///\brief a whole file written with Windows' own calls (no CRT stream a thread killed at the game's exit could leave
   /// half done): false, logged, and the partial file removed when not all of it was written

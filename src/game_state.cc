@@ -475,6 +475,47 @@ namespace edworld
       ReleaseSRWLockExclusive(&flight_lock);
       }
 
+    // the EDSM request's thread (D13): the destination and whether the data source's allegiance stands, from the state
+    // thread, which starts no other while edsm_busy (cleared when the thread ends)
+    std::atomic<bool> edsm_busy{};
+    std::uint64_t edsm_dest{};
+    bool edsm_keep_allegiance{};
+
+    auto edsm_body(void *) -> DWORD
+      {
+      std::uint64_t const dest{edsm_dest};
+      std::string const body{edsm_factions(dest)};
+      auto const controlling{body.find("\"controllingFaction\"")};
+      std::string_view const name{
+        controlling == std::string::npos ? std::string_view{} : string_after(body, "\"allegiance\"", controlling)
+      };
+      allegiance_e const a{to_allegiance(name)};
+      if(dest == destination.load() and not edsm_keep_allegiance)
+        allegiance.store(static_cast<std::uint8_t>(a));
+      faction_list_t from_edsm{};
+      bool parsed{};
+      try
+        {
+        parsed = not body.empty() and list_from_edsm(body, dest, from_edsm);
+        }
+      catch(std::exception const & e)
+        {
+        log_line("edsm: the answer for %llu could not be read (%s)", static_cast<unsigned long long>(dest), e.what());
+        }
+      if(parsed)
+        {
+        // under the list's lock: a destination chosen meanwhile has cleared the list after storing itself, so the
+        // answer for the old one never lands over the new one's
+        AcquireSRWLockExclusive(&list_lock);
+        if(dest == destination.load())
+          list = from_edsm;
+        ReleaseSRWLockExclusive(&list_lock);
+        }
+      log_line("edsm: %llu -> %s, %u faction(s)%s (%zu bytes)", static_cast<unsigned long long>(dest), allegiance_name(a),
+               from_edsm.count, parsed ? "" : ", answer not read", body.size());
+      return 0;
+      }
+
     auto poll_body(void *) -> DWORD
       {
       test_fault("thread");  // tools/test.sh: EDWORLD_TEST_FAULT=thread
@@ -592,32 +633,29 @@ namespace edworld
         // the list comes from one source whole: what the data source does not list, EDSM lists, the emblem stays the
         // data source's when it knows the system
         bool const source_lacks{target_answered and t.system_address == dest and not target_listed};
-        if(dest and dest != asked and settings().edsm and (source_silent or source_lacks))
+        // asked on a thread of its own: this one goes on reading Status.json while EDSM answers (D13, 2026-11-18: the
+        // charge, the flight and the destination's place stood for the seconds of the request before); one at a time,
+        // a destination chosen meanwhile is asked once the answer is in
+        if(dest and dest != asked and settings().edsm and (source_silent or source_lacks) and not edsm_busy.load())
           {
           asked = dest;
-          std::string const body{edsm_factions(dest)};
-          auto const controlling{body.find("\"controllingFaction\"")};
-          std::string_view const name{
-            controlling == std::string::npos ? std::string_view{} : string_after(body, "\"allegiance\"", controlling)
-          };
-          allegiance_e const a{to_allegiance(name)};
-          bool const still{dest == destination.load()};
-          if(still and not(target_answered and target_known))
-            allegiance.store(static_cast<std::uint8_t>(a));
-          faction_list_t from_edsm{};
-          bool parsed{};
-          try
+          edsm_busy.store(true);
+          edsm_dest = dest;
+          edsm_keep_allegiance = target_answered and target_known;
+          // busy cleared after the guard, a fault in the request included
+          auto const edsm_thread{[](LPVOID) -> DWORD
+                                 {
+                                   DWORD const r{run_guarded_thread("edsm", &edsm_body, nullptr, 1)};
+                                   edsm_busy.store(false);
+                                   return r;
+                                 }};
+          if(HANDLE const h{CreateThread(nullptr, 0, edsm_thread, nullptr, 0, nullptr)})
+            CloseHandle(h);
+          else
             {
-            parsed = not body.empty() and list_from_edsm(body, dest, from_edsm);
+            edsm_busy.store(false);
+            log_line("edsm: no thread for the request (error %lu)", GetLastError());
             }
-          catch(std::exception const & e)
-            {
-            log_line("edsm: the answer for %llu could not be read (%s)", static_cast<unsigned long long>(dest), e.what());
-            }
-          if(still and parsed)
-            set_list(from_edsm);
-          log_line("edsm: %llu -> %s, %u faction(s)%s (%zu bytes)", static_cast<unsigned long long>(dest), allegiance_name(a),
-                   from_edsm.count, parsed ? "" : ", answer not read", body.size());
           }
         Sleep(100);
         }

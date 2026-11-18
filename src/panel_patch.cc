@@ -575,6 +575,7 @@ namespace edworld
 
     std::uint64_t list_frame{~0ull};  ///< the frame the list's texture was drawn in
     float list_used{};                ///< its height in that frame, in pixels
+    std::uint64_t list_key{};         ///< what the texture was last drawn from (D14: drawn again only when it changes)
 
     ///\brief the list's shaders and states, once per device; none = no list (logged once)
     auto make_list_objects() -> bool
@@ -1123,8 +1124,19 @@ namespace edworld
       auto const h{static_cast<std::uint32_t>(
         list_height(list_lines_t{std::max(s.list_rows, 1u), 1u}, line, std::round(r.font->FontSize * 0.3f)) + 1.f
       )};
-      if(list_target(w, h))
+      bool const target{list_target(w, h)};
+      // the list, its size, the settings and the target (made again: another): the same as at the last draw, the
+      // texture still holds it
+      std::uint64_t key{fnv1a64(reinterpret_cast<std::uint8_t const *>(&list), sizeof list)};
+      settings_t const * const settings_at{&s};
+      std::uintptr_t const parts[]{reinterpret_cast<std::uintptr_t>(settings_at), w, h, test, reinterpret_cast<std::uintptr_t>(r.list_rtv)};
+      for(std::uintptr_t const part: parts)
+        key = (key ^ part) * 0x100000001b3ull;
+      if(target and key == list_key and list_used > 0.f)
+        list_frame = frame;
+      else if(target)
         {
+        list_key = key;
         io.DisplaySize = ImVec2{static_cast<float>(w), static_cast<float>(h)};
         ImGui_ImplDX11_NewFrame();
         ImGui::NewFrame();
@@ -1391,6 +1403,9 @@ namespace edworld
       ID3D11RenderTargetView * sphere_rtv[2]{};
       ID3D11ShaderResourceView * sphere_srv[2]{};
       bool spheres_drawn{};
+      std::uint64_t spheres_key{};    ///< what the spheres were last rendered from (render_spheres)
+      ULONGLONG spheres_at{};         ///< and when (GetTickCount64)
+      ULONGLONG sphere_trigger_at{};  ///< the last look for edworld_sphere_dump
       std::uint64_t quad_frame{~0ull};
       std::uint32_t quad_index{};
       bool told_quads{};
@@ -2423,6 +2438,49 @@ namespace edworld
             y += sphere_line(dl, 0.f, width, y, 44.f, c, n->text);
             }
         };
+      // rendered again only when what they show changes (D5, 2026-11-18: each frame before, two ImGui frames, 48 circles
+      // and the mips): the lines, the directions, the flags, the notes, the hologram the right sphere's pads come from
+      // and the settings; at least every quarter of a second, for anything the draws read that is not in the key
+      ULONGLONG const now_ms{GetTickCount64()};
+      std::uint64_t key{0xcbf29ce484222325ull};
+      auto const mix = [&key](void const * data, std::size_t bytes) noexcept -> void
+        {
+        auto const * b{static_cast<std::uint8_t const *>(data)};
+        for(std::size_t i{}; i != bytes; ++i)
+          key = (key ^ b[i]) * 0x100000001b3ull;
+        };
+      for(char const * text: {a1, a2, c1, c2, c3, to_go})
+        mix(text, std::strlen(text) + 1u);
+      for(compass_direction_t const * v: {&d, &dp, &should})
+        mix(v, sizeof *v);
+      std::uint8_t const bits[]{have, cs.approach, behind, grounded, planet_lines, f.has_position, f.has_place, normal_flight};
+      mix(bits, sizeof bits);
+      for(sphere_note_t const * n: {&t1_note, &model_note})
+        {
+        bool const shown_note{n->text[0] != '\0' and now_ms < n->until};
+        mix(&shown_note, 1u);
+        if(shown_note)
+          {
+          mix(n->text, std::strlen(n->text) + 1u);
+          mix(&n->colour, sizeof n->colour);
+          }
+        }
+      {
+      hologram_view_t const h{hologram_view()};
+      mix(h.axes.data(), sizeof h.axes);
+      mix(&h.count, sizeof h.count);
+      mix(&h.table, sizeof h.table);
+      std::uint8_t const hb[]{h.have, h.ship, static_cast<std::uint8_t>(h.place)};
+      mix(hb, sizeof hb);
+      }
+      settings_t const * const settings_at{&s};
+      ID3D11Texture2D * const targets[]{cs.sphere_tex[0], cs.sphere_tex[1]};
+      mix(&settings_at, sizeof settings_at);
+      mix(targets, sizeof targets);
+      if(cs.spheres_drawn and key == cs.spheres_key and now_ms - cs.spheres_at < 250u)
+        return;
+      cs.spheres_key = key;
+      cs.spheres_at = now_ms;
       ImGui::SetCurrentContext(r.imgui);
       ImGuiIO & io{ImGui::GetIO()};
       io.DisplaySize = ImVec2{static_cast<float>(sphere_w), static_cast<float>(sphere_h)};
@@ -2530,9 +2588,14 @@ namespace edworld
         ctx->GenerateMips(cs.sphere_srv[k]);
         }
       // a file edworld_sphere_dump beside the log: both textures (their largest level) written once to edworld_dumps, at the
-      // first plausible reading after it appeared (checking)
-      std::wstring const trigger{settings().dir + L"\\edworld_sphere_dump"};
-      if(have and GetFileAttributesW(trigger.c_str()) != INVALID_FILE_ATTRIBUTES)
+      // first plausible reading after it appeared (checking); looked for every 500 ms, as the other triggers
+      std::wstring trigger;
+      if(have and now_ms - cs.sphere_trigger_at >= 500u)
+        {
+        cs.sphere_trigger_at = now_ms;
+        trigger = settings().dir + L"\\edworld_sphere_dump";
+        }
+      if(not trigger.empty() and GetFileAttributesW(trigger.c_str()) != INVALID_FILE_ATTRIBUTES)
         {
         DeleteFileW(trigger.c_str());
         CreateDirectoryW((settings().dir + L"\\edworld_dumps").c_str(), nullptr);
@@ -3511,34 +3574,60 @@ namespace edworld
     if(s.build_info == 0)
       return;
     LONGLONG const now{qpc()};
+    static LONGLONG const frequency{[]() noexcept
+                                      {
+                                        LARGE_INTEGER q{};
+                                        QueryPerformanceFrequency(&q);
+                                        return q.QuadPart ? q.QuadPart : 1;
+                                      }()};
     LARGE_INTEGER f{};
-    QueryPerformanceFrequency(&f);
+    f.QuadPart = frequency;
     if(build_info_first_qpc == 0)
       build_info_first_qpc = now;
     ID3D11RenderTargetView * rtv{};
     ctx->OMGetRenderTargets(1, &rtv, nullptr);
     if(not rtv)
       return;
-    ID3D11Resource * res{};
-    rtv->GetResource(&res);
-    ID3D11Texture2D * tex{};
-    if(res)
+    // the target as at the last call: its texture's description and whether it is the back buffer kept (D7,
+    // 2026-11-18: GetResource, GetType, QueryInterface and GetDesc on each draw before)
+    static ID3D11RenderTargetView * last_rtv{};
+    static D3D11_TEXTURE2D_DESC last_desc{};
+    static bool last_back{};
+    static bool last_texture{};
+    static LONGLONG last_look{};
+    // looked at again each second too: a view made again at a freed one's address (a resize) is not taken for the old
+    if(rtv != last_rtv or now - last_look > frequency)
       {
-      D3D11_RESOURCE_DIMENSION dim{};
-      res->GetType(&dim);
-      if(dim == D3D11_RESOURCE_DIMENSION_TEXTURE2D)
-        res->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void **>(&tex));
-      res->Release();
+      last_rtv = rtv;
+      last_look = now;
+      last_texture = false;
+      last_back = false;
+      ID3D11Resource * res{};
+      rtv->GetResource(&res);
+      ID3D11Texture2D * tex{};
+      if(res)
+        {
+        D3D11_RESOURCE_DIMENSION dim{};
+        res->GetType(&dim);
+        if(dim == D3D11_RESOURCE_DIMENSION_TEXTURE2D)
+          res->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void **>(&tex));
+        res->Release();
+        }
+      if(tex)
+        {
+        tex->GetDesc(&last_desc);
+        last_back = back_buffer(tex, last_desc);
+        last_texture = true;
+        tex->Release();
+        }
       }
-    if(not tex)
+    if(not last_texture)
       {
       rtv->Release();
       return;
       }
-    D3D11_TEXTURE2D_DESC d{};
-    tex->GetDesc(&d);
-    bool const back{back_buffer(tex, d)};
-    tex->Release();
+    D3D11_TEXTURE2D_DESC const d{last_desc};
+    bool const back{last_back};
     if(not back)
       {
       rtv->Release();

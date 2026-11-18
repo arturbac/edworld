@@ -234,7 +234,7 @@
 ;pad_text_read = 1
 ;pad_text_unsure_sample = 1
 ;station_vs = 5B0068AF5630F96B
-;log_interval_ms = 1000
+;log_interval_ms = 0
 ;frame_gap_us = 2500
 ;log_all_vs = 0
 ;context_hook = 0

@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdarg>
 #include <cstdio>
+#include <cstring>
 #include <cwchar>
 #include <exception>
 #include <iterator>
@@ -41,6 +42,11 @@ namespace edworld
     // half done for the CRT's closing of all streams at edworld's unload (the 0xC0000409 of 2026-11-17)
     HANDLE log_file{INVALID_HANDLE_VALUE};
     SRWLOCK log_lock = SRWLOCK_INIT;  ///< no std::mutex: its lock may throw, and log_line runs where nothing may
+    // the lines of a batch (log_batch_begin): one thread's at a time (the render thread's summary), the others write
+    // theirs at once; no thread_local, which would give each of the game's threads a buffer
+    std::atomic<DWORD> log_batch_thread{};
+    char log_batch[16384];
+    std::size_t log_batch_used{};
 
     auto trim(std::string_view s) -> std::string_view
       {
@@ -882,9 +888,40 @@ namespace edworld
     // a cut line ends where vsnprintf put its terminator, which the line's end replaces: no NUL in the log
     n += m < 0 ? 0 : std::min(m, room - 1);
     buf[n++] = '\n';
+    if(log_batch_thread.load(std::memory_order_relaxed) == GetCurrentThreadId())
+      {
+      if(log_batch_used + static_cast<std::size_t>(n) > sizeof log_batch)
+        {
+        log_batch_end();  // full: what is gathered goes out, the batch goes on
+        log_batch_begin();
+        }
+      std::memcpy(log_batch + log_batch_used, buf, static_cast<std::size_t>(n));
+      log_batch_used += static_cast<std::size_t>(n);
+      return;
+      }
     DWORD written{};
     AcquireSRWLockExclusive(&log_lock);
     WriteFile(log_file, buf, static_cast<DWORD>(n), &written, nullptr);
     ReleaseSRWLockExclusive(&log_lock);
+    }
+
+  auto log_batch_begin() noexcept -> void
+    {
+    DWORD expected{};
+    log_batch_thread.compare_exchange_strong(expected, GetCurrentThreadId());  // another thread's batch: this one's at once
+    }
+
+  auto log_batch_end() noexcept -> void
+    {
+    if(log_batch_thread.load(std::memory_order_relaxed) != GetCurrentThreadId())
+      return;
+    log_batch_thread.store(0, std::memory_order_relaxed);
+    if(log_batch_used == 0)
+      return;
+    DWORD written{};
+    AcquireSRWLockExclusive(&log_lock);
+    WriteFile(log_file, log_batch, static_cast<DWORD>(log_batch_used), &written, nullptr);
+    ReleaseSRWLockExclusive(&log_lock);
+    log_batch_used = 0;
     }
   }  // namespace edworld

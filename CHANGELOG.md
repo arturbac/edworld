@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Less work on the game's render thread:** the compass spheres and the faction list are drawn again only when what
+  they show changes (each frame before), a hologram's record pool is copied once a series instead of once a part,
+  the draws between the HUD's panels take no timestamps, the corner text keeps its target's check, the galaxy map's
+  names wait for their interval before looking at the target, the atmosphere's reads keep their copies instead of
+  making them each time, one cloud draw in four is timed, and a watched shader is found with one look. The EDSM
+  request runs on a thread of its own, so the charge and the flight keep coming while EDSM answers. The log's
+  summary every second is off by default (`log_interval_ms = 1000` brings it back); its lines go out in one write.
 - **Clouds cheaper in storms and on the screen around them:** a ray looks only at the storms it passes, the storms'
   own shadow is worked out on every other step, and the pass laying the half size clouds over the picture skips the
   pixels with no clouds. The weather's swirls and the lumps' size follow the storms as the clouds themselves do, and

@@ -257,8 +257,8 @@ until edworld follows it. Changing a value takes a new start of the game, but fo
 
 The clouds with depth are worked out at half the picture's width and height and laid over it by the depth of the
 scene, so they keep to the edge of the ground and the ship. Every 5 s the log has a line `clouds gpu 5s` with how
-long the graphics card spends on them (`ms median`) and how many pixels that takes; with a report about the speed of
-the game near a planet, that line helps.
+long the graphics card spends on them (`ms median`, from one draw in four) and how many pixels that takes; with a
+report about the speed of the game near a planet, that line helps.
 Toward the horizon, where the way through the clouds is longest, they can show a fine, even grain.
 
 The clouds with depth follow the atmosphere's kind (since 1.2.0-beta.9). The kind is told by how the game's own

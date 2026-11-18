@@ -132,6 +132,7 @@ namespace edworld
     std::atomic<std::uint32_t> table_slot[slot_table_size]{};  ///< slot + 1; 0 while the key is claimed but no slot written
     std::atomic<verdict_e> verdict[max_vs_seen]{};
     std::uint8_t verdict_looked[max_vs_seen]{};  // render thread only
+    std::atomic<std::uint8_t> slot_watched[max_vs_seen]{};  ///< the watched list's index + 1 of a seen slot's shader, 0 = not
 
     auto table_home(void const * p) noexcept -> std::uint32_t
       {
@@ -799,7 +800,9 @@ namespace edworld
              and (now - last_log_qpc) * 1000 / qpc_frequency >= settings().log_interval_ms)
             {
             last_log_qpc = now;
+            log_batch_begin();  // the summary's lines in one write
             log_summary(*oldest, m);
+            log_batch_end();
             }
           }
         else
@@ -1670,20 +1673,22 @@ namespace edworld
         }
       }
 
+    // the staging copies, made once and kept (D9, 2026-11-18: made and released at each read before, on the render
+    // thread): eight buffers of atmo_max_cb_bytes, the table's texture made again only for another description.
+    // atmo_pending_t points at them, holding nothing
+    ID3D11Buffer * atmo_cb_staging[8]{};
+    ID3D11Texture2D * atmo_t0_staging{};
+    D3D11_TEXTURE2D_DESC atmo_t0_desc{};
+
     auto atmo_release(atmo_pending_t & p) noexcept -> void
       {
-      if(p.t0)
-        p.t0->Release();
-      for(ID3D11Buffer * cb: p.cbs)
-        if(cb)
-          cb->Release();
       p = atmo_pending_t{};
       atmo_busy = false;
       }
 
     ///\brief a staging copy of a bound constant buffer from its first constant; null when there is none
-    auto atmo_copy_cb(ID3D11DeviceContext * ctx, ID3D11Buffer * source, UINT first, UINT count, std::uint32_t & bytes) noexcept
-      -> ID3D11Buffer *
+    auto atmo_copy_cb(ID3D11DeviceContext * ctx, ID3D11Buffer * source, UINT first, UINT count, std::uint32_t & bytes,
+                      std::uint32_t slot) noexcept -> ID3D11Buffer *
       {
       bytes = 0;
       if(not source)
@@ -1695,12 +1700,17 @@ namespace edworld
         return nullptr;
       std::uint32_t const whole{count ? std::min(count * 16u, bd.ByteWidth - from) : bd.ByteWidth - from};
       bytes = std::min(whole, atmo_max_cb_bytes);
-      D3D11_BUFFER_DESC sd{};
-      sd.ByteWidth = (bytes + 15u) & ~15u;
-      sd.Usage = D3D11_USAGE_STAGING;
-      sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-      ID3D11Buffer * staging{};
-      if(FAILED(device->CreateBuffer(&sd, nullptr, &staging)) or not staging)
+      ID3D11Buffer *& staging{atmo_cb_staging[slot]};
+      if(not staging)
+        {
+        D3D11_BUFFER_DESC sd{};
+        sd.ByteWidth = atmo_max_cb_bytes;
+        sd.Usage = D3D11_USAGE_STAGING;
+        sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        if(FAILED(device->CreateBuffer(&sd, nullptr, &staging)))
+          staging = nullptr;
+        }
+      if(not staging)
         {
         bytes = 0;
         return nullptr;
@@ -1785,12 +1795,25 @@ namespace edworld
       sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
       sd.MiscFlags = 0;
       atmo_pending_t & p{atmo_pending};
-      if(FAILED(device->CreateTexture2D(&sd, nullptr, &p.t0)) or not p.t0)
+      if(atmo_t0_staging
+         and (atmo_t0_desc.Width != sd.Width or atmo_t0_desc.Height != sd.Height or atmo_t0_desc.Format != sd.Format
+              or atmo_t0_desc.MipLevels != sd.MipLevels))
+        {
+        atmo_t0_staging->Release();
+        atmo_t0_staging = nullptr;
+        }
+      if(not atmo_t0_staging)
+        {
+        if(FAILED(device->CreateTexture2D(&sd, nullptr, &atmo_t0_staging)))
+          atmo_t0_staging = nullptr;
+        atmo_t0_desc = sd;
+        }
+      if(not atmo_t0_staging)
         {
         tex->Release();
-        p.t0 = nullptr;
         return;
         }
+      p.t0 = atmo_t0_staging;
       ctx->CopyResource(p.t0, tex);
       tex->Release();
       p.width = d.Width;
@@ -1811,7 +1834,7 @@ namespace edworld
         }
       for(std::uint32_t c{}; c != 8; ++c)
         {
-        p.cbs[c] = atmo_copy_cb(ctx, cbs[c], firsts[c], counts[c], p.bytes[c]);
+        p.cbs[c] = atmo_copy_cb(ctx, cbs[c], firsts[c], counts[c], p.bytes[c], c);
         if(cbs[c])
           cbs[c]->Release();
         }
@@ -2623,6 +2646,14 @@ namespace edworld
     constexpr LONGLONG panel_less_ms{200};
     LONGLONG last_panel_less_check{};
 
+    ///\brief a panel drawn within panel_less_ms: the frames have panels, and the draws between them need no time of
+    /// their own (D7, 2026-11-18: two QueryPerformanceCounter calls on each of thousands of draws a frame before; the
+    /// tick count is a read of the shared page)
+    auto panels_recent() noexcept -> bool
+      {
+      return GetTickCount64() - last_watched_ms.load(std::memory_order_relaxed) < static_cast<std::uint64_t>(panel_less_ms);
+      }
+
     auto full_dump_wanted(LONGLONG now) noexcept -> bool
       {
       if(full_armed or full_done_waiting or pending_count or pending_buffer_count or full_dump_request.load(std::memory_order_relaxed))
@@ -2635,7 +2666,7 @@ namespace edworld
 
     auto frame_without_panels(ID3D11DeviceContext * ctx) -> void
       {
-      if(ctx != immediate.load(std::memory_order_relaxed))
+      if(ctx != immediate.load(std::memory_order_relaxed) or panels_recent())
         return;
       LONGLONG const now{qpc_now()};
       if((now - last_draw_qpc) * 1000 / qpc_frequency < panel_less_ms or not full_dump_wanted(now))
@@ -2674,7 +2705,7 @@ namespace edworld
     /// game's)
     auto note_draw_end(ID3D11DeviceContext * ctx) noexcept -> void
       {
-      if(ctx == immediate.load(std::memory_order_relaxed))
+      if(ctx == immediate.load(std::memory_order_relaxed) and not panels_recent())
         last_any_draw_qpc = qpc_now();
       }
 
@@ -2736,6 +2767,9 @@ namespace edworld
       watched_index[at] = index;
       watched_found[at] = found;
       watched_ptr[at].store(shader, std::memory_order_release);
+      // marked in its seen slot too: VSSetShader finds it with the one look into the table it makes anyway (D12)
+      if(std::uint32_t const seen{table_get(shader)}; seen < max_vs_seen)
+        slot_watched[seen].store(static_cast<std::uint8_t>(at + 1u), std::memory_order_release);
       return true;
       }
 
@@ -3238,12 +3272,14 @@ namespace edworld
         g.phase = galmap_phase_e::waiting;
         return;
         }
+      // idle: the interval first, the target (four calls) only once it is due (D8, 2026-11-18)
+      if(g.phase == galmap_phase_e::idle
+         and ((now - g.last) * 1000 / qpc_frequency < std::max<LONGLONG>(100, settings().galmap_interval_ms) or g.staging_failed))
+        return;
       if(not galmap_target(ctx))
         return;
       if(g.phase == galmap_phase_e::idle)
         {
-        if((now - g.last) * 1000 / qpc_frequency < std::max<LONGLONG>(100, settings().galmap_interval_ms) or g.staging_failed)
-          return;
         if(not g.ib)
           g.ib = galmap_buffer(galmap_ib_bytes);
         if(not g.vb)
@@ -3463,6 +3499,7 @@ namespace edworld
       std::uint32_t pool_bytes{};
       std::uint32_t pool_first{};
       std::uint32_t pool_stride{};
+      ID3D11Buffer const * pool_from{};  ///< the game's pool copied for this series (compared, not held)
       LONGLONG qpc{};
       std::uint32_t parts{};
       std::uint32_t count[holo_parts]{};
@@ -4294,10 +4331,18 @@ namespace edworld
           s.pool = nullptr;
         ok = s.pool != nullptr;
         }
+      // one copy of the pool a series (D4, 2026-11-18): its later parts draw from the same pool, which the copy holds
+      // already; each part took the whole pool before, up to six times every 50 ms
+      if(ok and p != 0 and s.pool_from == buf and s.pool_first == first_element and s.pool_bytes == bd.ByteWidth)
+        {
+        buf->Release();
+        return true;
+        }
       if(ok)
         {
         D3D11_BOX const box{0, 0, 0, bd.ByteWidth, 1, 1};
         ctx->CopySubresourceRegion(s.pool, 0, 0, 0, 0, buf, 0, &box);
+        s.pool_from = buf;
         s.pool_bytes = bd.ByteWidth;
         s.pool_first = first_element;
         s.pool_stride = bd.StructureByteStride ? bd.StructureByteStride : 336u;
@@ -4619,22 +4664,31 @@ namespace edworld
         std::uint32_t holo{max_vs_seen};
         if(shader)
           {
-          std::uint32_t const reserved{watched_count.load(std::memory_order_acquire)};
-          std::uint32_t const n{reserved < max_watched ? reserved : max_watched};
-          for(std::uint32_t i{}; i != n; ++i)
-            if(watched_ptr[i].load(std::memory_order_acquire) == shader)
-              {
-              found = static_cast<int>(i);
-              break;
-              }
-          if(found < 0)
-            if(std::uint32_t const at{table_get(shader)}; at < max_vs_seen)
+          // a seen shader: its slot says whether it is watched; one made before edworld came (not in the table) is
+          // looked for in the watched list
+          if(std::uint32_t const at{table_get(shader)}; at < max_vs_seen)
+            {
+            if(std::uint8_t const w{slot_watched[at].load(std::memory_order_acquire)}; w != 0u)
+              found = static_cast<int>(w) - 1;
+            else
               {
               if(verdict[at].load(std::memory_order_relaxed) == verdict_e::pending)
                 pending = at;
               if(holo_kind[at].load(std::memory_order_relaxed) != holo_kind_e::none)
                 holo = at;
               }
+            }
+          else
+            {
+            std::uint32_t const reserved{watched_count.load(std::memory_order_acquire)};
+            std::uint32_t const n{reserved < max_watched ? reserved : max_watched};
+            for(std::uint32_t i{}; i != n; ++i)
+              if(watched_ptr[i].load(std::memory_order_acquire) == shader)
+                {
+                found = static_cast<int>(i);
+                break;
+                }
+            }
           }
         current_watched = found;
         current_shell = shader != nullptr and shader == shell_vs.load(std::memory_order_relaxed);
@@ -5000,6 +5054,7 @@ namespace edworld
       edworld::gpu_span_window_t window{};
       ULONGLONG window_start{};
       std::uint32_t busy{};  // draws not timed as every slot still waited for the GPU
+      std::uint32_t calls{};  // the shell's draws with the volume, one in four of them timed
       };
     clouds_timing_t clouds_timing;
 
@@ -5053,7 +5108,7 @@ namespace edworld
       if(now - clouds_timing.window_start < 5000u)
         return;
       auto const s{edworld::span_summary(clouds_timing.window)};
-      log_line("clouds gpu 5s: draws %u, ms median %.2f mean %.2f max %.2f, pixels %.2f M a draw, %.2f ms per million pixels, untimed %u",
+      log_line("clouds gpu 5s: draws %u (1 in 4 timed), ms median %.2f mean %.2f max %.2f, pixels %.2f M a draw, %.2f ms per million pixels, untimed %u",
                s.count, s.ms_median, s.ms_mean, s.ms_max, s.megapixels_mean, s.ms_per_megapixel, clouds_timing.busy);
       clouds_timing.window = {};
       clouds_timing.busy = 0u;
@@ -5064,6 +5119,10 @@ namespace edworld
     auto start_clouds_timing(ID3D11DeviceContext * ctx) noexcept -> clouds_timing_t::slot_t *
       {
       if(not make_clouds_timing(ctx))
+        return nullptr;
+      // one draw in four timed, and the finished ones taken in only then (D11, 2026-11-18: four queries begun and up to
+      // 24 asked for at each draw of a shell before); the median and the mean stand as they were
+      if(clouds_timing.calls++ % 4u != 0u)
         return nullptr;
       collect_clouds_timing(ctx);
       auto & s{clouds_timing.slots[clouds_timing.next]};
