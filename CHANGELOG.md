@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- doc/performance.md: the cost in the game and the bench, moved from developers.md; linked from the README.
+
 ## 1.2.0-beta.14
 
 - **What it costs, measured:** in the game at 9000x2160 (RX 7900 XTX, Linux, DXVK, a CarbonDioxide planet) the clouds

@@ -83,6 +83,8 @@ Measured at 9000×2160, checked in a window at 2560×1440 and 1920×1080 too; at
   settings, checking it works, after a verification of the game's files, removing it.
 - Developers: [doc/developers.md](doc/developers.md): how it works in the game process, build and test, what was
   found in the game, and how to write a d3d11 plugin of your own on the same pattern.
+- What it costs: [doc/performance.md](doc/performance.md): the clouds' and the aurora's GPU time a frame in the game
+  and in the bench, the render thread's cost of a draw.
 
 Version 1.1.0 ([CHANGELOG.md](CHANGELOG.md)). Observing is read-only: every hook calls the game's call through
 unchanged; the jump panel's emblem and list and the navballs are the only things edworld changes in what the game draws. edworld runs on its own as
