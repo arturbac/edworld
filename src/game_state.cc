@@ -254,7 +254,7 @@ namespace edworld
       if(static_cast<LONG>(now - next_target_try) < 0)
         return;
       next_target_try = now + 2000;
-      std::wstring const path{settings().shm_dir + L"\\target"};
+      std::wstring const path{stralgo::stl::merge(settings().shm_dir, L"\\target"sv)};
       HANDLE const file{CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
                                     OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr)};
       if(file == INVALID_HANDLE_VALUE)
@@ -335,7 +335,7 @@ namespace edworld
       if(static_cast<LONG>(now - next_surface_try) < 0)
         return;
       next_surface_try = now + 2000;
-      std::wstring const path{settings().shm_dir + L"\\surface"};
+      std::wstring const path{stralgo::stl::merge(settings().shm_dir, L"\\surface"sv)};
       HANDLE const file{CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
                                     OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr)};
       if(file == INVALID_HANDLE_VALUE)
@@ -543,7 +543,7 @@ namespace edworld
 #if defined(EDWORLD_EHT)
         if(not settings().shm_dir.empty())
           {
-          std::string const count{read_file(settings().shm_dir + L"\\dump")};
+          std::string const count{read_file(stralgo::stl::merge(settings().shm_dir, L"\\dump"sv))};
           if(dump_known and count != dump_seen and not count.empty())
             {
             full_dump_request.store(true);
@@ -676,7 +676,7 @@ namespace edworld
       return {};
     std::wstring path{saved};
     CoTaskMemFree(saved);
-    return path + L"\\Frontier Developments\\Elite Dangerous\\Status.json";
+    return stralgo::stl::merge(path, L"\\Frontier Developments\\Elite Dangerous\\Status.json"sv);
     }
 
   auto start_game_state() noexcept -> void
@@ -742,7 +742,7 @@ namespace edworld
     if(not dir.empty())
       {
       WIN32_FIND_DATAW fd{};
-      HANDLE const h{FindFirstFileW((dir + L"\\Journal.*.log").c_str(), &fd)};
+      HANDLE const h{FindFirstFileW(stralgo::stl::merge(dir, L"\\Journal.*.log"sv).c_str(), &fd)};
       if(h != INVALID_HANDLE_VALUE)
         {
         do

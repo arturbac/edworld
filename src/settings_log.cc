@@ -570,7 +570,10 @@ namespace edworld
               continue;
             std::string const value{value_text(defaults, key.field)};
             ((rows += "| `") += key.name) += "` | ";
-            rows += value.empty() ? std::string{"empty"} : '`' + value + '`';
+            if(value.empty())
+              rows += "empty";
+            else
+              rows.append(1, '`').append(value).append(1, '`');
             ((rows += " | ") += key.range) += " | ";
             (rows += key.about) += " |\n";
             }
@@ -788,7 +791,7 @@ namespace edworld
       FileTimeToSystemTime(&a.ftLastWriteTime, &t);
       wchar_t aside[64];
       std::swprintf(aside, 64, L"\\%ls.%04u%02u%02uT%02u%02u%02uZ.log", plugin_name, t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
-      set_aside_failed = not MoveFileExW(path.c_str(), (dir + aside).c_str(), 0);
+      set_aside_failed = not MoveFileExW(path.c_str(), stralgo::stl::merge(dir, std::wstring_view{aside}).c_str(), 0);
       }
     log_file = CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
                            OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);

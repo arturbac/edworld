@@ -356,7 +356,11 @@ namespace edworld
       return out;
     for(json::value_t const & s: states->items)
       if(std::string_view const name{s.str("state")}; not name.empty())
-        out += (out.empty() ? "" : ", ") + std::string{name};
+        {
+        if(not out.empty())
+          out += ", ";
+        out += name;
+        }
     return out;
     }
 
@@ -393,7 +397,10 @@ namespace edworld
       std::string states{edsm_states(f->get("activeStates"))};
       if(states.empty())
         if(std::string const recovering{edsm_states(f->get("recoveringStates"))}; not recovering.empty())
-          states = recovering + " (recovering)";
+          {
+          states = recovering;
+          states += " (recovering)";
+          }
       copy_text(row.states, states);
       row.influence = static_cast<float>(f->num("influence"));
       row.allegiance = allegiance_code(f->str("allegiance"));

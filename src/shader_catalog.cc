@@ -60,7 +60,7 @@ namespace edworld
     ///\brief the batch to the build's directory: a shader already there (an earlier session) is skipped
     auto write(std::vector<noted_t> const & batch) -> void
       {
-      std::wstring const root{settings().dir + L"\\edworld_shaders"};
+      std::wstring const root{stralgo::stl::merge(settings().dir, L"\\edworld_shaders"sv)};
       std::wstring const dir{stralgo::stl::merge(root, L'\\', widen(game_build_key()))};
       CreateDirectoryW(root.c_str(), nullptr);
       CreateDirectoryW(dir.c_str(), nullptr);
@@ -72,7 +72,7 @@ namespace edworld
         wchar_t name[64];
         std::swprintf(name, std::size(name), L"\\%hs_%016llX.%ls", stage_name(n.stage), static_cast<unsigned long long>(n.hash),
                       n.stage == shader_stage_e::layout ? L"txt" : L"dxbc");
-        std::wstring const path{dir + name};
+        std::wstring const path{stralgo::stl::merge(dir, std::wstring_view{name})};
         if(exists(path))
           {
           ++known;
@@ -99,7 +99,7 @@ namespace edworld
         ++added;
         bytes += n.bytes.size();
         }
-      if(not catalog.empty() and not append_to_file((dir + L"\\catalog.tsv").c_str(), catalog.data(), catalog.size()))
+      if(not catalog.empty() and not append_to_file(stralgo::stl::merge(dir, L"\\catalog.tsv"sv).c_str(), catalog.data(), catalog.size()))
         log_line("shaders: catalog.tsv not written whole (error %lu)", GetLastError());
       log_line("shaders: %u new to edworld_shaders\\%s (%zu bytes), %u there from before; created this session: vs %u ps %u "
                "cs %u gs %u hs %u ds %u layouts %u", added, game_build_key(), bytes, known,

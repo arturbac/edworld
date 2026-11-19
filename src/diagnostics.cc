@@ -257,20 +257,20 @@ namespace edworld
         log_line("graphics: the game's options could not be found");
         return;
         }
-      std::wstring const dir{std::wstring{local} + L"\\Frontier Developments\\Elite Dangerous\\Options\\Graphics"};
+      std::wstring const dir{stralgo::stl::merge(std::wstring_view{local}, L"\\Frontier Developments\\Elite Dangerous\\Options\\Graphics"sv)};
       CoTaskMemFree(local);
       log_options_file(dir, L"DisplaySettings.xml");
       log_options_file(dir, L"Settings.xml");
       log_options_file(dir, L"GraphicsConfigurationOverride.xml");
       std::string start;
-      if(read_small_file(dir + L"\\StartPreset.start", start) and start.size() < 64)
+      if(read_small_file(stralgo::stl::merge(dir, L"\\StartPreset.start"sv), start) and start.size() < 64)
         {
         while(not start.empty() and (start.back() == '\r' or start.back() == '\n' or start.back() == ' '))
           start.pop_back();
         log_line("graphics: StartPreset.start: %s", start.c_str());
         }
       WIN32_FIND_DATAW found{};
-      HANDLE const search{FindFirstFileW((dir + L"\\Custom.*.fxcfg").c_str(), &found)};
+      HANDLE const search{FindFirstFileW(stralgo::stl::merge(dir, L"\\Custom.*.fxcfg"sv).c_str(), &found)};
       if(search == INVALID_HANDLE_VALUE)
         {
         log_line("graphics: no custom preset");

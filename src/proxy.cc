@@ -78,7 +78,7 @@ namespace
       module_dir.resize(slash);
     wchar_t sys[MAX_PATH]{};
     GetSystemDirectoryW(sys, MAX_PATH);
-    std::wstring const system_path{std::wstring{sys} + L"\\d3d11.dll"};
+    std::wstring const system_path{stralgo::stl::merge(std::wstring_view{sys}, L"\\d3d11.dll"sv)};
     system_module = LoadLibraryW(system_path.c_str());
     resolve_from(system_module, nullptr);
     if(system_module)

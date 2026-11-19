@@ -48,9 +48,14 @@
 #include <initializer_list>
 #include <numbers>
 #include <vector>
+#include <string_view>
+
+#include <stralgo/stralgo.h>
 
 namespace edworld
   {
+  using namespace std::string_view_literals;
+
   auto imgui_check_failed(char const * what, char const * file, int line) noexcept -> void
     {
     static std::atomic<std::uint32_t> failures{};
@@ -885,7 +890,7 @@ namespace edworld
     ///\brief the area under reading, as it was copied, into edworld_dumps (an unknown word: to learn it)
     auto dump_text(D3D11_MAPPED_SUBRESOURCE const & m, std::uint64_t destination) -> void
       {
-      CreateDirectoryW((settings().dir + L"\\edworld_dumps").c_str(), nullptr);
+      CreateDirectoryW(stralgo::stl::merge(settings().dir, L"\\edworld_dumps"sv).c_str(), nullptr);
       wchar_t name[MAX_PATH];
       std::swprintf(name, MAX_PATH, L"%ls\\edworld_dumps\\superpower_%llu_%dx%d_pitch%u.raw", settings().dir.c_str(),
                     static_cast<unsigned long long>(destination), text_width, text_height, m.RowPitch);
@@ -2592,12 +2597,12 @@ namespace edworld
       if(have and now_ms - cs.sphere_trigger_at >= 500u)
         {
         cs.sphere_trigger_at = now_ms;
-        trigger = settings().dir + L"\\edworld_sphere_dump";
+        trigger = stralgo::stl::merge(settings().dir, L"\\edworld_sphere_dump"sv);
         }
       if(not trigger.empty() and GetFileAttributesW(trigger.c_str()) != INVALID_FILE_ATTRIBUTES)
         {
         DeleteFileW(trigger.c_str());
-        CreateDirectoryW((settings().dir + L"\\edworld_dumps").c_str(), nullptr);
+        CreateDirectoryW(stralgo::stl::merge(settings().dir, L"\\edworld_dumps"sv).c_str(), nullptr);
         for(int k{}; k != 2; ++k)
           {
           D3D11_TEXTURE2D_DESC sd{};
@@ -3405,7 +3410,7 @@ namespace edworld
       pts.written_ms = GetTickCount64();
       if(not burst)
         pts.burst_until_ms = pts.written_ms + pad_burst_ms;
-      CreateDirectoryW((settings().dir + L"\\edworld_padtext").c_str(), nullptr);
+      CreateDirectoryW(stralgo::stl::merge(settings().dir, L"\\edworld_padtext"sv).c_str(), nullptr);
       wchar_t name[MAX_PATH];
       std::swprintf(name, MAX_PATH, L"%ls\\edworld_padtext\\pad_%lld_src%u_%dx%d_pitch%u.raw", settings().dir.c_str(),
                     static_cast<long long>(unix_now()), source_pad, pad_box_width, pad_box_height, m.RowPitch);

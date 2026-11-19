@@ -48,9 +48,14 @@
 #include "clouds_up_vs.h"
 #include "clouds_ps.h"
 #include "clouds_vs.h"
+#include <string_view>
+
+#include <stralgo/stralgo.h>
 
 namespace edworld
   {
+  using namespace std::string_view_literals;
+
   namespace
     {
     // ---- vtable slots (the D3D11 ABI; IUnknown 0..2, ID3D11DeviceChild 3..6) ----
@@ -588,7 +593,7 @@ namespace edworld
       if(dir.empty())
         return;
       CreateDirectoryW(dir.c_str(), nullptr);
-      std::wstring const path{dir + L"\\panels"};
+      std::wstring const path{stralgo::stl::merge(dir, L"\\panels"sv)};
       HANDLE const file{CreateFileW(
         path.c_str(),
         GENERIC_READ | GENERIC_WRITE,
@@ -994,7 +999,7 @@ namespace edworld
     LONGLONG last_trigger_check{};
     char dump_stamp[32]{};
 
-    auto trigger_path() -> std::wstring { return settings().dir + L"\\edworld_dump"; }
+    auto trigger_path() -> std::wstring { return stralgo::stl::merge(settings().dir, L"\\edworld_dump"sv); }
 
     auto check_trigger(LONGLONG now) -> void
       {
@@ -1021,7 +1026,7 @@ namespace edworld
       GetSystemTime(&t);
       std::snprintf(dump_stamp, sizeof dump_stamp, "%04u%02u%02uT%02u%02u%02u_%03uZ", t.wYear, t.wMonth, t.wDay, t.wHour,
                     t.wMinute, t.wSecond, t.wMilliseconds);
-      CreateDirectoryW((settings().dir + L"\\edworld_dumps").c_str(), nullptr);
+      CreateDirectoryW(stralgo::stl::merge(settings().dir, L"\\edworld_dumps"sv).c_str(), nullptr);
       log_line("dump: armed (%s)", dump_stamp);
       }
 
@@ -1323,7 +1328,7 @@ namespace edworld
       if(dir.empty())
         return nullptr;
       CreateDirectoryW(dir.c_str(), nullptr);
-      std::wstring const path{dir + L"\\atmosphere"};
+      std::wstring const path{stralgo::stl::merge(dir, L"\\atmosphere"sv)};
       HANDLE const file{CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                                     nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr)};
       if(file == INVALID_HANDLE_VALUE)
@@ -2076,7 +2081,7 @@ namespace edworld
 #if defined(EDWORLD_EHT)
       if(not j.record)
         return;
-      std::wstring const folder{settings().dir + L"\\edworld_atmo"};
+      std::wstring const folder{stralgo::stl::merge(settings().dir, L"\\edworld_atmo"sv)};
       CreateDirectoryW(folder.c_str(), nullptr);
       std::uint64_t hash{0xcbf29ce484222325ull};
       bool new_table{};
@@ -2272,14 +2277,14 @@ namespace edworld
         {
         char text[64];
         int const n{std::snprintf(text, sizeof text, "%s %u\n", dump_stamp, full_done_draws)};
-        std::wstring const done{settings().shm_dir + L"\\dump_done"};
-        queue_write((done + L".part").c_str(), text, static_cast<std::uint32_t>(n), false, done.c_str());
+        std::wstring const done{stralgo::stl::merge(settings().shm_dir, L"\\dump_done"sv)};
+        queue_write(stralgo::stl::merge(done, L".part"sv).c_str(), text, static_cast<std::uint32_t>(n), false, done.c_str());
         }
 #endif
       log_line("dump: whole frame's files queued (%u written of %u so far)", writes_done.load(), writes_queued.load());
       }
 
-    auto full_trigger_path() -> std::wstring { return settings().dir + L"\\edworld_dump_all"; }
+    auto full_trigger_path() -> std::wstring { return stralgo::stl::merge(settings().dir, L"\\edworld_dump_all"sv); }
 
     auto check_full(LONGLONG now, bool panels) -> void
       {
@@ -2351,7 +2356,7 @@ namespace edworld
       GetSystemTime(&t);
       std::snprintf(dump_stamp, sizeof dump_stamp, "%04u%02u%02uT%02u%02u%02u_%03uZ", t.wYear, t.wMonth, t.wDay, t.wHour,
                     t.wMinute, t.wSecond, t.wMilliseconds);
-      CreateDirectoryW((settings().dir + L"\\edworld_dumps").c_str(), nullptr);
+      CreateDirectoryW(stralgo::stl::merge(settings().dir, L"\\edworld_dumps"sv).c_str(), nullptr);
       log_line("dump: whole frame armed (%s)", dump_stamp);
       }
 
@@ -3065,7 +3070,7 @@ namespace edworld
       if(dir.empty())
         return nullptr;
       CreateDirectoryW(dir.c_str(), nullptr);
-      std::wstring const path{dir + L"\\galmap"};
+      std::wstring const path{stralgo::stl::merge(dir, L"\\galmap"sv)};
       HANDLE const file{CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                                     nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr)};
       if(file == INVALID_HANDLE_VALUE)
@@ -3964,7 +3969,7 @@ namespace edworld
                f.grid[0], f.grid[1], f.grid[2], f.grid[3], f.grid[4], f.grid[5], f.grid[6], f.grid[7]);
       }
 
-    auto holo_models_dir() -> std::wstring { return settings().dir + L"\\edworld_models"; }
+    auto holo_models_dir() -> std::wstring { return stralgo::stl::merge(settings().dir, L"\\edworld_models"sv); }
 
     ///\brief the sample's copies once the GPU has made them: fingerprint, resolve again, log; edworld_eht writes them too
     auto holo_sample_read(ID3D11DeviceContext * ctx, LONGLONG now) -> void
