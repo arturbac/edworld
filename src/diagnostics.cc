@@ -7,7 +7,6 @@
 #include <shlobj.h>
 
 #include <atomic>
-#include <cstdio>
 #include <cstring>
 #include <cwchar>
 #include <iterator>
@@ -32,7 +31,7 @@ namespace edworld
       explicit narrow_t(wchar_t const * wide) noexcept
         {
         if(not wide or WideCharToMultiByte(CP_UTF8, 0, wide, -1, text, sizeof text - 1, nullptr, nullptr) == 0)
-          std::snprintf(text, sizeof text, "unknown");
+          format_into(text, "unknown");
         std::size_t n{std::strlen(text)};
         while(n != 0 and (text[n - 1] == ' ' or text[n - 1] == '\t'))
           text[--n] = '\0';
@@ -114,10 +113,8 @@ namespace edworld
         LARGE_INTEGER umd{};
         char driver[48]{"unknown"};
         if(SUCCEEDED(adapter->CheckInterfaceSupport(__uuidof(IDXGIDevice), &umd)))
-          std::snprintf(
-            driver,
-            sizeof driver,
-            "%u.%u.%u.%u",
+          format_into(driver,
+            "{}.{}.{}.{}",
             HIWORD(static_cast<DWORD>(umd.HighPart)),
             LOWORD(static_cast<DWORD>(umd.HighPart)),
             HIWORD(umd.LowPart),
@@ -334,7 +331,7 @@ namespace edworld
         {
         DXGI_ADAPTER_DESC d{};
         if(SUCCEEDED(adapter->GetDesc(&d)))
-          std::snprintf(card, sizeof card, "%s (vendor %04X device %04X)", narrow_t{d.Description}.text, d.VendorId, d.DeviceId);
+          format_into(card, "{} (vendor {:04X} device {:04X})", narrow_t{d.Description}.text, as_unsigned(d.VendorId), as_unsigned(d.DeviceId));
         adapter->Release();
         }
       dxgi->Release();

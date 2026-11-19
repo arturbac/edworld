@@ -8,9 +8,7 @@
 //    goes to the system copy, or the chain recurses until the stack runs out.
 #include "runtime.h"
 
-#include <cstdio>
 #include <exception>
-#include <cstdarg>
 #include <cstring>
 #include <ctime>
 #include <iterator>
@@ -28,6 +26,7 @@ extern "C"
 namespace
   {
   using namespace std::string_view_literals;
+  using edworld::format_into;
   using edworld::wide;
 
   char const * const export_names[]{
@@ -300,12 +299,12 @@ namespace
       {
       char past[MAX_PATH + 32]{};
       if(by.passed[0])
-        std::snprintf(past, sizeof past, " (past %s: creator_pass)", by.passed);
+        format_into(past, " (past {}: creator_pass)", by.passed);
       char advice[MAX_PATH + 160]{};
       if(by.kind == creator_e::foreign)
-        std::snprintf(advice, sizeof advice,
+        format_into(advice,
                       "; if edworld draws nothing and this is the game's only device (an antivirus in the game's call), "
-                      "add to edworld.ini: creator_pass = %s", by.name);
+                      "add to edworld.ini: creator_pass = {}", by.name);
       edworld::log_line("{}: hr 0x{:08X}, device {}{}, asked by {}{}{}{}", what, static_cast<unsigned long>(hr),
                         made ? "made" : asked ? "asked, none made" : "not asked", nested ? " (nested, not attached)" : "",
                         by.name, past, by.kind == creator_e::foreign ? " from outside the game's folder: not followed" : "",

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- snprintf, swprintf and vsnprintf replaced by `format_into` (std::format_to_n, cut and NUL-terminated as snprintf,
+  never thrown); `full_line` of the whole-frame dump checked when compiled too.
 - The log through `std::format` (checked when compiled; wide strings as UTF-8) in place of printf's `va_list`; the SRW
   locks held by scope objects.
 - stralgo (and small_vectors) by CPM, the versions of elite_help_tool's: the settings' notes and the paths put together

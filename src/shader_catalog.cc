@@ -9,7 +9,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <cstdio>
 #include <exception>
 #include <iterator>
 #include <mutex>
@@ -70,7 +69,7 @@ namespace edworld
       for(noted_t const & n: batch)
         {
         wchar_t name[64];
-        std::swprintf(name, std::size(name), L"\\%hs_%016llX.%ls", stage_name(n.stage), static_cast<unsigned long long>(n.hash),
+        format_into(name, L"\\{}_{:016X}.{}", utf8(stage_name(n.stage)), static_cast<unsigned long long>(n.hash),
                       n.stage == shader_stage_e::layout ? L"txt" : L"dxbc");
         std::wstring const path{stralgo::stl::merge(dir, std::wstring_view{name})};
         if(exists(path))
@@ -84,15 +83,16 @@ namespace edworld
         char line[8192];
         int length{};
         if(n.stage == shader_stage_e::layout)
-          length = std::snprintf(line, sizeof line, "%016llX\til\t%zu\t-\t%.*s\t-\t-\t0\n", static_cast<unsigned long long>(n.hash),
-                                 n.bytes.size(), static_cast<int>(n.bytes.size()), reinterpret_cast<char const *>(n.bytes.data()));
+          length = static_cast<int>(format_into(line, "{:016X}\til\t{}\t-\t{}\t-\t-\t0\n", static_cast<unsigned long long>(n.hash),
+                                                n.bytes.size(),
+                                                std::string_view{reinterpret_cast<char const *>(n.bytes.data()), n.bytes.size()}));
         else
           {
           dxbc_shape_t const s{dxbc_shape(n.bytes.data(), n.bytes.size())};
-          length = std::snprintf(line, sizeof line, "%016llX\t%s\t%zu\t%u.%u\t%s\t%s\t%s\t%u\t%s\n", static_cast<unsigned long long>(n.hash),
-                                 stage_name(n.stage), n.bytes.size(), s.major, s.minor, s.inputs.empty() ? "-" : s.inputs.c_str(),
-                                 s.outputs.empty() ? "-" : s.outputs.c_str(), s.decls.empty() ? "-" : s.decls.c_str(), s.instructions,
-                                 s.ok ? s.chunks.c_str() : "UNREAD");
+          length = static_cast<int>(format_into(line, "{:016X}\t{}\t{}\t{}.{}\t{}\t{}\t{}\t{}\t{}\n", static_cast<unsigned long long>(n.hash),
+                                 stage_name(n.stage), n.bytes.size(), s.major, s.minor, s.inputs.empty() ? "-" : s.inputs,
+                                 s.outputs.empty() ? "-" : s.outputs, s.decls.empty() ? "-" : s.decls, s.instructions,
+                                 s.ok ? s.chunks.c_str() : "UNREAD"));
           }
         if(length > 0)
           catalog.append(line, std::min<std::size_t>(static_cast<std::size_t>(length), sizeof line - 1));
@@ -184,12 +184,10 @@ namespace edworld
     for(UINT i{}; i != count and at < static_cast<int>(sizeof text) - 128; ++i)
       {
       D3D11_INPUT_ELEMENT_DESC const & e{elements[i]};
-      int const n{std::snprintf(text + at, sizeof text - static_cast<std::size_t>(at), "%s%s%u:f%u:s%u:o%u:%s%u", i ? " " : "",
-                                e.SemanticName ? e.SemanticName : "?", e.SemanticIndex, static_cast<unsigned>(e.Format), e.InputSlot,
-                                e.AlignedByteOffset, e.InputSlotClass == D3D11_INPUT_PER_INSTANCE_DATA ? "i" : "v", e.InstanceDataStepRate)};
-      if(n < 0)
-        break;
-      at = std::min(at + n, static_cast<int>(sizeof text) - 1);
+      at += static_cast<int>(format_into(text + at, sizeof text - static_cast<std::size_t>(at), "{}{}{}:f{}:s{}:o{}:{}{}", i ? " " : "",
+                                         e.SemanticName ? e.SemanticName : "?", e.SemanticIndex, static_cast<unsigned>(e.Format), e.InputSlot,
+                                         e.AlignedByteOffset, e.InputSlotClass == D3D11_INPUT_PER_INSTANCE_DATA ? "i" : "v",
+                                         e.InstanceDataStepRate));
       }
     auto const * const bytes{reinterpret_cast<std::uint8_t const *>(text)};
     note(shader_stage_e::layout, fnv1a64(bytes, static_cast<std::size_t>(at)), bytes, static_cast<std::size_t>(at));

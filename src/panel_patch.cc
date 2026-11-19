@@ -456,20 +456,20 @@ namespace edworld
     auto source_line(faction_list_t const & list, bool placeholder, std::uint32_t rows, float size, char (&buf)[128]) -> bool
       {
       if(placeholder)
-        std::snprintf(buf, sizeof buf, "list test: %u rows at most, text %.0f px", rows, static_cast<double>(size));
+        format_into(buf, "list test: {} rows at most, text {:.0f} px", rows, static_cast<double>(size));
       else if(list.source != list_source_e::edsm)
         return false;
       else if(list.updated_unix_s <= 0)
-        std::snprintf(buf, sizeof buf, "from EDSM");
+        format_into(buf, "from EDSM");
       else
         {
         std::int64_t const age{std::max<std::int64_t>(0, unix_now() - list.updated_unix_s)};
         if(age < 3600)
-          std::snprintf(buf, sizeof buf, "from EDSM, updated %lld min ago", static_cast<long long>(age / 60));
+          format_into(buf, "from EDSM, updated {} min ago", static_cast<long long>(age / 60));
         else if(age < 48 * 3600)
-          std::snprintf(buf, sizeof buf, "from EDSM, updated %lld h ago", static_cast<long long>(age / 3600));
+          format_into(buf, "from EDSM, updated {} h ago", static_cast<long long>(age / 3600));
         else
-          std::snprintf(buf, sizeof buf, "from EDSM, updated %lld days ago", static_cast<long long>(age / 86400));
+          format_into(buf, "from EDSM, updated {} days ago", static_cast<long long>(age / 86400));
         }
       return true;
       }
@@ -502,13 +502,13 @@ namespace edworld
         {
         if(placeholder)
           {
-          std::snprintf(buf, sizeof buf, "list test row %u of %u", i + 1u, shown);
+          format_into(buf, "list test row {} of {}", i + 1u, shown);
           name_w = std::max(name_w, width(buf));
           continue;
           }
         faction_row_t const & row{list.rows[i]};
         name_w = std::max(name_w, std::min(width(row.name), 32.f * cw));
-        std::snprintf(buf, sizeof buf, "%.1f%%", static_cast<double>(row.influence) * 100.0);
+        format_into(buf, "{:.1f}%", static_cast<double>(row.influence) * 100.0);
         influence_w = std::max(influence_w, width(buf));
         if(row.states[0] != '\0')
           states_w = std::max(states_w, std::min(width(row.states), 32.f * cw));
@@ -541,7 +541,7 @@ namespace edworld
         float const y{top + pad + static_cast<float>(i) * line};
         if(placeholder)
           {
-          std::snprintf(buf, sizeof buf, "list test row %u of %u", i + 1u, shown);
+          format_into(buf, "list test row {} of {}", i + 1u, shown);
           dl->AddText(r.font, size, ImVec2{x_name, y}, im_colour(0xe0e0e0u), buf);
           continue;
           }
@@ -558,7 +558,7 @@ namespace edworld
         std::uint32_t const tint{row.allegiance >= 1u and row.allegiance <= 3u ? colour_of(static_cast<allegiance_e>(row.allegiance)) : 0xc8c8c8u};
         ImVec4 const name_clip{x_name, y, x_name + name_w, y + line};
         dl->AddText(r.font, size, ImVec2{x_name, y}, im_colour(tint), row.name, nullptr, 0.f, &name_clip);
-        std::snprintf(buf, sizeof buf, "%.1f%%", static_cast<double>(row.influence) * 100.0);
+        format_into(buf, "{:.1f}%", static_cast<double>(row.influence) * 100.0);
         dl->AddText(r.font, size, ImVec2{x_influence - width(buf), y}, im_colour(0xe0e0e0u), buf);
         if(row.states[0] != '\0')
           {
@@ -895,7 +895,7 @@ namespace edworld
       {
       CreateDirectoryW(stralgo::stl::merge(settings().dir, L"\\edworld_dumps"sv).c_str(), nullptr);
       wchar_t name[MAX_PATH];
-      std::swprintf(name, MAX_PATH, L"%ls\\edworld_dumps\\superpower_%llu_%dx%d_pitch%u.raw", settings().dir.c_str(),
+      format_into(name, MAX_PATH, L"{}\\edworld_dumps\\superpower_{}_{}x{}_pitch{}.raw", settings().dir,
                     static_cast<unsigned long long>(destination), text_width, text_height, m.RowPitch);
       if(write_whole_file(name, m.pData, static_cast<std::size_t>(m.RowPitch) * text_height))
         log_line("superpower: the area read written to {}", wide(name));
@@ -1684,7 +1684,7 @@ namespace edworld
                      "degrees off the table's - {}", t1_look.pad, t1_look.model, static_cast<double>(t1_look.tilt),
                      static_cast<double>(t1_look.nose_deg), ok ? "agrees" : "DEVIATES from the table");
             t1_note = sphere_note_t{{}, ok ? 0 : 1, now + t1_note_ms};
-            std::snprintf(t1_note.text, sizeof t1_note.text, "T1 %s %.0f%s / %.0f%s", ok ? "MATCH" : "DEVIATES",
+            format_into(t1_note.text, "T1 {} {:.0f}{} / {:.0f}{}", ok ? "MATCH" : "DEVIATES",
                           static_cast<double>(t1_look.tilt), degree, static_cast<double>(t1_look.nose_deg), degree);
             break;
             }
@@ -1863,7 +1863,7 @@ namespace edworld
           {
           model_note_pad = f.docking_pad;  // a pad to learn: its plane at Docked goes to the log
           model_note = sphere_note_t{{}, 2, GetTickCount64() + model_note_ms};
-          std::snprintf(model_note.text, sizeof model_note.text, "PAD %u NEW", f.docking_pad);
+          format_into(model_note.text, "PAD {} NEW", f.docking_pad);
           }
 #endif
         }
@@ -2359,29 +2359,29 @@ namespace edworld
       a2[0] = c2[0] = c3[0] = alt[0] = climb[0] = to_go[0] = '\0';
       if(have and cs.approach)
         {
-        std::snprintf(a1, sizeof a1, "%s %.1f%s", po.forward < 0.f ? "AFT" : "FWD", static_cast<double>(std::fabs(po.forward)), degree);
-        std::snprintf(a2, sizeof a2, "%s %.1f%s", po.right < 0.f ? "LT" : "RT", static_cast<double>(std::fabs(po.right)), degree);
+        format_into(a1, "{} {:.1f}{}", po.forward < 0.f ? "AFT" : "FWD", static_cast<double>(std::fabs(po.forward)), degree);
+        format_into(a2, "{} {:.1f}{}", po.right < 0.f ? "LT" : "RT", static_cast<double>(std::fabs(po.right)), degree);
         }
       else if(have)
         {
-        std::snprintf(a1, sizeof a1, "%s %.1f%s", a.up < 0.f ? "DN" : "UP", static_cast<double>(std::fabs(a.up)), degree);
-        std::snprintf(a2, sizeof a2, "%s %.1f%s", a.right < 0.f ? "LT" : "RT", static_cast<double>(std::fabs(a.right)), degree);
+        format_into(a1, "{} {:.1f}{}", a.up < 0.f ? "DN" : "UP", static_cast<double>(std::fabs(a.up)), degree);
+        format_into(a2, "{} {:.1f}{}", a.right < 0.f ? "LT" : "RT", static_cast<double>(std::fabs(a.right)), degree);
         }
       else
-        std::snprintf(a1, sizeof a1, "NO DOT");
+        format_into(a1, "NO DOT");
       ImU32 c2_colour{yellow};
       if(not have)
-        std::snprintf(c1, sizeof c1, "NO DOT");
+        format_into(c1, "NO DOT");
       else if(cut)
         {
         float const below{-std::asin(std::clamp(dp.y, -1.f, 1.f)) * rad_to_deg_f};
-        std::snprintf(c1, sizeof c1, "%s %.0f%s", below >= 0.f ? "BELOW" : "ABOVE", static_cast<double>(std::fabs(below)), degree);
-        std::snprintf(c2, sizeof c2, "OFF VERTICAL %.0f%s", static_cast<double>(po.off_vertical), degree);
+        format_into(c1, "{} {:.0f}{}", below >= 0.f ? "BELOW" : "ABOVE", static_cast<double>(std::fabs(below)), degree);
+        format_into(c2, "OFF VERTICAL {:.0f}{}", static_cast<double>(po.off_vertical), degree);
         if(f.has_position)
           {
-          std::snprintf(alt, sizeof alt, "ALT %.2f km", f.altitude / 1000.0);
+          format_into(alt, "ALT {:.2f} km", f.altitude / 1000.0);
           if(not std::isnan(f.vertical_speed))
-            std::snprintf(climb, sizeof climb, "%+.0f m/s", f.vertical_speed);
+            format_into(climb, "{:+.0f} m/s", f.vertical_speed);
           }
         }
       else if(f.has_position and f.has_place)
@@ -2389,52 +2389,52 @@ namespace edworld
         // a place on the surface as the target (where it stands from the data source): the straight line to it
         // against the line flown; flown steeper, the ship comes down short of it, shallower, it flies over it
         glide_t const g{glide_to(f.latitude, f.longitude, f.altitude, f.place_latitude, f.place_longitude, f.planet_radius)};
-        std::snprintf(c1, sizeof c1, "TARGET %.0f%s %s", std::fabs(g.below), degree, g.below >= 0.0 ? "DOWN" : "UP");
+        format_into(c1, "TARGET {:.0f}{} {}", std::fabs(g.below), degree, g.below >= 0.0 ? "DOWN" : "UP");
         if(std::isnan(f.path_angle))
-          std::snprintf(c2, sizeof c2, "PATH ?");
+          format_into(c2, "PATH ?");
         else
           {
           double const off{-f.path_angle - g.below};
           if(std::fabs(off) < 2.0)
             {
-            std::snprintf(c2, sizeof c2, "ON PATH");
+            format_into(c2, "ON PATH");
             c2_colour = green_line;
             }
           else
             {
-            std::snprintf(c2, sizeof c2, "%s %.0f%s", off > 0.0 ? "SHALLOWER" : "STEEPER", std::fabs(off), degree);
+            format_into(c2, "{} {:.0f}{}", off > 0.0 ? "SHALLOWER" : "STEEPER", std::fabs(off), degree);
             c2_colour = orange;
             }
           }
-        std::snprintf(alt, sizeof alt, "ALT %.1f km", f.altitude / 1000.0);
-        std::snprintf(climb, sizeof climb, "%.1f km TO GO", g.distance / 1000.0);
-        std::snprintf(to_go, sizeof to_go, "%s", climb);
+        format_into(alt, "ALT {:.1f} km", f.altitude / 1000.0);
+        format_into(climb, "{:.1f} km TO GO", g.distance / 1000.0);
+        format_into(to_go, "{}", climb);
         }
       else if(f.has_position)
         {
         // with the planet as the target: the nose below the horizon is 90 minus the target off the nose
         float const nose{90.f - a.off_nose};
         float const off_path{s.compass_should_dive - nose};
-        std::snprintf(c1, sizeof c1, "NOSE %.0f%s %s", static_cast<double>(std::fabs(nose)), degree, nose >= 0.f ? "DOWN" : "UP");
+        format_into(c1, "NOSE {:.0f}{} {}", static_cast<double>(std::fabs(nose)), degree, nose >= 0.f ? "DOWN" : "UP");
         if(std::fabs(off_path) < 2.f)
           {
-          std::snprintf(c2, sizeof c2, "ON PATH");
+          format_into(c2, "ON PATH");
           c2_colour = green_line;
           }
         else
           {
-          std::snprintf(c2, sizeof c2, "%s %.0f%s", off_path > 0.f ? "PUSH DOWN" : "PULL UP", static_cast<double>(std::fabs(off_path)), degree);
+          format_into(c2, "{} {:.0f}{}", off_path > 0.f ? "PUSH DOWN" : "PULL UP", static_cast<double>(std::fabs(off_path)), degree);
           c2_colour = orange;
           }
-        std::snprintf(alt, sizeof alt, "ALT %.1f km", f.altitude / 1000.0);
+        format_into(alt, "ALT {:.1f} km", f.altitude / 1000.0);
         if(not std::isnan(f.vertical_speed))
-          std::snprintf(climb, sizeof climb, "%+.2f km/s", f.vertical_speed / 1000.0);
+          format_into(climb, "{:+.2f} km/s", f.vertical_speed / 1000.0);
         }
       else
-        std::snprintf(c1, sizeof c1, "OFF %.0f%s", static_cast<double>(a.off_nose), degree);
+        format_into(c1, "OFF {:.0f}{}", static_cast<double>(a.off_nose), degree);
       bool const planet_lines{have and f.has_position and not grounded};
       if(alt[0])
-        std::snprintf(c3, sizeof c3, "%s%s%s", alt, climb[0] ? "  " : "", climb);
+        format_into(c3, "{}{}{}", alt, climb[0] ? "  " : "", climb);
       // edworld_eht's notes under the right sphere's lines (t1_note, model_note), the T1 one first
       auto const notes = [&](ImDrawList * dl, float width, float y) -> void
         {
@@ -2511,7 +2511,7 @@ namespace edworld
             else
               draw_sphere_front(dl, centre, d, have);
             char wide[96];
-            std::snprintf(wide, sizeof wide, "%s%s%s", a1, a2[0] ? "  " : "", a2);
+            format_into(wide, "{}{}{}", a1, a2[0] ? "  " : "", a2);
             if(planet_lines)
               {
               // at a planet the right sphere's band is the game's (its latitude, longitude and gravity in the middle, its
@@ -2625,7 +2625,7 @@ namespace edworld
           if(SUCCEEDED(ctx->Map(staging, 0, D3D11_MAP_READ, 0, &m)) and m.pData)
             {
             wchar_t name[MAX_PATH];
-            std::swprintf(name, MAX_PATH, L"%ls\\edworld_dumps\\sphere%d_%ux%u_f28_pitch%u.raw", settings().dir.c_str(), k, sphere_w,
+            format_into(name, MAX_PATH, L"{}\\edworld_dumps\\sphere{}_{}x{}_f28_pitch{}.raw", settings().dir, k, sphere_w,
                           sphere_h, m.RowPitch);
             write_whole_file(name, m.pData, static_cast<std::size_t>(m.RowPitch) * sphere_h);
             ctx->Unmap(staging, 0);
@@ -2833,7 +2833,7 @@ namespace edworld
       for(float y{0.f}; y < sh; y += 200.f)
         for(float x{0.f}; x < sw; x += 200.f)
           {
-          std::snprintf(line, sizeof line, "%.0f,%.0f", static_cast<double>(x), static_cast<double>(y));
+          format_into(line, "{:.0f},{:.0f}", static_cast<double>(x), static_cast<double>(y));
           dl->AddText(r.font, 22.f, ImVec2{x + 4.f, y + 4.f}, IM_COL32(255, 255, 0, 255), line);
           }
       // where the reading looks: the disc's rim and the square copied
@@ -2852,9 +2852,9 @@ namespace edworld
       }
     bool const behind{fresh and not c.filled};
     if(not fresh)
-      std::snprintf(line, sizeof line, "NO DOT");
+      format_into(line, "NO DOT");
     else
-      std::snprintf(line, sizeof line, "%s %.1f%s  %s %.1f%s", a.up < 0.f ? "DN" : "UP", static_cast<double>(std::fabs(a.up)), degree,
+      format_into(line, "{} {:.1f}{}  {} {:.1f}{}", a.up < 0.f ? "DN" : "UP", static_cast<double>(std::fabs(a.up)), degree,
                     a.right < 0.f ? "LT" : "RT", static_cast<double>(std::fabs(a.right)), degree);
     ImU32 const main_colour{behind ? IM_COL32(255, 150, 40, 255) : IM_COL32(150, 230, 255, 255)};
     if(s.compass_text)
@@ -2868,26 +2868,26 @@ namespace edworld
       ImU32 const info{IM_COL32(255, 230, 120, 255)};
       float const x0{s.compass_info_x}, size{s.compass_info_size};
       float yi{s.compass_info_y};
-      std::snprintf(line, sizeof line, "off %.1f%s r %.1f/%.0f dot %+.1f %+.1f", static_cast<double>(a.off_nose), degree,
+      format_into(line, "off {:.1f}{} r {:.1f}/{:.0f} dot {:+.1f} {:+.1f}", static_cast<double>(a.off_nose), degree,
                     static_cast<double>(std::sqrt(c.x * c.x + c.y * c.y)), static_cast<double>(s.compass_radius), static_cast<double>(c.x),
                     static_cast<double>(c.y));
       yi += ground_text(dl, x0, yi, size, info, line);
-      std::snprintf(line, sizeof line, "px %u %s  held %llu  rejected %llu", c.pixels, c.filled ? "filled" : "hollow",
+      format_into(line, "px {} {}  held {}  rejected {}", c.pixels, c.filled ? "filled" : "hollow",
                     static_cast<unsigned long long>(cs.held), static_cast<unsigned long long>(cs.rejected));
       yi += ground_text(dl, x0, yi, size, info, line);
       if(f.has_position)
         {
-        std::snprintf(line, sizeof line, "planet: nose %.1f%s path %.1f%s below", static_cast<double>(90.f - a.off_nose), degree,
+        format_into(line, "planet: nose {:.1f}{} path {:.1f}{} below", static_cast<double>(90.f - a.off_nose), degree,
                       -f.path_angle, degree);
         yi += ground_text(dl, x0, yi, size, info, line);
-        std::snprintf(line, sizeof line, "alt %.2f km hdg %.0f", f.altitude / 1000.0, f.heading);
+        format_into(line, "alt {:.2f} km hdg {:.0f}", f.altitude / 1000.0, f.heading);
         yi += ground_text(dl, x0, yi, size, info, line);
         }
       else
         yi += ground_text(dl, x0, yi, size, info, "no position in Status.json");
-      std::snprintf(line, sizeof line, "dest %u %.30s", f.destination_body, f.destination_name);
+      format_into(line, "dest {} {:.30}", f.destination_body, f.destination_name);
       yi += ground_text(dl, x0, yi, size, info, line);
-      std::snprintf(line, sizeof line, "lag %llu fr %s", static_cast<unsigned long long>(cs.lag), EDWORLD_VERSION);
+      format_into(line, "lag {} fr {}", static_cast<unsigned long long>(cs.lag), EDWORLD_VERSION);
       yi += ground_text(dl, x0, yi, size, info, line);
       }
     ImGui::Render();
@@ -3416,7 +3416,7 @@ namespace edworld
         pts.burst_until_ms = pts.written_ms + pad_burst_ms;
       CreateDirectoryW(stralgo::stl::merge(settings().dir, L"\\edworld_padtext"sv).c_str(), nullptr);
       wchar_t name[MAX_PATH];
-      std::swprintf(name, MAX_PATH, L"%ls\\edworld_padtext\\pad_%lld_src%u_%dx%d_pitch%u.raw", settings().dir.c_str(),
+      format_into(name, MAX_PATH, L"{}\\edworld_padtext\\pad_{}_src{}_{}x{}_pitch{}.raw", settings().dir,
                     static_cast<long long>(unix_now()), source_pad, pad_box_width, pad_box_height, m.RowPitch);
       if(write_whole_file(name, m.pData, static_cast<std::size_t>(m.RowPitch) * pad_box_height))
         {
@@ -3535,7 +3535,7 @@ namespace edworld
   auto sphere_note_new_model(std::uint32_t count) noexcept -> void
     {
     model_note = sphere_note_t{{}, 2, GetTickCount64() + model_note_ms};
-    std::snprintf(model_note.text, sizeof model_note.text, "NEW MODEL %u", count);
+    format_into(model_note.text, "NEW MODEL {}", count);
     }
 
   // ---- build_info: edworld's name and version in a corner of the picture ----
@@ -3665,7 +3665,7 @@ namespace edworld
     build_info_drawn_qpc = now;
 
     char text[64];
-    std::snprintf(text, sizeof text, "edworld %s", EDWORLD_VERSION);
+    format_into(text, "edworld {}", EDWORLD_VERSION);
     float const sw{static_cast<float>(d.Width)}, sh{static_cast<float>(d.Height)};
     float const size{std::clamp(std::round(sh * 0.011f), 12.f, 48.f)};
     ImVec2 const extent{r.font->CalcTextSizeA(size, FLT_MAX, 0.f, text)};

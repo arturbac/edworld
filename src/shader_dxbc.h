@@ -4,9 +4,10 @@
 // the bytes, testable anywhere.
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <cstring>
+#include <format>
 #include <string>
 #include <string_view>
 
@@ -56,6 +57,23 @@ namespace edworld
 
   namespace detail
     {
+    ///\brief a declaration's text into its item, cut and NUL-terminated (the header stays apart from the log: a text
+    /// that cannot be made is an empty item, which the catalog's line then shows)
+    template<std::size_t size, typename... args_t>
+    auto item_text(char (&item)[size], std::format_string<args_t...> fmt, args_t &&... args) noexcept -> void
+      {
+      std::size_t n{};
+      try
+        {
+        n = static_cast<std::size_t>(std::format_to_n(item, size - 1, fmt, std::forward<args_t>(args)...).out - item);
+        }
+      catch(...)
+        {
+        n = 0;
+        }
+      item[n] = '\0';
+      }
+
     [[nodiscard]]
     inline auto dword_at(std::uint8_t const * p) noexcept -> std::uint32_t
       {
@@ -129,32 +147,32 @@ namespace edworld
           {
           case 0x59u:  // dcl_constantbuffer: SM5.1 names a range and its size after it
             if(sm51)
-              std::snprintf(item, sizeof item, "cb%u-%u[%u]", op(3), op(4), op(5));
+              item_text(item, "cb{}-{}[{}]", op(3), op(4), op(5));
             else
-              std::snprintf(item, sizeof item, "cb%u[%u]", op(2), op(3));
+              item_text(item, "cb{}[{}]", op(2), op(3));
             break;
           case 0x58u:  // dcl_resource
           case 0xa1u:  // dcl_resource_raw
           case 0xa2u:  // dcl_resource_structured
-            std::snprintf(item, sizeof item, "t%u", sm51 ? op(3) : op(2));
+            item_text(item, "t{}", sm51 ? op(3) : op(2));
             break;
           case 0x5au:  // dcl_sampler
-            std::snprintf(item, sizeof item, "s%u", sm51 ? op(3) : op(2));
+            item_text(item, "s{}", sm51 ? op(3) : op(2));
             break;
           case 0x9cu:  // dcl_uav_typed
           case 0x9du:  // dcl_uav_raw
           case 0x9eu:  // dcl_uav_structured
-            std::snprintf(item, sizeof item, "u%u", sm51 ? op(3) : op(2));
+            item_text(item, "u{}", sm51 ? op(3) : op(2));
             break;
           case 0x9bu:  // dcl_thread_group
-            std::snprintf(item, sizeof item, "tg%ux%ux%u", op(1), op(2), op(3));
+            item_text(item, "tg{}x{}x{}", op(1), op(2), op(3));
             break;
           case 0x68u:  // dcl_temps
-            std::snprintf(item, sizeof item, "temps%u", op(1));
+            item_text(item, "temps{}", op(1));
             break;
           case 0x9fu:  // dcl_tgsm_raw
           case 0xa0u:  // dcl_tgsm_structured
-            std::snprintf(item, sizeof item, "g%u", op(2));
+            item_text(item, "g{}", op(2));
             break;
           case 0x35u:  // customdata (immediate constants and the like): neither
             declaration = false;

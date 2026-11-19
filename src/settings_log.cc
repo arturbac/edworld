@@ -429,18 +429,18 @@ namespace edworld
           [&](std::uint32_t settings_t::* f) -> std::string { return std::to_string(s.*f); },
           [&](float settings_t::* f) -> std::string
           {
-            std::snprintf(text, sizeof text, "%g", static_cast<double>(s.*f));
+            format_into(text, "{:g}", static_cast<double>(s.*f));
             return text;
           },
           [&](std::wstring settings_t::* f) -> std::string { return narrow(s.*f); },
           [&](hash_field_t f) -> std::string
           {
-            std::snprintf(text, sizeof text, "%016llX", static_cast<unsigned long long>(s.*f.field));
+            format_into(text, "{:016X}", static_cast<unsigned long long>(s.*f.field));
             return text;
           },
           [&](colour_field_t f) -> std::string
           {
-            std::snprintf(text, sizeof text, "%06X", s.*f.field);
+            format_into(text, "{:06X}", as_unsigned(s.*f.field));
             return text;
           },
           [&](list_field_t f) -> std::string
@@ -448,14 +448,14 @@ namespace edworld
             std::string list;
             for(std::uint64_t const h: s.*f.field)
               {
-              std::snprintf(text, sizeof text, "%s%016llX", list.empty() ? "" : ", ", static_cast<unsigned long long>(h));
+              format_into(text, "{}{:016X}", list.empty() ? "" : ", ", static_cast<unsigned long long>(h));
               list += text;
               }
             return list;
           },
           [&](surface_field_t f) -> std::string
           {
-            std::snprintf(text, sizeof text, "%ux%u", s.*f.width, s.*f.height);
+            format_into(text, "{}x{}", s.*f.width, s.*f.height);
             return text;
           }
         },
@@ -792,7 +792,7 @@ namespace edworld
       SYSTEMTIME t{};
       FileTimeToSystemTime(&a.ftLastWriteTime, &t);
       wchar_t aside[64];
-      std::swprintf(aside, 64, L"\\%ls.%04u%02u%02uT%02u%02u%02uZ.log", plugin_name, t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
+      format_into(aside, 64, L"\\{}.{:04}{:02}{:02}T{:02}{:02}{:02}Z.log", plugin_name, t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
       set_aside_failed = not MoveFileExW(path.c_str(), stralgo::stl::merge(dir, std::wstring_view{aside}).c_str(), 0);
       }
     log_file = CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,

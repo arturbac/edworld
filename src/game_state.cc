@@ -15,7 +15,6 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
-#include <cstdio>
 #include <cstring>
 #include <cstdlib>
 #include <exception>
@@ -205,7 +204,7 @@ namespace edworld
       WinHttpSetTimeouts(session, 2000, 2000, 2000, 3000);
       HINTERNET const connect{WinHttpConnect(session, L"www.edsm.net", INTERNET_DEFAULT_HTTPS_PORT, 0)};
       wchar_t path[128];
-      std::swprintf(path, 128, L"/api-system-v1/factions?systemId64=%llu", static_cast<unsigned long long>(system));
+      format_into(path, 128, L"/api-system-v1/factions?systemId64={}", static_cast<unsigned long long>(system));
       HINTERNET const request{
         connect ? WinHttpOpenRequest(connect, L"GET", path, nullptr, nullptr, nullptr, WINHTTP_FLAG_SECURE) : nullptr
       };
@@ -464,7 +463,7 @@ namespace edworld
           log_line("state: no pad given");
         }
       char key[96];
-      std::snprintf(key, sizeof key, "%d %.63s", have ? 1 : 0, last.destination_name);
+      format_into(key, "{} {:.63}", have ? 1 : 0, last.destination_name);
       if(std::strcmp(key, logged) != 0)
         {
         std::memcpy(logged, key, sizeof logged);

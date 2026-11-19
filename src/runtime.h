@@ -473,6 +473,55 @@ namespace edworld
       return value;
     }
 
+  ///\brief a narrow (UTF-8) string in a wide text, as UTF-16 (std::format takes no narrow string into a wide text)
+  struct utf8_t
+    {
+    std::string_view text;
+    };
+
+  [[nodiscard]]
+  inline auto utf8(std::string_view text) noexcept -> utf8_t
+    {
+    return {text};
+    }
+
+  [[nodiscard]]
+  inline auto utf8(char const * text) noexcept -> utf8_t
+    {
+    return {text ? std::string_view{text} : std::string_view{"(null)"}};
+    }
+
+  auto log_vline(std::string_view fmt, std::format_args args) noexcept -> void;
+
+  ///\brief std::format into `size` characters at `buf`, as snprintf did: cut at the end, NUL-terminated; the characters
+  /// written (without the NUL). Never thrown: a text that cannot be made is empty, and logged
+  template<typename char_t, typename... args_t>
+  auto format_into(char_t * buf, std::size_t size, std::type_identity_t<std::basic_format_string<char_t, args_t...>> fmt,
+                   args_t &&... args) noexcept -> std::size_t
+    {
+    if(size == 0)
+      return 0;
+    std::size_t n{};
+    try
+      {
+      n = static_cast<std::size_t>(std::format_to_n(buf, static_cast<std::ptrdiff_t>(size - 1), fmt, std::forward<args_t>(args)...).out - buf);
+      }
+    catch(...)
+      {
+      n = 0;
+      log_vline("format: a text could not be made; left empty", std::make_format_args());
+      }
+    buf[n] = char_t{};
+    return n;
+    }
+
+  template<typename char_t, std::size_t size, typename... args_t>
+  auto format_into(char_t (&buf)[size], std::type_identity_t<std::basic_format_string<char_t, args_t...>> fmt, args_t &&... args) noexcept
+    -> std::size_t
+    {
+    return format_into(&buf[0], size, fmt, std::forward<args_t>(args)...);
+    }
+
   ///\brief one line, time-stamped (UTC), cut to 2 KB, written at once under the log's lock (or gathered in a batch, log_batch_begin); a line that cannot be made
   /// is logged as such (never thrown)
   auto log_vline(std::string_view fmt, std::format_args args) noexcept -> void;
@@ -519,6 +568,29 @@ namespace edworld
   ///\brief the card a device of the game stands on, its feature level and flags, whether the driver takes command lists
   auto log_device(ID3D11Device * device) noexcept -> void;
   }  // namespace edworld
+
+///\brief a narrow string (edworld::utf8) in a wide text as UTF-16
+template<>
+struct std::formatter<edworld::utf8_t, wchar_t> : std::formatter<std::wstring_view, wchar_t>
+  {
+  auto format(edworld::utf8_t const & u, std::wformat_context & ctx) const -> std::wformat_context::iterator
+    {
+    auto out{ctx.out()};
+    std::string_view rest{u.text};
+    wchar_t buf[256];
+    while(not rest.empty())
+      {
+      std::size_t len{std::min<std::size_t>(rest.size(), 240)};
+      while(len < rest.size() and len > 0 and (static_cast<unsigned char>(rest[len]) & 0xC0u) == 0x80u)
+        --len;  // a character's bytes stay whole
+      int const n{MultiByteToWideChar(CP_UTF8, 0, rest.data(), static_cast<int>(len), buf, static_cast<int>(std::size(buf)))};
+      for(int i{}; i < n; ++i)
+        *out++ = buf[i];
+      rest.remove_prefix(len);
+      }
+    return out;
+    }
+  };
 
 ///\brief a wide string (edworld::wide) in a log line as UTF-8, by pieces through a buffer on the stack
 template<>

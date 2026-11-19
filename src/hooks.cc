@@ -34,7 +34,6 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -959,9 +958,9 @@ namespace edworld
         return false;
         }
       std::memset(item, 0, sizeof(write_item_t));
-      std::swprintf(item->path, MAX_PATH, L"%ls", path);
+      format_into(item->path, MAX_PATH, L"{}", path);
       if(rename_to)
-        std::swprintf(item->rename_to, MAX_PATH, L"%ls", rename_to);
+        format_into(item->rename_to, MAX_PATH, L"{}", rename_to);
       item->loud = loud;
       item->context = context;
       item->bytes = bytes;
@@ -1023,7 +1022,7 @@ namespace edworld
       geometry_draws = 0;
       SYSTEMTIME t;
       GetSystemTime(&t);
-      std::snprintf(dump_stamp, sizeof dump_stamp, "%04u%02u%02uT%02u%02u%02u_%03uZ", t.wYear, t.wMonth, t.wDay, t.wHour,
+      format_into(dump_stamp, "{:04}{:02}{:02}T{:02}{:02}{:02}_{:03}Z", t.wYear, t.wMonth, t.wDay, t.wHour,
                     t.wMinute, t.wSecond, t.wMilliseconds);
       CreateDirectoryW(stralgo::stl::merge(settings().dir, L"\\edworld_dumps"sv).c_str(), nullptr);
       log_line("dump: armed ({})", dump_stamp);
@@ -1103,17 +1102,17 @@ namespace edworld
           {
           wchar_t name[MAX_PATH];
           if(p.checkpoint and p.ps_slot == rt_after_slot)
-            std::swprintf(name, MAX_PATH, L"%ls\\edworld_dumps\\%hs_a%u_rt_after_%ux%u_f%u_pitch%u.raw", settings().dir.c_str(),
-                          dump_stamp, p.checkpoint - 1u, p.width, p.height, p.format, m.RowPitch);
+            format_into(name, MAX_PATH, L"{}\\edworld_dumps\\{}_a{}_rt_after_{}x{}_f{}_pitch{}.raw", settings().dir,
+                          utf8(dump_stamp), p.checkpoint - 1u, p.width, p.height, p.format, m.RowPitch);
           else if(p.checkpoint and p.ps_slot)
-            std::swprintf(name, MAX_PATH, L"%ls\\edworld_dumps\\%hs_a%u_ps%u_%ux%u_f%u_pitch%u.raw", settings().dir.c_str(),
-                          dump_stamp, p.checkpoint - 1u, p.ps_slot - 1u, p.width, p.height, p.format, m.RowPitch);
+            format_into(name, MAX_PATH, L"{}\\edworld_dumps\\{}_a{}_ps{}_{}x{}_f{}_pitch{}.raw", settings().dir,
+                          utf8(dump_stamp), p.checkpoint - 1u, p.ps_slot - 1u, p.width, p.height, p.format, m.RowPitch);
           else if(p.checkpoint)
-            std::swprintf(name, MAX_PATH, L"%ls\\edworld_dumps\\%hs_c%04u_%ux%u_f%u_pitch%u.raw", settings().dir.c_str(),
-                          dump_stamp, p.checkpoint - 1u, p.width, p.height, p.format, m.RowPitch);
+            format_into(name, MAX_PATH, L"{}\\edworld_dumps\\{}_c{:04}_{}x{}_f{}_pitch{}.raw", settings().dir,
+                          utf8(dump_stamp), p.checkpoint - 1u, p.width, p.height, p.format, m.RowPitch);
           else
-            std::swprintf(name, MAX_PATH, L"%ls\\edworld_dumps\\%hs_%08llx_%ux%u_f%u_pitch%u.raw", settings().dir.c_str(),
-                          dump_stamp, static_cast<unsigned long long>(p.id & 0xffffffffull), p.width, p.height, p.format,
+            format_into(name, MAX_PATH, L"{}\\edworld_dumps\\{}_{:08x}_{}x{}_f{}_pitch{}.raw", settings().dir,
+                          utf8(dump_stamp), static_cast<unsigned long long>(p.id & 0xffffffffull), p.width, p.height, p.format,
                           m.RowPitch);
           queue_write(name, m.pData, m.RowPitch * mapped_rows(p.format, p.height), true);
           immediate.load()->Unmap(p.staging, 0);
@@ -1160,7 +1159,7 @@ namespace edworld
         if(SUCCEEDED(hr) and m.pData)
           {
           wchar_t name[MAX_PATH];
-          std::swprintf(name, MAX_PATH, L"%ls\\edworld_dumps\\%hs_%hs.bin", settings().dir.c_str(), dump_stamp, p.name);
+          format_into(name, MAX_PATH, L"{}\\edworld_dumps\\{}_{}.bin", settings().dir, utf8(dump_stamp), utf8(p.name));
           queue_write(name, m.pData, p.bytes);
           immediate.load()->Unmap(p.staging, 0);
           }
@@ -1199,7 +1198,7 @@ namespace edworld
       pending_buffer_t & p{pending_buffers[pending_buffer_count++]};
       p.staging = staging;
       p.bytes = static_cast<std::uint32_t>(bytes);
-      std::snprintf(p.name, sizeof p.name, "%s", name);
+      format_into(p.name, "{}", name);
       p.qpc = qpc_now();
       if(loud)
         log_line("dump: {} = {} byte(s) from {} of a buffer of {} (stride {}, bind 0x{:x}, misc 0x{:x})", name, p.bytes,
@@ -1793,7 +1792,7 @@ namespace edworld
       p.shell_index = shell_index;
       SYSTEMTIME t;
       GetSystemTime(&t);
-      std::snprintf(p.stamp, sizeof p.stamp, "%04u%02u%02uT%02u%02u%02u_%03uZ", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute,
+      format_into(p.stamp, "{:04}{:02}{:02}T{:02}{:02}{:02}_{:03}Z", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute,
                     t.wSecond, t.wMilliseconds);
       atmo_busy = true;
       }
@@ -2087,7 +2086,7 @@ namespace edworld
         for(std::uint32_t i{}; i != j.table_bytes; ++i)
           hash = (hash ^ atmo_table_copy[i]) * 0x100000001b3ull;
         wchar_t name[MAX_PATH];
-        std::swprintf(name, MAX_PATH, L"%ls\\t0_%016llx_%ux%u_f%u_pitch%u.raw", folder.c_str(),
+        format_into(name, MAX_PATH, L"{}\\t0_{:016x}_{}x{}_f{}_pitch{}.raw", folder,
                       static_cast<unsigned long long>(hash), j.width, j.height, j.format, j.pitch);
         if(GetFileAttributesW(name) == INVALID_FILE_ATTRIBUTES)
           new_table = queue_write(name, atmo_table_copy, j.table_bytes);
@@ -2115,7 +2114,7 @@ namespace edworld
           put(j.cbs[c], j.cb_bytes[c]);
         }
       wchar_t name[MAX_PATH];
-      std::swprintf(name, MAX_PATH, L"%ls\\%hs.atmo", folder.c_str(), j.stamp);
+      format_into(name, MAX_PATH, L"{}\\{}.atmo", folder, utf8(j.stamp));
       queue_write(name, atmo_record, static_cast<std::uint32_t>(at - atmo_record));
       atmosphere_print_t const * kind{atmosphere_kind_of(j.hue)};
       log_line("atmo: {} radius {:.0f} m, distance {:.0f} km (band {}), t0 {:016x} {}x{} f{}{}, kind {} (r/g {:.4f} b/g {:.4f})",
@@ -2239,16 +2238,13 @@ namespace edworld
     bool full_done_waiting{};               ///< the frame is over; dump_done once its copies are queued
     std::uint32_t full_done_draws{};
 
-    auto full_line(char const * fmt, ...) noexcept -> void
+    template<typename... args_t>
+    auto full_line(std::format_string<args_t...> fmt, args_t &&... args) noexcept -> void
       {
       if(full_text_bytes - full_text_used < 2u)
         return;
-      va_list args;
-      va_start(args, fmt);
-      int const n{std::vsnprintf(full_text + full_text_used, full_text_bytes - full_text_used - 1u, fmt, args)};
-      va_end(args);
-      if(n < 0)
-        return;
+      // the room less one byte, kept for the line's end: format_into's NUL lands where the line's end goes
+      std::size_t const n{format_into(full_text + full_text_used, full_text_bytes - full_text_used - 1u, fmt, std::forward<args_t>(args)...)};
       full_text_used = std::min<std::uint32_t>(full_text_used + static_cast<std::uint32_t>(n), full_text_bytes - 2u);
       full_text[full_text_used++] = '\n';
       }
@@ -2267,13 +2263,13 @@ namespace edworld
       {
       full_done_waiting = false;
       wchar_t name[MAX_PATH];
-      std::swprintf(name, MAX_PATH, L"%ls\\edworld_dumps\\%hs_draws.txt", settings().dir.c_str(), dump_stamp);
+      format_into(name, MAX_PATH, L"{}\\edworld_dumps\\{}_draws.txt", settings().dir, utf8(dump_stamp));
       queue_write(name, full_text, full_text_used, true);
 #if defined(EDWORLD_EHT)
       if(not settings().shm_dir.empty())
         {
         char text[64];
-        int const n{std::snprintf(text, sizeof text, "%s %u\n", dump_stamp, full_done_draws)};
+        std::size_t const n{format_into(text, "{} {}\n", dump_stamp, full_done_draws)};
         std::wstring const done{stralgo::stl::merge(settings().shm_dir, L"\\dump_done"sv)};
         queue_write(stralgo::stl::merge(done, L".part"sv).c_str(), text, static_cast<std::uint32_t>(n), false, done.c_str());
         }
@@ -2351,7 +2347,7 @@ namespace edworld
       full_left_count = 0;
       SYSTEMTIME t;
       GetSystemTime(&t);
-      std::snprintf(dump_stamp, sizeof dump_stamp, "%04u%02u%02uT%02u%02u%02u_%03uZ", t.wYear, t.wMonth, t.wDay, t.wHour,
+      format_into(dump_stamp, "{:04}{:02}{:02}T{:02}{:02}{:02}_{:03}Z", t.wYear, t.wMonth, t.wDay, t.wHour,
                     t.wMinute, t.wSecond, t.wMilliseconds);
       CreateDirectoryW(stralgo::stl::merge(settings().dir, L"\\edworld_dumps"sv).c_str(), nullptr);
       log_line("dump: whole frame armed ({})", dump_stamp);
@@ -2462,7 +2458,7 @@ namespace edworld
       if(ib)
         {
         std::uint32_t const size{ib_format == DXGI_FORMAT_R16_UINT ? 2u : 4u};
-        std::snprintf(name, sizeof name, "g%u_ib_u%u", g, size * 8u);
+        format_into(name, "g{}_ib_u{}", g, size * 8u);
         queue_buffer(ctx, ib, ib_offset + static_cast<std::uint64_t>(start_index) * size,
                      static_cast<std::uint64_t>(index_count) * size, name);
         ib->Release();
@@ -2477,7 +2473,7 @@ namespace edworld
           continue;
         // slot 0 is the instance stream (stage_entry), the others are read from the base vertex
         std::uint64_t const first{v == 0 ? start_instance : static_cast<std::uint64_t>(std::max(base_vertex, 0))};
-        std::snprintf(name, sizeof name, "g%u_vb%u_s%u", g, v, strides[v]);
+        format_into(name, "g{}_vb{}_s{}", g, v, strides[v]);
         queue_buffer(ctx, vbs[v], offsets[v] + first * strides[v],
                      v == 0 ? static_cast<std::uint64_t>(instance_count) * strides[v] : buffer_window, name);
         vbs[v]->Release();
@@ -2493,7 +2489,7 @@ namespace edworld
         {
         if(not cbs[c])
           continue;
-        std::snprintf(name, sizeof name, "g%u_cb%u", g, c);
+        format_into(name, "g{}_cb{}", g, c);
         queue_buffer(ctx, cbs[c], firsts[c] * 16ull, counts[c] ? counts[c] * 16ull : 65536ull, name);
         cbs[c]->Release();
         }
@@ -2513,7 +2509,7 @@ namespace edworld
           }
         if(buffer)
           {
-          std::snprintf(name, sizeof name, "g%u_t33", g);
+          format_into(name, "g{}_t33", g);
           queue_buffer(ctx, buffer, 0, pool_window, name);
           buffer->Release();
           }
@@ -3248,7 +3244,7 @@ namespace edworld
         g.unknown_logged.push_back(key);
         char hex[galmap_zones_x * galmap_zones_y * 3 + 1]{};
         for(std::size_t i{}; i != zones.size(); ++i)
-          std::snprintf(hex + i * 3, 4, "%02x ", zones[i]);
+          format_into(hex + i * 3, 4, "{:02x} ", as_unsigned(zones[i]));
         log_line("galmap: a glyph not known yet at {},{} {}x{} (nearest {} apart): {}", u0, v0, u1 - u0, v1 - v0, m.distance, hex);
         }
       return m.c;
@@ -3776,10 +3772,10 @@ namespace edworld
       wchar_t path[MAX_PATH]{};
       WIN32_FILE_ATTRIBUTE_DATA a{};
       if(GetModuleFileNameW(nullptr, path, MAX_PATH) and GetFileAttributesExW(path, GetFileExInfoStandard, &a))
-        std::snprintf(key, sizeof key, "%lu-%08lx%08lx", a.nFileSizeLow, a.ftLastWriteTime.dwHighDateTime,
-                      a.ftLastWriteTime.dwLowDateTime);
+        format_into(key, "{}-{:08x}{:08x}", a.nFileSizeLow, as_unsigned(a.ftLastWriteTime.dwHighDateTime),
+                      as_unsigned(a.ftLastWriteTime.dwLowDateTime));
       else
-        std::snprintf(key, sizeof key, "unknown");
+        format_into(key, "unknown");
       log_line("hologram: the game's build {} (the exe's size and last write)", key);
       holo_log_version(path);
       return key;
@@ -3912,7 +3908,7 @@ namespace edworld
             holo_sample.in_flight = true;
             SYSTEMTIME t;
             GetSystemTime(&t);
-            std::snprintf(holo_sample.stamp, sizeof holo_sample.stamp, "%04u%02u%02uT%02u%02u%02u_%03uZ", t.wYear, t.wMonth, t.wDay,
+            format_into(holo_sample.stamp, "{:04}{:02}{:02}T{:02}{:02}{:02}_{:03}Z", t.wYear, t.wMonth, t.wDay,
                           t.wHour, t.wMinute, t.wSecond, t.wMilliseconds);
             }
           else
@@ -3958,7 +3954,7 @@ namespace edworld
       char extreme[6 * 3 * 12]{};
       int at{};
       for(vec3_t const & v: f.extreme)
-        at += std::snprintf(extreme + at, sizeof extreme - static_cast<std::size_t>(at), "%s{%.4ff, %.4ff, %.4ff}", at ? ", " : "",
+        at += format_into(extreme + at, sizeof extreme - static_cast<std::size_t>(at), "{}{{{:.4f}f, {:.4f}f, {:.4f}f}}", at ? ", " : "",
                             static_cast<double>(v.x), static_cast<double>(v.y), static_cast<double>(v.z));
       log_line("hologram model fingerprint {}: {{{}u, {}u, {{{:.4f}f, {:.4f}f, {:.4f}f}}, {{{{{}}}}}, {{{{0x{:016x}ull, 0x{:016x}ull, 0x{:016x}ull, "
                "0x{:016x}ull, 0x{:016x}ull, 0x{:016x}ull, 0x{:016x}ull, 0x{:016x}ull}}}}}}", count, f.vertices, f.triangles,
@@ -4011,10 +4007,10 @@ namespace edworld
         {
         CreateDirectoryW(holo_models_dir().c_str(), nullptr);
         wchar_t name[MAX_PATH];
-        std::swprintf(name, MAX_PATH, L"%ls\\%hs_%hs_%u_ib_u%u.bin", holo_models_dir().c_str(), holo_build(), holo_sample.stamp,
+        format_into(name, MAX_PATH, L"{}\\{}_{}_{}_ib_u{}.bin", holo_models_dir(), utf8(holo_build()), utf8(holo_sample.stamp),
                       holo_sample.count, holo_sample.index_size * 8u);
         queue_write(name, indices, holo_sample.ib_bytes);
-        std::swprintf(name, MAX_PATH, L"%ls\\%hs_%hs_%u_vb_s40.bin", holo_models_dir().c_str(), holo_build(), holo_sample.stamp,
+        format_into(name, MAX_PATH, L"{}\\{}_{}_{}_vb_s40.bin", holo_models_dir(), utf8(holo_build()), utf8(holo_sample.stamp),
                       holo_sample.count);
         // only the vertices the indices reach (the copy is up to holo_sample_vertex_bytes)
         std::uint32_t top{};
@@ -4037,10 +4033,10 @@ namespace edworld
         queue_write(name, vertices, static_cast<std::uint32_t>(std::min<std::uint64_t>(holo_sample.vb_bytes, wanted)));
         // the game's files at the sample (Status.json, the journal's place), read by the writer thread
         char sample[96];
-        int const length{std::snprintf(sample, sizeof sample, "%s_%s_%u", holo_build(), holo_sample.stamp, holo_sample.count)};
-        std::swprintf(name, MAX_PATH, L"%ls\\%hs_context.json", holo_models_dir().c_str(), sample);
+        std::size_t const length{format_into(sample, "{}_{}_{}", holo_build(), holo_sample.stamp, holo_sample.count)};
+        format_into(name, MAX_PATH, L"{}\\{}_context.json", holo_models_dir(), utf8(sample));
         if(length > 0)
-          queue_write(name, sample, static_cast<std::uint32_t>(std::min<int>(length, sizeof sample - 1)), false, nullptr, true);
+          queue_write(name, sample, static_cast<std::uint32_t>(length), false, nullptr, true);
         holo_sample.want_surface = holo_sample.drawn_to;
         holo_sample.want_since = now;
         }
@@ -4131,7 +4127,7 @@ namespace edworld
               picture[header_bytes + y * side + x] = v < 1e9f ? static_cast<std::uint8_t>(255.f - (v - lo) / span * 200.f) : 0u;
               }
           wchar_t name[MAX_PATH];
-          std::swprintf(name, MAX_PATH, L"%ls\\%hs_%hs_%u_holo.pgm", holo_models_dir().c_str(), holo_build(), holo_sample.stamp,
+          format_into(name, MAX_PATH, L"{}\\{}_{}_{}_holo.pgm", holo_models_dir(), utf8(holo_build()), utf8(holo_sample.stamp),
                         holo_sample.count);
           queue_write(name, picture, sizeof picture, true);
           }
@@ -4838,7 +4834,7 @@ namespace edworld
       if(ib)
         {
         std::uint32_t const size{ib_format == DXGI_FORMAT_R16_UINT ? 2u : 4u};
-        std::snprintf(name, sizeof name, "a%u_ib_u%u", a, size * 8u);
+        format_into(name, "a{}_ib_u{}", a, size * 8u);
         queue_buffer(ctx, ib, ib_offset + static_cast<std::uint64_t>(start) * size, static_cast<std::uint64_t>(count) * size, name);
         ib->Release();
         }
@@ -4849,7 +4845,7 @@ namespace edworld
         {
         if(not vbs[v])
           continue;
-        std::snprintf(name, sizeof name, "a%u_vb%u_s%u", a, v, strides[v]);
+        format_into(name, "a{}_vb{}_s{}", a, v, strides[v]);
         // the input layout is not known: a buffer read from the base vertex, or else (past its end) an instance
         // stream read from the start instance, as the panels' slot 0
         D3D11_BUFFER_DESC bd{};
@@ -4875,7 +4871,7 @@ namespace edworld
           }
         if(buffer)
           {
-          std::snprintf(name, sizeof name, "a%u_t33", a);
+          format_into(name, "a{}_t33", a);
           queue_buffer(ctx, buffer, 0, pool_window, name);
           buffer->Release();
           }
@@ -4902,7 +4898,7 @@ namespace edworld
             {
             D3D11_TEXTURE2D_DESC d{};
             tex->GetDesc(&d);
-            full_line("  a%u ps t%u texture %08llx %ux%u f%u mips %u array %u", a, t, id, d.Width, d.Height,
+            full_line("  a{} ps t{} texture {:08x} {}x{} f{} mips {} array {}", a, t, as_unsigned(id), d.Width, d.Height,
                       static_cast<unsigned>(d.Format), d.MipLevels, d.ArraySize);
             // its picture too, as the draw reads it (its first mip): <stamp>_a<draw>_ps<slot>_...raw
             if(d.SampleDesc.Count == 1u and d.ArraySize == 1u and d.Width <= 4096u and d.Height <= 4096u and d.Width * d.Height > 1u)
@@ -4917,12 +4913,12 @@ namespace edworld
             {
             D3D11_BUFFER_DESC bd{};
             buffer->GetDesc(&bd);
-            full_line("  a%u ps t%u buffer %08llx %u bytes stride %u", a, t, id, bd.ByteWidth, bd.StructureByteStride);
+            full_line("  a{} ps t{} buffer {:08x} {} bytes stride {}", a, t, as_unsigned(id), bd.ByteWidth, bd.StructureByteStride);
             buffer->Release();
             }
           }
         else
-          full_line("  a%u ps t%u resource %08llx dimension %u", a, t, id, static_cast<unsigned>(dim));
+          full_line("  a{} ps t{} resource {:08x} dimension {}", a, t, as_unsigned(id), static_cast<unsigned>(dim));
         res->Release();
         }
       std::uint32_t const kept{std::min(kept_vs_reserved.load(), max_kept_vs)};
@@ -4931,7 +4927,7 @@ namespace edworld
           {
           full_kept_written[k] = true;
           wchar_t file[MAX_PATH];
-          std::swprintf(file, MAX_PATH, L"%ls\\edworld_dumps\\%hs_vs_%016llX.dxbc", settings().dir.c_str(), dump_stamp,
+          format_into(file, MAX_PATH, L"{}\\edworld_dumps\\{}_vs_{:016X}.dxbc", settings().dir, utf8(dump_stamp),
                         static_cast<unsigned long long>(hash));
           queue_write(file, kept_vs[k].bytes, kept_vs[k].length, true);
           }
@@ -5013,7 +5009,7 @@ namespace edworld
           res->Release();
         rtv->Release();
         }
-      full_line("a%u %c vs %016llX count %u inst %u start %u base %d sinst %u vp %.0f,%.0f %.0fx%.0f rt %ux%u f%u at %08llx", a, kind,
+      full_line("a{} {} vs {:016X} count {} inst {} start {} base {} sinst {} vp {:.0f},{:.0f} {:.0f}x{:.0f} rt {}x{} f{} at {:08x}", a, kind,
                static_cast<unsigned long long>(hash), count, instances, start, base, start_instance, static_cast<double>(vp.TopLeftX),
                static_cast<double>(vp.TopLeftY), static_cast<double>(vp.Width), static_cast<double>(vp.Height), rt_w, rt_h, rt_f,
                static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(rt_ptr) & 0xffffffffull));
@@ -5029,12 +5025,12 @@ namespace edworld
         {
         if(not cbs[c])
           continue;
-        std::snprintf(name, sizeof name, "a%u_cb%u", a, c);
+        format_into(name, "a{}_cb{}", a, c);
         // a dump_vs draw's buffers whole from their first constant (the hologram's camera is row 270 of cb1)
         std::uint64_t const whole{counts[c] ? counts[c] * 16ull : 65536ull};
         std::uint64_t const bytes{looked_into ? whole : std::min<std::uint64_t>(whole, full_cb_bytes)};
         if(looked_into)
-          full_line("  a%u cb%u first %u count %u", a, c, firsts[c], counts[c]);
+          full_line("  a{} cb{} first {} count {}", a, c, firsts[c], counts[c]);
         queue_buffer(ctx, cbs[c], firsts[c] * 16ull, bytes, name, false);
         cbs[c]->Release();
         }
@@ -6007,15 +6003,13 @@ namespace edworld
           if(GetModuleFileNameA(owner, path, MAX_PATH))
             {
             char const * const slash{std::strrchr(path, '\\')};
-            std::snprintf(module, sizeof module, "%s", slash ? slash + 1 : path);
+            format_into(module, "{}", slash ? slash + 1 : path);
             }
           }
-        int const n{std::snprintf(out + used, size - used, "%s%s taken by %s", used ? ", " : "", s.name, module)};
-        if(n > 0)
-          used = std::min(size - 1, used + static_cast<std::size_t>(n));
+        used += format_into(out + used, size - used, "{}{} taken by {}", used ? ", " : "", s.name, module);
         }
       if(used == 0)
-        std::snprintf(out, size, "in place");
+        format_into(out, size, "in place");
       }
 
     auto census_report(char const * when, bool counts) noexcept -> void
@@ -6027,9 +6021,7 @@ namespace edworld
         std::size_t used{};
         for(std::uint32_t i{}; i != attached and used + 1 < sizeof own; ++i)
           {
-          int const n{std::snprintf(own + used, sizeof own - used, "%s%u", i ? " + " : "", census_draws[i].load())};
-          if(n > 0)
-            used = std::min(sizeof own - 1, used + static_cast<std::size_t>(n));
+          used += format_into(own + used, sizeof own - used, "{}{}", i ? " + " : "", census_draws[i].load());
           }
         log_line(
           "census {}: draws {} on the devices' own contexts (in the order they came), {} on other contexts, {} indirect, "
