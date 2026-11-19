@@ -48,33 +48,24 @@ Both dlls are in `edworld-<version>.zip` on the [Releases](https://github.com/ar
 
 ### Through edloader
 
-The usual way.
+The usual way: [edloader](https://github.com/arturbac/edloader) lets edworld run beside other mods. It is in the zip's
+`edloader` folder.
 
-[edloader](https://github.com/arturbac/edloader) runs several d3d11 mods at once. The release zip carries it in its
-`edloader` folder (its `d3d11.dll`, `edloader.txt.example` and its own `doc/users.md`, which tells how to install
-it). Put edworld's dll into `edloader\plugins` and list it in `edloader.txt`; there is nothing to set for the list to
-go on after it. Its `edworld.ini` is made in `edloader\config` and its log in `edloader\logs`. EDHM goes into
-`edloader\plugins` too, as `d3d11_edhm.dll` with its files, before EDVR (edloader's doc/users.md).
+1. Find the game's folder: `Products/elite-dangerous-odyssey-64`, the one with `EliteDangerous64.exe`.
+2. Make the folder `edloader\plugins` in your user folder:
+   - Windows (Steam, Epic, Frontier): `C:\Users\<you>\edloader\plugins`
+   - Linux, Steam: `.../steamapps/compatdata/359320/pfx/drive_c/users/steamuser/edloader/plugins`
+3. Copy edloader's `d3d11.dll` into the game's folder.
+4. Copy `edworld.dll` into `edloader\plugins`.
+5. Make the file `edloader\edloader.txt` with one line: `edworld.dll`.
+6. Start the game.
 
-With EDVR's anti-aliasing on, set `ui_quality = off` in the `[fix]` section of `edvr-flat.ini` (F8: UI quality). EDVR
-otherwise makes the cockpit panels bigger, edworld no longer finds them and the navballs are gone. The clouds are not
-affected.
+Only if you use them:
 
-With the game from the Epic Games Store nothing is to be set: edloader from 1.1.0 knows Epic's
-overlay, and edworld from 1.2.0-beta.7 does not follow the overlay's device and stays with the game's (`not followed`
-in its log). An older edloader needs `accept_takeover = true` in `edloader.txt`
-([edloader's doc/users.md](https://github.com/arturbac/edloader/blob/main/doc/users.md#the-epic-games-store-epics-overlay)).
-
-With ReShade (its installer puts it in the game's folder as `dxgi.dll`) nothing is to be set either: edloader from
-1.2.0 (the one in this zip) knows it. An older edloader stops (`TAKEOVER: before edloader started`) and needs
-`accept_takeover = true` in `edloader.txt`
-([edloader's doc/users.md](https://github.com/arturbac/edloader/blob/main/doc/users.md#reshade)).
-
-With an antivirus that hooks the game (Bitdefender's `bdhkm64.dll`, seen in a player's log): edworld needs nothing
-set, it passes `bdhkm64.dll` over by default (`creator_pass`, below in "Check that it works"). edloader does not
-accept an antivirus's takeover by itself: if its log says `TAKEOVER:` and no ReShade is loaded, add
-`accept_takeover = true` to `edloader.txt`
-([edloader's doc/users.md](https://github.com/arturbac/edloader/blob/main/doc/users.md#an-antivirus)).
+- **EDHM or EDVR:** [edloader's guide, "EDHM and EDVR"](https://github.com/arturbac/edloader/blob/main/doc/users.md#edhm-and-edvr).
+  With EDVR's anti-aliasing on, set `ui_quality = off` in EDVR (F8), or the navballs are gone.
+- **Epic Games Store, ReShade or an antivirus:** nothing to set. Only if edloader's log says `TAKEOVER:`, see
+  [edloader's guide](https://github.com/arturbac/edloader/blob/main/doc/users.md#a-mod-that-takes-the-games-calls-itself).
 
 ### On its own
 
