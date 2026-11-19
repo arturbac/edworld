@@ -55,14 +55,17 @@ The usual way: [edloader](https://github.com/arturbac/edloader) lets edworld run
 2. Make the folder `edloader\plugins` in your user folder:
    - Windows (Steam, Epic, Frontier): `C:\Users\<you>\edloader\plugins`
    - Linux, Steam: `.../steamapps/compatdata/359320/pfx/drive_c/users/steamuser/edloader/plugins`
-3. Copy edloader's `d3d11.dll` into the game's folder.
+3. Copy edloader's `d3d11.dll` into the game's folder. If a `d3d11.dll` is there already (EDHM, EDVR), first move it
+   as [edloader's guide, Install](https://github.com/arturbac/edloader/blob/main/doc/users.md#install) tells (step 3).
 4. Copy `edworld.dll` into `edloader\plugins`.
 5. Make the file `edloader\edloader.txt` with one line: `edworld.dll`.
 6. Start the game.
 
 Only if you use them:
 
-- **EDHM or EDVR:** [edloader's guide, "EDHM and EDVR"](https://github.com/arturbac/edloader/blob/main/doc/users.md#edhm-and-edvr).
+- **EDHM or EDVR:** [edloader's guide, Install](https://github.com/arturbac/edloader/blob/main/doc/users.md#install)
+  (steps 3 and 5: their files and lines) and, with EDHM-UI, its
+  [EDHM-UI](https://github.com/arturbac/edloader/blob/main/doc/users.md#edhm-ui) part.
   With EDVR's anti-aliasing on, set `ui_quality = off` in EDVR (F8), or the navballs are gone.
 - **Epic Games Store, ReShade or an antivirus:** nothing to set. Only if edloader's log says `TAKEOVER:`, see
   [edloader's guide](https://github.com/arturbac/edloader/blob/main/doc/users.md#a-mod-that-takes-the-games-calls-itself).
