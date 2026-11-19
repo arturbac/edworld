@@ -22,6 +22,7 @@
 #include <d3d11_1.h>
 
 #include "cb_binding.h"
+#include "d3d11_enum_names.h"
 #include "emblems.h"
 #include "game_state.h"
 #include "list_font.h"
@@ -1323,8 +1324,7 @@ namespace edworld
       D3D11_RENDER_TARGET_BLEND_DESC const & t{bd.RenderTarget[0]};
       log_line("list: drawn into format {}{}; the game's blend {}: src {} dest {} op {}, alpha src {} dest {} op {}, mask {:x}",
                static_cast<unsigned>(rd.Format), dsv ? " (with depth)" : "", b.blend ? (t.BlendEnable ? "on" : "off") : "default",
-               std::to_underlying(t.SrcBlend), std::to_underlying(t.DestBlend), std::to_underlying(t.BlendOp), std::to_underlying(t.SrcBlendAlpha),
-               std::to_underlying(t.DestBlendAlpha), std::to_underlying(t.BlendOpAlpha), as_unsigned(t.RenderTargetWriteMask));
+               t.SrcBlend, t.DestBlend, t.BlendOp, t.SrcBlendAlpha, t.DestBlendAlpha, t.BlendOpAlpha, as_unsigned(t.RenderTargetWriteMask));
       if(rtv)
         rtv->Release();
       if(dsv)

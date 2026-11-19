@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- simple_enum by CPM (the version of elite_help_tool's): enumerations in the log by their names (the shader stages
+  created, the D3D11 blend and depth states); the formats stay numbers.
 - snprintf, swprintf and vsnprintf replaced by `format_into` (std::format_to_n, cut and NUL-terminated as snprintf,
   never thrown); `full_line` of the whole-frame dump checked when compiled too.
 - The log through `std::format` (checked when compiled; wide strings as UTF-8) in place of printf's `va_list`; the SRW

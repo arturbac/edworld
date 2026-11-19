@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 #include <format>
+
+#include <simple_enum/std_format.hpp>
 #include <string_view>
 #include <type_traits>
 #include <utility>

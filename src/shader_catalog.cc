@@ -7,6 +7,8 @@
 #include "panel_math.h"
 #include "runtime.h"
 
+#include <simple_enum/ranges_views.hpp>
+
 #include <algorithm>
 #include <atomic>
 #include <exception>
@@ -23,6 +25,12 @@
 namespace edworld
   {
   using namespace std::string_view_literals;
+
+  ///\brief the shader stages' bounds for simple_enum (their names in the log, a view over them)
+  consteval auto adl_enum_bounds(shader_stage_e) -> simple_enum::adl_info<shader_stage_e>
+    {
+    return {shader_stage_e::pixel, shader_stage_e::unknown};
+    }
 
   namespace
     {
@@ -101,12 +109,13 @@ namespace edworld
         }
       if(not catalog.empty() and not append_to_file(stralgo::stl::merge(dir, L"\\catalog.tsv"sv).c_str(), catalog.data(), catalog.size()))
         log_line("shaders: catalog.tsv not written whole (error {})", GetLastError());
-      log_line("shaders: {} new to edworld_shaders\\{} ({} bytes), {} there from before; created this session: vs {} ps {} "
-               "cs {} gs {} hs {} ds {} layouts {}", added, game_build_key(), bytes, known,
-               created[static_cast<int>(shader_stage_e::vertex)], created[static_cast<int>(shader_stage_e::pixel)],
-               created[static_cast<int>(shader_stage_e::compute)], created[static_cast<int>(shader_stage_e::geometry)],
-               created[static_cast<int>(shader_stage_e::hull)], created[static_cast<int>(shader_stage_e::domain)],
-               created[static_cast<int>(shader_stage_e::layout)]);
+      // the shaders created this session by stage, each by its name (simple_enum)
+      char by_stage[192];
+      std::size_t used{};
+      for(shader_stage_e const s: simple_enum::enum_view{shader_stage_e::pixel, shader_stage_e::layout})
+        used += format_into(by_stage + used, sizeof by_stage - used, "{}{} {}", used ? " " : "", s, created[std::to_underlying(s)]);
+      log_line("shaders: {} new to edworld_shaders\\{} ({} bytes), {} there from before; created this session: {}", added,
+               game_build_key(), bytes, known, std::string_view{by_stage, used});
       }
 
     auto writer_body(void *) -> DWORD

@@ -32,7 +32,7 @@ add_executable(render_test render_test.cc)
 target_compile_definitions(render_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS EDWORLD_EHT)
 target_include_directories(render_test PRIVATE "${CMAKE_SOURCE_DIR}/src" "${CMAKE_BINARY_DIR}/gen")
 target_compile_options(render_test PRIVATE /W4)
-target_link_libraries(render_test PRIVATE d3d11 dxgi dxguid windowscodecs ole32)
+target_link_libraries(render_test PRIVATE d3d11 dxgi dxguid windowscodecs ole32 simple_enum::simple_enum)  # runtime.h (clouds_values.h)
 set_target_properties(render_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${test_gen}")
 add_dependencies(render_test edworld_eht)
 

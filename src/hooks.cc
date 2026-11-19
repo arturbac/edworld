@@ -23,6 +23,7 @@
 #include "cb_binding.h"
 #include "clouds_values.h"
 #include "panel_patch.h"
+#include "d3d11_enum_names.h"
 #include "runtime.h"
 #include "snow.h"
 #include "shader_catalog.h"
@@ -5712,9 +5713,8 @@ namespace edworld
         ID3D11DepthStencilView * dsv{};
         ctx->OMGetRenderTargets(1, &rtv, &dsv);
         log_line("clouds: the shell's depth {} write {} func {}, view {}, blend {} src {} dest {}, frame constants {}",
-                 d.DepthEnable, std::to_underlying(d.DepthWriteMask), std::to_underlying(d.DepthFunc), dsv ? "bound" : "none",
-                 b.RenderTarget[0].BlendEnable, std::to_underlying(b.RenderTarget[0].SrcBlend), std::to_underlying(b.RenderTarget[0].DestBlend),
-                 frame ? "bound" : "none");
+                 d.DepthEnable, d.DepthWriteMask, d.DepthFunc, dsv ? "bound" : "none", b.RenderTarget[0].BlendEnable,
+                 b.RenderTarget[0].SrcBlend, b.RenderTarget[0].DestBlend, frame ? "bound" : "none");
         if(depth)
           depth->Release();
         if(rtv)

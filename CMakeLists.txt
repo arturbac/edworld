@@ -59,6 +59,22 @@ cpmaddpackage(
 if(NOT TARGET stralgo::stralgo)
   add_library(stralgo::stralgo ALIAS stralgo)
 endif()
+# simple_enum (an enumeration's value in the log by its name), the version of elite_help_tool's
+cpmaddpackage(
+  NAME
+  simple_enum
+  GITHUB_REPOSITORY
+  arturbac/simple_enum
+  VERSION
+  0.9.5
+  # tag v0.9.5, pinned to its commit - a tag can be moved
+  GIT_TAG
+  e4d7eae8df7f8d27993b446ce4bb51e3d2a857dd
+  EXCLUDE_FROM_ALL
+  YES)
+if(NOT TARGET simple_enum::simple_enum)
+  add_library(simple_enum::simple_enum ALIAS simple_enum)
+endif()
 
 set(gen "${CMAKE_BINARY_DIR}/gen")
 file(MAKE_DIRECTORY "${gen}")
@@ -144,7 +160,7 @@ set(edworld_sources src/proxy.cc src/hooks.cc src/settings_log.cc src/game_state
 
 foreach(variant edworld edworld_eht)
   add_library(${variant} SHARED ${edworld_sources} "${gen}/edvr_d3d11.def")
-  target_link_libraries(${variant} PRIVATE edworld_imgui edworld_thunks stralgo::stralgo
+  target_link_libraries(${variant} PRIVATE edworld_imgui edworld_thunks stralgo::stralgo simple_enum::simple_enum
                         kernel32 user32 advapi32 dxgi dxguid winhttp shell32 ole32)
   target_compile_definitions(${variant} PRIVATE UNICODE _UNICODE $<$<STREQUAL:${variant},edworld_eht>:EDWORLD_EHT>)
   target_compile_options(${variant} PRIVATE /W4 "/FI${gen}/edworld_version.h")

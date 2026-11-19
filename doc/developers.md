@@ -612,7 +612,8 @@ put together with its `merge`) and small_vectors come by CPM (`cmake/get_cpm.cma
 `-DCPM_SOURCE_CACHE=<a filled cache> -DFETCHCONTENT_FULLY_DISCONNECTED=ON` the configure needs no network. The log: `log_line` takes a `std::format` format checked
 against its arguments when compiled and hands it to `log_vline` (`std::vformat_to` into 2 KB on the stack, the line cut
 there, never thrown; a batch gathers lines as before); a wide string goes in as `wide(...)` (UTF-8). SRW locks are held
-by `exclusive_lock_t` / `shared_lock_t` for a scope.
+by `exclusive_lock_t` / `shared_lock_t` for a scope. An enumeration in a log line comes out by its name through simple_enum
+(`simple_enum/std_format.hpp` in `runtime.h`); D3D11's own get their bounds in `src/d3d11_enum_names.h`.
 
 ## Files
 
