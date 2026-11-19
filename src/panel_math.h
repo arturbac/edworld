@@ -388,6 +388,18 @@ namespace edworld
     return {left ? margin : width - margin - text_w, top ? margin : height - margin - text_h};
     }
 
+  ///\brief the line `index` of a corner's block of lines, line_h apart: 0 = edworld's own, in the corner; the others
+  /// away from it (above at the bottom corners, below at the top ones) - the other plugins' lines (2026-11-19)
+  [[nodiscard]]
+  constexpr auto corner_line_at(std::uint32_t corner, float width, float height, float text_w, float text_h, float margin, float line_h,
+                                std::uint32_t index) noexcept -> corner_text_t
+    {
+    corner_text_t at{corner_text_at(corner, width, height, text_w, text_h, margin)};
+    bool const top{corner == 1u or corner == 2u};
+    at.y += (top ? 1.f : -1.f) * line_h * static_cast<float>(index);
+    return at;
+    }
+
   // ---- the pad's text (PoC, 2026-10-21) ----
   // After the tower gives a pad, the 2200x1800 HUD surface carries a grey box with "PROCEED TO LANDING PAD n - m:ss" in
   // two lines (in the game's language): x 1170..1579, y 819..899 in three frame dumps of two commanders (Vera Military

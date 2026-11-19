@@ -298,7 +298,9 @@ strong one now: `aurora_activity = 7`, and `aurora_field = 1` on a planet the gu
 
 edworld's name and version stand small and grey in the screen's bottom right corner (`build_info`: 1 top left, 2 top
 right, 3 bottom right, 4 bottom left, 0 none); the log's `build_info:` line says where it went. Without them edworld
-is not running, or found no picture to draw into (`build_info: no swap chain's back buffer ...`).
+is not running, or found no picture to draw into (`build_info: no swap chain's back buffer ...`). With edupscale or
+edwide_screen loaded too, a line for each stands next to edworld's (above it at a bottom corner, below at a top one): its
+version and what it does now (edupscale's technique, edwide_screen's wings), so you see they run.
 
 The log lists `patch: first drawn` at your first charge, `superpower: ... reads Alliance on the panel` (or the
 Federation, the Empire, Independent) for each new destination and `list: N faction(s) ... drawn, from EDSM` (or

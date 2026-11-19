@@ -3664,8 +3664,18 @@ namespace edworld
     other_target_since = false;
     build_info_drawn_qpc = now;
 
-    char text[64];
-    format_into(text, "edworld {}", EDWORLD_VERSION);
+    // edworld's line, then the other plugins' that say theirs (an export <name>_build_info(char *, int) -> its length):
+    // their version and mode, so a player sees that they run (edupscale leaves no blur to tell it by, 2026-11-19)
+    char lines[3][96]{};
+    format_into(lines[0], "edworld {}", EDWORLD_VERSION);
+    std::uint32_t count{1};
+    using build_info_fn = int (*)(char *, int);
+    for(auto const [module, name]: {std::pair{L"edupscale.dll", "edupscale_build_info"}, std::pair{L"edwide_screen.dll", "edwide_screen_build_info"}})
+      if(HMODULE const m{GetModuleHandleW(module)})
+        if(auto const said{reinterpret_cast<build_info_fn>(reinterpret_cast<void *>(GetProcAddress(m, name)))})
+          if(said(lines[count], static_cast<int>(sizeof lines[count])) > 0)
+            lines[count++][sizeof lines[0] - 1] = '\0';
+    char const * const text{lines[0]};
     float const sw{static_cast<float>(d.Width)}, sh{static_cast<float>(d.Height)};
     float const size{std::clamp(std::round(sh * 0.011f), 12.f, 48.f)};
     ImVec2 const extent{r.font->CalcTextSizeA(size, FLT_MAX, 0.f, text)};
@@ -3680,6 +3690,13 @@ namespace edworld
     // grey on a black shadow: readable on a bright planet and on space alike
     dl->AddText(r.font, size, ImVec2{at.x + 1.f, at.y + 1.f}, IM_COL32(0, 0, 0, 200), text);
     dl->AddText(r.font, size, ImVec2{at.x, at.y}, im_colour(0x9aa0a6u), text);
+    for(std::uint32_t i{1}; i < count; ++i)
+      {
+      ImVec2 const w{r.font->CalcTextSizeA(size, FLT_MAX, 0.f, lines[i])};
+      corner_text_t const li{corner_line_at(s.build_info, sw, sh, std::ceil(w.x), size, std::round(size * 0.6f), std::round(size * 1.25f), i)};
+      dl->AddText(r.font, size, ImVec2{li.x + 1.f, li.y + 1.f}, IM_COL32(0, 0, 0, 200), lines[i]);
+      dl->AddText(r.font, size, ImVec2{li.x, li.y}, im_colour(0x9aa0a6u), lines[i]);
+      }
     ImGui::Render();
     {
     state_scope_t const kept{ctx};
@@ -3694,6 +3711,8 @@ namespace edworld
       told_build_info = true;
       log_line("build_info: \"{}\" drawn in corner {} of the back buffer {}x{} (format {})", text, s.build_info, d.Width, d.Height,
                static_cast<unsigned>(d.Format));
+      for(std::uint32_t i{1}; i < count; ++i)
+        log_line("build_info: with \"{}\" (another plugin's)", lines[i]);
       }
     }
   }  // namespace edworld

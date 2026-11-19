@@ -152,6 +152,10 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   4 ms after the last text) `edworld <version>` is drawn into it by ImGui, its height 1.1% of the target's (12 to 48
   px), grey on a one-pixel black shadow, in the corner `build_info` names (`corner_text_at`, panel_math.h). The game's
   draws to the back buffer after that one (small quads in the dumps) come over it.
+  The other plugins' lines: for `edupscale.dll` and `edwide_screen.dll`, when loaded (`GetModuleHandleW`), their
+  export `<name>_build_info(char * text, int size) -> int` (the line, NUL-ended within size; its length, 0 = none) is
+  asked each time, and each line drawn the same way `corner_line_at` (panel_math.h) puts it: 1.25 lines apart, away
+  from the corner. The log names them with the first line.
 - On request, dumps every panel's interface surface: create an empty file `edworld_dump` in the log folder; at
   the next frame each surface is copied and written to `edworld_dumps\<stamp>_<id>_<w>x<h>_f<fmt>_pitch<n>.raw`
   and the trigger file is removed. `tools/dump_to_png.py <dir>` makes PNGs. With the surfaces, each panel draw of

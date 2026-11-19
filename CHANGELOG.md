@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `build_info`: edupscale's and edwide_screen's lines (their version and what they do now) beside edworld's when
+  they are loaded, from their export `<name>_build_info`.
 - simple_enum by CPM (the version of elite_help_tool's): enumerations in the log by their names (the shader stages
   created, the D3D11 blend and depth states); the formats stay numbers.
 - snprintf, swprintf and vsnprintf replaced by `format_into` (std::format_to_n, cut and NUL-terminated as snprintf,
