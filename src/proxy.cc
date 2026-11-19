@@ -28,6 +28,7 @@ extern "C"
 namespace
   {
   using namespace std::string_view_literals;
+  using edworld::wide;
 
   char const * const export_names[]{
 #include "edvr_exports_d3d11.inc"
@@ -125,13 +126,13 @@ namespace
       }
     if(not chained)
       {
-      edworld::log_line("chain: cannot load %S (error %lu); using the system d3d11.dll", path.c_str(), GetLastError());
+      edworld::log_line("chain: cannot load {} (error {}); using the system d3d11.dll", wide(path), GetLastError());
       return;
       }
     auto const create{reinterpret_cast<create_device_fn>(GetProcAddress(chained, "D3D11CreateDevice"))};
     if(not create)
       {
-      edworld::log_line("chain: %S exports no D3D11CreateDevice, ignored", path.c_str());
+      edworld::log_line("chain: {} exports no D3D11CreateDevice, ignored", wide(path));
       FreeLibrary(chained);
       return;
       }
@@ -141,7 +142,7 @@ namespace
       next_create_swap = swap;
     wchar_t loaded[MAX_PATH]{};
     GetModuleFileNameW(chained, loaded, MAX_PATH);
-    edworld::log_line("chain: through %S (%S), %zu export(s) unresolved", path.c_str(), loaded, missing);
+    edworld::log_line("chain: through {} ({}), {} export(s) unresolved", wide(path), wide(loaded), missing);
     }
 
   INIT_ONCE init_once = INIT_ONCE_STATIC_INIT;
@@ -163,14 +164,14 @@ namespace
       std::wstring const log_dir{directory_from(L"EDLOADER_LOG_DIR")};
       edworld::load_settings(directory_from(L"EDLOADER_CONFIG_DIR"), log_dir);
       edworld::log_open(log_dir);
-      edworld::log_line("%S %s, read-only d3d11 observer", edworld::plugin_name, EDWORLD_VERSION);
+      edworld::log_line("{} {}, read-only d3d11 observer", wide(edworld::plugin_name), EDWORLD_VERSION);
       edworld::log_machine();
       edworld::complete_settings(directory_from(L"EDLOADER_CONFIG_DIR"));
       edworld::write_settings_doc();
       }
     catch(std::exception const & e)
       {
-      edworld::log_line("start: %s; edworld runs on what it has", e.what());
+      edworld::log_line("start: {}; edworld runs on what it has", e.what());
       }
     catch(...)
       {
@@ -305,7 +306,7 @@ namespace
         std::snprintf(advice, sizeof advice,
                       "; if edworld draws nothing and this is the game's only device (an antivirus in the game's call), "
                       "add to edworld.ini: creator_pass = %s", by.name);
-      edworld::log_line("%s: hr 0x%08lX, device %s%s, asked by %s%s%s%s", what, static_cast<unsigned long>(hr),
+      edworld::log_line("{}: hr 0x{:08X}, device {}{}, asked by {}{}{}{}", what, static_cast<unsigned long>(hr),
                         made ? "made" : asked ? "asked, none made" : "not asked", nested ? " (nested, not attached)" : "",
                         by.name, past, by.kind == creator_e::foreign ? " from outside the game's folder: not followed" : "",
                         advice);

@@ -100,9 +100,9 @@ namespace edworld
         bytes += n.bytes.size();
         }
       if(not catalog.empty() and not append_to_file(stralgo::stl::merge(dir, L"\\catalog.tsv"sv).c_str(), catalog.data(), catalog.size()))
-        log_line("shaders: catalog.tsv not written whole (error %lu)", GetLastError());
-      log_line("shaders: %u new to edworld_shaders\\%s (%zu bytes), %u there from before; created this session: vs %u ps %u "
-               "cs %u gs %u hs %u ds %u layouts %u", added, game_build_key(), bytes, known,
+        log_line("shaders: catalog.tsv not written whole (error {})", GetLastError());
+      log_line("shaders: {} new to edworld_shaders\\{} ({} bytes), {} there from before; created this session: vs {} ps {} "
+               "cs {} gs {} hs {} ds {} layouts {}", added, game_build_key(), bytes, known,
                created[static_cast<int>(shader_stage_e::vertex)], created[static_cast<int>(shader_stage_e::pixel)],
                created[static_cast<int>(shader_stage_e::compute)], created[static_cast<int>(shader_stage_e::geometry)],
                created[static_cast<int>(shader_stage_e::hull)], created[static_cast<int>(shader_stage_e::domain)],
@@ -127,7 +127,7 @@ namespace edworld
           }
         catch(std::exception const & e)
           {
-          log_line("shaders: the catalog stopped (%s)", e.what());
+          log_line("shaders: the catalog stopped ({})", e.what());
           broken.store(true);
           return 0;
           }
@@ -162,7 +162,7 @@ namespace edworld
         }
       catch(std::exception const & e)
         {
-        log_line("shaders: the catalog stopped (%s)", e.what());
+        log_line("shaders: the catalog stopped ({})", e.what());
         broken.store(true);
         }
       }

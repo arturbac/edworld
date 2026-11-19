@@ -60,7 +60,7 @@ namespace edworld
     {
     static std::atomic<std::uint32_t> failures{};
     if(failures.fetch_add(1) == 0)  // the first one tells; a check failing every frame would flood the log
-      log_line("imgui: check failed: %s (%s:%d); later failures not logged", what, file, line);
+      log_line("imgui: check failed: {} ({}:{}); later failures not logged", what, file, line);
     }
 
   namespace
@@ -216,7 +216,10 @@ namespace edworld
         ok = SUCCEEDED(device->CreateBuffer(&bd, nullptr, &r.gate)) and r.gate;
         }
       r.failed = not ok;
-      log_line(ok ? "patch: resources ready (imgui %s)" : "patch: resources could not be made (imgui %s); no patch", IMGUI_VERSION);
+      if(ok)
+        log_line("patch: resources ready (imgui {})", IMGUI_VERSION);
+      else
+        log_line("patch: resources could not be made (imgui {}); no patch", IMGUI_VERSION);
       return ok;
       }
 
@@ -696,7 +699,7 @@ namespace edworld
         r.list_rtv = nullptr;
         r.list_tex = nullptr;
         if(not r.list_tex_failed)
-          log_line("list: its %ux%u texture could not be made; no list (the emblem still)", w, h);
+          log_line("list: its {}x{} texture could not be made; no list (the emblem still)", w, h);
         r.list_tex_failed = true;
         return false;
         }
@@ -821,7 +824,7 @@ namespace edworld
             bool const holds{s.patch_x >= x0 and s.patch_x <= x1 and s.patch_y >= y0 and s.patch_y <= y1};
             if(holds)
               e.state = panel_draw_t::state_e::jump_panel;
-            log_line("list: a draw (base vertex %d) shows x %.0f..%.0f, y %.0f..%.0f of the surface%s", e.base_vertex,
+            log_line("list: a draw (base vertex {}) shows x {:.0f}..{:.0f}, y {:.0f}..{:.0f} of the surface{}", e.base_vertex,
                      static_cast<double>(x0), static_cast<double>(x1), static_cast<double>(y0), static_cast<double>(y1),
                      holds ? ": the jump panel" : "");
             }
@@ -895,7 +898,7 @@ namespace edworld
       std::swprintf(name, MAX_PATH, L"%ls\\edworld_dumps\\superpower_%llu_%dx%d_pitch%u.raw", settings().dir.c_str(),
                     static_cast<unsigned long long>(destination), text_width, text_height, m.RowPitch);
       if(write_whole_file(name, m.pData, static_cast<std::size_t>(m.RowPitch) * text_height))
-        log_line("superpower: the area read written to %S", name);
+        log_line("superpower: the area read written to {}", wide(name));
       }
 
     ///\brief once a frame while a jump charges: the panel's text copied (this frame) and read (a few frames later,
@@ -940,12 +943,12 @@ namespace edworld
             reading.done = true;
             superpower_reading_t const & x{reading.result};
             if(x.superpower != superpower_e::none)
-              log_line("superpower: %llu reads %s on the panel (label %d px, word %d px, row %d..%d); emblem at y %.0f",
+              log_line("superpower: {} reads {} on the panel (label {} px, word {} px, row {}..{}); emblem at y {:.0f}",
                        static_cast<unsigned long long>(destination), allegiance_name(superpower_allegiance(x.superpower)),
                        x.label_width, x.value_width, x.row_top, x.row_bottom, static_cast<double>(emblem_centre_y(x)));
             else
               {
-              log_line("superpower: %llu: a SUPERPOWER row with a word of no known width (label %d px, word %d px, row %d..%d); no emblem",
+              log_line("superpower: {}: a SUPERPOWER row with a word of no known width (label {} px, word {} px, row {}..{}); no emblem",
                        static_cast<unsigned long long>(destination), x.label_width, x.value_width, x.row_top, x.row_bottom);
               dump_text(m, destination);
               }
@@ -955,7 +958,7 @@ namespace edworld
         if(not reading.done and ++reading.tries >= text_tries)
           {
           reading.done = true;
-          log_line("superpower: %llu: no SUPERPOWER row on the panel in %u frames (no superpower, or the panel hidden); no emblem",
+          log_line("superpower: {}: no SUPERPOWER row on the panel in {} frames (no superpower, or the panel hidden); no emblem",
                    static_cast<unsigned long long>(destination), text_tries);
           }
         if(reading.done)
@@ -1163,13 +1166,13 @@ namespace edworld
     if(listing and list.system != told_list_for)
       {
       told_list_for = list.system;
-      log_line("list: %u faction(s) of %llu drawn, from %s", std::min(list.count, std::max(s.list_rows, 1u)),
+      log_line("list: {} faction(s) of {} drawn, from {}", std::min(list.count, std::max(s.list_rows, 1u)),
                static_cast<unsigned long long>(list.system), list.source == list_source_e::data_source ? "the data source" : "EDSM");
       }
     if(not told_drawing)
       {
       told_drawing = true;
-      log_line("patch: first drawn (%s, %s%s, surface %ux%u, list %s %u)", test ? "test" : "emblem", allegiance_name(allegiance),
+      log_line("patch: first drawn ({}, {}{}, surface {}x{}, list {} {})", test ? "test" : "emblem", allegiance_name(allegiance),
                s.patch_force ? " forced" : "", d.Width, d.Height,
                list.source == list_source_e::data_source ? "from the data source" : list.source == list_source_e::edsm ? "from EDSM" : "none",
                list.count);
@@ -1318,9 +1321,10 @@ namespace edworld
       if(b.blend)
         b.blend->GetDesc(&bd);
       D3D11_RENDER_TARGET_BLEND_DESC const & t{bd.RenderTarget[0]};
-      log_line("list: drawn into format %u%s; the game's blend %s: src %u dest %u op %u, alpha src %u dest %u op %u, mask %x",
+      log_line("list: drawn into format {}{}; the game's blend {}: src {} dest {} op {}, alpha src {} dest {} op {}, mask {:x}",
                static_cast<unsigned>(rd.Format), dsv ? " (with depth)" : "", b.blend ? (t.BlendEnable ? "on" : "off") : "default",
-               t.SrcBlend, t.DestBlend, t.BlendOp, t.SrcBlendAlpha, t.DestBlendAlpha, t.BlendOpAlpha, t.RenderTargetWriteMask);
+               std::to_underlying(t.SrcBlend), std::to_underlying(t.DestBlend), std::to_underlying(t.BlendOp), std::to_underlying(t.SrcBlendAlpha),
+               std::to_underlying(t.DestBlendAlpha), std::to_underlying(t.BlendOpAlpha), as_unsigned(t.RenderTargetWriteMask));
       if(rtv)
         rtv->Release();
       if(dsv)
@@ -1364,7 +1368,7 @@ namespace edworld
     if(not told_list_quad)
       {
       told_list_quad = true;
-      log_line("list: first drawn under the jump panel as a quad of its own (%.0f px of %u)", static_cast<double>(list_used), r.list_height);
+      log_line("list: first drawn under the jump panel as a quad of its own ({:.0f} px of {})", static_cast<double>(list_used), r.list_height);
       }
     }
 
@@ -1663,7 +1667,7 @@ namespace edworld
       static bool was_docked{};
       bool const docked{(f.flags & 1u) != 0u};
       if(docked and not was_docked and planes_look.pad)
-        log_line("hologram: pads' planes at Docked: pad %u of model %u indices, the last plane %+.0f degrees (%s)", planes_look.pad,
+        log_line("hologram: pads' planes at Docked: pad {} of model {} indices, the last plane {:+.0f} degrees ({})", planes_look.pad,
                  planes_look.model, static_cast<double>(planes_look.angle_deg), planes_look.known ? "its number's" : "nearest - to learn");
       if(docked != was_docked)
         planes_look = planes_look_t{};
@@ -1676,8 +1680,8 @@ namespace edworld
           case t1_verdict_e::deviates:
             {
             bool const ok{t1_verdict(t1_look, now) == t1_verdict_e::match};
-            log_line("hologram: T1 check at Docked: pad %u of model %u indices: plane %.1f degrees to the ship's, nose %.1f "
-                     "degrees off the table's - %s", t1_look.pad, t1_look.model, static_cast<double>(t1_look.tilt),
+            log_line("hologram: T1 check at Docked: pad {} of model {} indices: plane {:.1f} degrees to the ship's, nose {:.1f} "
+                     "degrees off the table's - {}", t1_look.pad, t1_look.model, static_cast<double>(t1_look.tilt),
                      static_cast<double>(t1_look.nose_deg), ok ? "agrees" : "DEVIATES from the table");
             t1_note = sphere_note_t{{}, ok ? 0 : 1, now + t1_note_ms};
             std::snprintf(t1_note.text, sizeof t1_note.text, "T1 %s %.0f%s / %.0f%s", ok ? "MATCH" : "DEVIATES",
@@ -1685,7 +1689,7 @@ namespace edworld
             break;
             }
           case t1_verdict_e::no_look:
-            log_line("hologram: T1 check at Docked: pad %u of model %u indices: no look within %llu ms before Docked", t1_look.pad,
+            log_line("hologram: T1 check at Docked: pad {} of model {} indices: no look within {} ms before Docked", t1_look.pad,
                      t1_look.model, t1_check_ms);
             t1_note = sphere_note_t{"T1 NO LOOK", 2, now + t1_note_ms};
             break;
@@ -1705,7 +1709,7 @@ namespace edworld
       if(h.ship)
         {
         if(h.count != logged_ship)
-          log_line("hologram: the target's hologram shows a ship (%u indices): no pad's plane from it", h.count);
+          log_line("hologram: the target's hologram shows a ship ({} indices): no pad's plane from it", h.count);
         logged_ship = h.count;
         return pad_plane_t{};
         }
@@ -1759,11 +1763,11 @@ namespace edworld
         char const * const no_table{h.place == holo_place_e::outpost_t1 and not t1 ? ", no T1 table row for the pad" : ""};
 #if defined(EDWORLD_EHT)
         holo_place_e const theirs{holo_place_of_station_type(f.station_type)};
-        log_line("place: pad %u, model %u indices is %s%s; the data source's %.31s - %s", f.docking_pad, h.count,
+        log_line("place: pad {}, model {} indices is {}{}; the data source's {:.31} - {}", f.docking_pad, h.count,
                  holo_place_name(h.place), no_table, f.station_type[0] != '\0' ? f.station_type : "none",
                  h.place == theirs ? "agrees" : "DEVIATES");
 #else
-        log_line("place: pad %u, model %u indices is %s%s", f.docking_pad, h.count, holo_place_name(h.place), no_table);
+        log_line("place: pad {}, model {} indices is {}{}", f.docking_pad, h.count, holo_place_name(h.place), no_table);
 #endif
         }
       // a place without pads on its hologram, a model not known, a T1 part without the pad's table row: no plane (a vote
@@ -1786,7 +1790,7 @@ namespace edworld
       if(planet and (h.flat.axis < 0 or h.flat.ratio > holo_flat_ratio_max))
         {
         if(log_flat)
-          log_line("hologram: pad %u of model %u indices on a planet: %s - no plane", f.docking_pad, h.count,
+          log_line("hologram: pad {} of model {} indices on a planet: {} - no plane", f.docking_pad, h.count,
                    h.flat.axis < 0 ? "its thinnest axis not known (no fingerprint, or its turn not sure)" : "not flat enough");
         return pad_plane_t{};
         }
@@ -1800,7 +1804,7 @@ namespace edworld
           {
           logged_carrier_grant = f.docking_granted_ms;
           logged_carrier_model = h.count;
-          log_line("hologram: pad %u of carrier model %u indices: no row of its planes - no plane", f.docking_pad, h.count);
+          log_line("hologram: pad {} of carrier model {} indices: no row of its planes - no plane", f.docking_pad, h.count);
           }
         return pad_plane_t{};
         }
@@ -1824,7 +1828,7 @@ namespace edworld
           axes = pick_pad_plane(slab, h.axes, 1000.f, &learned->angle_deg).axes;
           }
         if(log_flat)
-          log_line("hologram: pad %u of model %u indices on a planet: up the model's thinnest axis %c (ratio %.2f)%s",
+          log_line("hologram: pad {} of model {} indices on a planet: up the model's thinnest axis {} (ratio {:.2f}){}",
                    f.docking_pad, h.count, axis_name, static_cast<double>(h.flat.ratio),
                    learned ? ", the pad's plane and the ship's nose confirmed in the form" : ", no direction");
         }
@@ -1837,7 +1841,7 @@ namespace edworld
         if(site_kind_e const kind{site_kind_of(f.destination_name)}; kind != logged_kind)
           {
           logged_kind = kind;
-          log_line("hologram: the destination is %s, by its name", site_kind_name(kind));
+          log_line("hologram: the destination is {}, by its name", site_kind_name(kind));
           }
         float const * const known{learned ? &learned->angle_deg : pad_plane_of_pad(h.table, f.docking_pad)};
         picked_plane_t const cp{pick_pad_plane(*carrier, h.axes, logged_carrier_angle, known)};
@@ -1845,7 +1849,7 @@ namespace edworld
         if(cp.angle_deg != logged_carrier_angle)
           {
           logged_carrier_angle = cp.angle_deg;
-          log_line("hologram: pad %u of model %u indices: the plane at %+.0f degrees (%s)", f.docking_pad, h.count,
+          log_line("hologram: pad {} of model {} indices: the plane at {:+.0f} degrees ({})", f.docking_pad, h.count,
                    static_cast<double>(cp.angle_deg),
                    learned ? (learned->station[0] != '\0' ? "the station's pad, confirmed in the form"
                               : learned->kind != site_kind_e::unknown ? "the pad of its kind of place, confirmed in the form"
@@ -1868,19 +1872,19 @@ namespace edworld
       if(t1 and not logged_table)
         {
         logged_table = true;
-        log_line("hologram: pad %u of model %u indices from the T1 table: up %c%c", f.docking_pad, h.count, t1->up_sign > 0 ? '+' : '-',
+        log_line("hologram: pad {} of model {} indices from the T1 table: up {}{}", f.docking_pad, h.count, t1->up_sign > 0 ? '+' : '-',
                  axis_name);
         }
       if(have and not t1 and not carrier)
         switch(pad_up_vote(vote, axes[0], to_target))
           {
           case pad_up_event_e::decided:
-            log_line("hologram: pad %u up = %c%c of model %u indices, %d of %d votes (weights +%.2f -%.2f)", f.docking_pad,
+            log_line("hologram: pad {} up = {}{} of model {} indices, {} of {} votes (weights +{:.2f} -{:.2f})", f.docking_pad,
                      vote.decided > 0 ? '+' : '-', axis_name, h.count, vote.decided > 0 ? vote.plus : vote.minus,
                      vote.plus + vote.minus, vote.plus_weight, vote.minus_weight);
             break;
           case pad_up_event_e::turned:
-            log_line("hologram: pad %u up TURNED to %c%c of model %u indices: three strong votes against the decision",
+            log_line("hologram: pad {} up TURNED to {}{} of model {} indices: three strong votes against the decision",
                      f.docking_pad, vote.decided > 0 ? '+' : '-', axis_name, h.count);
             break;
           case pad_up_event_e::none:
@@ -1892,14 +1896,14 @@ namespace edworld
       if(band != logged_band)
         {
         logged_band = band;
-        log_line("hologram: pad %u plane %.1f degrees to the ship's (%s), model %u indices", f.docking_pad, tilt,
+        log_line("hologram: pad {} plane {:.1f} degrees to the ship's ({}), model {} indices", f.docking_pad, tilt,
                  band == 0 ? "green" : band == 1 ? "towards red" : "red", h.count);
         }
       bool const upside_down{pad_upside_down(tilt, up_sign)};
       if(upside_down != logged_upside_down)
         {
         logged_upside_down = upside_down;
-        log_line("hologram: pad %u %s (%.1f degrees)", f.docking_pad, upside_down ? "upside down" : "right way up again", tilt);
+        log_line("hologram: pad {} {} ({:.1f} degrees)", f.docking_pad, upside_down ? "upside down" : "right way up again", tilt);
         }
       compass_direction_t nose{};
       if(t1)
@@ -2335,7 +2339,7 @@ namespace edworld
       cs.approach = s.compass_approach_below > 0.f
                     and approach_view(cs.approach, normal_flight, have, close, f.has_place, a.up, s.compass_approach_below);
       if(cs.approach != was_approach)
-        log_line("compass: the approach view %s (the target %.1f degrees below the wings, %s, %s)", cs.approach ? "on" : "off",
+        log_line("compass: the approach view {} (the target {:.1f} degrees below the wings, {}, {})", cs.approach ? "on" : "off",
                  static_cast<double>(-a.up), close ? "near" : "not near", have ? "read" : "no fresh reading");
       // the right sphere's dome with the left sphere's view from above, never alone (Artur 2026-10-20: both alike)
       bool const cut{cs.approach};
@@ -2631,7 +2635,7 @@ namespace edworld
         log_line("compass: spheres written to edworld_dumps");
         }
       if(not cs.spheres_drawn)
-        log_line("compass: spheres rendered (%ux%u px each)", sphere_w, sphere_h);
+        log_line("compass: spheres rendered ({}x{} px each)", sphere_w, sphere_h);
       cs.spheres_drawn = true;
       }
     }  // namespace
@@ -2843,7 +2847,7 @@ namespace edworld
     if(fresh != cs.was_fresh)
       {
       cs.was_fresh = fresh;
-      log_line("compass: %s (flashes %llu, gated %llu, rejected %llu)", fresh ? "reading" : "no fresh reading, NO DOT",
+      log_line("compass: {} (flashes {}, gated {}, rejected {})", fresh ? "reading" : "no fresh reading, NO DOT",
                static_cast<unsigned long long>(cs.flashes), static_cast<unsigned long long>(cs.gated), static_cast<unsigned long long>(cs.rejected));
       }
     bool const behind{fresh and not c.filled};
@@ -2904,7 +2908,7 @@ namespace edworld
     if(not cs.told)
       {
       cs.told = true;
-      log_line("compass: first drawn (mode %u, surface %ux%u = %.3f of its size at 2160 rows, disc %.0f,%.0f r %.0f, text at %.0f,%.0f; "
+      log_line("compass: first drawn (mode {}, surface {}x{} = {:.3f} of its size at 2160 rows, disc {:.0f},{:.0f} r {:.0f}, text at {:.0f},{:.0f}; "
                "in the settings' pixels)", s.compass, d.Width, d.Height, static_cast<double>(k),
                static_cast<double>(s.compass_x), static_cast<double>(s.compass_y), static_cast<double>(s.compass_radius),
                static_cast<double>(s.compass_text_x), static_cast<double>(s.compass_text_y));
@@ -2918,8 +2922,8 @@ namespace edworld
       cs.last_log = now.QuadPart;
       // the raw reading, plausible or not, and the angles shown (from the last plausible one)
       compass_reading_t const & raw{cs.reading};
-      log_line("compass: %s %s dot %+.2f %+.2f px %u %s hue disc %.0f dot %.0f off %.2f up %+.2f right %+.2f lag %llu | alt %.0f lat %.6f lon %.6f hdg %.0f path %+.2f "
-               "flags %llx dest %u %.40s",
+      log_line("compass: {} {} dot {:+.2f} {:+.2f} px {} {} hue disc {:.0f} dot {:.0f} off {:.2f} up {:+.2f} right {:+.2f} lag {} | alt {:.0f} lat {:.6f} lon {:.6f} hdg {:.0f} path {:+.2f} "
+               "flags {:x} dest {} {:.40}",
                raw.found ? "dot" : "none", raw.filled ? "filled" : "hollow", static_cast<double>(raw.x), static_cast<double>(raw.y), raw.pixels,
                raw.flash ? "flash" : compass_plausible(raw, compass_limits(s)) ? "ok" : "rejected", static_cast<double>(raw.disc_hue),
                static_cast<double>(raw.dot_hue), static_cast<double>(a.off_nose), static_cast<double>(a.up),
@@ -3119,7 +3123,7 @@ namespace edworld
               {
               e.holds[k] = true;
               e.map[k] = *m;
-              log_line("compass: the %s sphere's anchor (%.0f, %.0f) is in a draw of %u indices (base vertex %d), triangle %u",
+              log_line("compass: the {} sphere's anchor ({:.0f}, {:.0f}) is in a draw of {} indices (base vertex {}), triangle {}",
                        k == 0 ? "left" : "right", static_cast<double>(pt[k][0]), static_cast<double>(pt[k][1]), e.index_count, e.base_vertex,
                        t / 3u);
               }
@@ -3259,7 +3263,7 @@ namespace edworld
           if(not told_anchor[k])
             {
             told_anchor[k] = true;
-            log_line("compass: the %s sphere first drawn by its anchor", k == 0u ? "left" : "right");
+            log_line("compass: the {} sphere first drawn by its anchor", k == 0u ? "left" : "right");
             }
           // the sphere's place, logged whenever it moves by more than 1% of its diameter (another ship, another cockpit),
           // so a tester's log tells where the spheres were and how large
@@ -3269,8 +3273,8 @@ namespace edworld
              or std::fabs(place[2] - told_place[k][2]) > tol)
             {
             std::memcpy(told_place[k], place, sizeof place);
-            log_line("compass: the %s sphere's centre at local (%.4f, %.4f, %.4f), compass diameter %.4f, right (%.3f, %.3f) up (%.3f, %.3f), "
-                     "draw of %u indices",
+            log_line("compass: the {} sphere's centre at local ({:.4f}, {:.4f}, {:.4f}), compass diameter {:.4f}, right ({:.3f}, {:.3f}) up ({:.3f}, {:.3f}), "
+                     "draw of {} indices",
                      k == 0u ? "left" : "right", static_cast<double>(place[0]), static_cast<double>(place[1]), static_cast<double>(at->z),
                      static_cast<double>(dl), static_cast<double>(anchor_right[0]), static_cast<double>(anchor_right[1]),
                      static_cast<double>(anchor_up[0]), static_cast<double>(anchor_up[1]), entry->index_count);
@@ -3319,7 +3323,7 @@ namespace edworld
     if(not cs.told_quads and k == 1u)
       {
       cs.told_quads = true;
-      log_line("compass: spheres first drawn as quads on the two 2048x1280 panels (instances from %u)", start_instance);
+      log_line("compass: spheres first drawn as quads on the two 2048x1280 panels (instances from {})", start_instance);
       }
     }
 
@@ -3365,13 +3369,13 @@ namespace edworld
           std::uint32_t const source{flight().docking_pad};
           if(source != 0u)
             {
-            log_line("pad text: read pad %u, the data source's %u - %s", pts.given_pad, source,
+            log_line("pad text: read pad {}, the data source's {} - {}", pts.given_pad, source,
                      source == pts.given_pad ? "agrees" : "DEVIATES");
             pts.compare_from_ms = 0u;
             }
           else if(now - pts.compare_from_ms >= pad_text_compare_ms)
             {
-            log_line("pad text: read pad %u, the data source gave none in %llu s", pts.given_pad,
+            log_line("pad text: read pad {}, the data source gave none in {} s", pts.given_pad,
                      static_cast<unsigned long long>(pad_text_compare_ms / 1000u));
             pts.compare_from_ms = 0u;
             }
@@ -3392,7 +3396,7 @@ namespace edworld
         return notice;
       pts.given_pad = taken;
       pts.given_ms = granted_ms;
-      log_line("pad text: pad %u read from the notice, %u:%02u left", taken, notice.seconds_left / 60u, notice.seconds_left % 60u);
+      log_line("pad text: pad {} read from the notice, {}:{:02} left", taken, notice.seconds_left / 60u, notice.seconds_left % 60u);
       pad_text_grant(taken, granted_ms);
       if constexpr(with_eht)
         pts.compare_from_ms = now;
@@ -3417,11 +3421,11 @@ namespace edworld
       if(write_whole_file(name, m.pData, static_cast<std::size_t>(m.RowPitch) * pad_box_height))
         {
         ++pts.samples;
-        log_line("pad text: %s; sample %u written to %S (the data source's pad %u)", burst ? "a second on" : "a text in the box",
-                 pts.samples, name, source_pad);
+        log_line("pad text: {}; sample {} written to {} (the data source's pad {})", burst ? "a second on" : "a text in the box",
+                 pts.samples, wide(name), source_pad);
         }
       else
-        log_line("pad text: a text in the box; its sample could not be written to %S", name);
+        log_line("pad text: a text in the box; its sample could not be written to {}", wide(name));
       }
     }  // namespace
 
@@ -3442,7 +3446,7 @@ namespace edworld
       if(not pts.told_scaled)
         {
         pts.told_scaled = true;
-        log_line("pad text: the HUD surface is %ux%u (%.3f of its size at 2160 rows); the pad's number is read at 2200x1800 only",
+        log_line("pad text: the HUD surface is {}x{} ({:.3f} of its size at 2160 rows); the pad's number is read at 2200x1800 only",
                  d.Width, d.Height, static_cast<double>(k));
         }
       tex->Release();
@@ -3498,7 +3502,7 @@ namespace edworld
            and now - pts.shown_ms >= pad_unsure_after_ms)
           {
           pts.unsure_told = true;
-          log_line("pad text: a notice of the tower's, its number unsure (read %u, the least margin %u %%): no pad from it",
+          log_line("pad text: a notice of the tower's, its number unsure (read {}, the least margin {} %): no pad from it",
                    notice.pad, notice.margin);
           if(settings().pad_text_unsure_sample and not settings().pad_text_samples)
             write_pad_sample(m, flight().docking_pad, false);
@@ -3688,7 +3692,7 @@ namespace edworld
     if(not told_build_info)
       {
       told_build_info = true;
-      log_line("build_info: \"%s\" drawn in corner %u of the back buffer %ux%u (format %u)", text, s.build_info, d.Width, d.Height,
+      log_line("build_info: \"{}\" drawn in corner {} of the back buffer {}x{} (format {})", text, s.build_info, d.Width, d.Height,
                static_cast<unsigned>(d.Format));
       }
     }

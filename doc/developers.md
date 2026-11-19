@@ -609,7 +609,10 @@ Presets: `edworld-debug` and `edworld-release` build in `build/<preset>`; `kdev-
 `kdev-edworld-release` are the same without a build directory, for an IDE that chooses its own. The version in
 the log is `git describe` of the tree, taken at each build. `EDWORLD_TESTS` (on) builds the smoke test's programs. stralgo (strings
 put together with its `merge`) and small_vectors come by CPM (`cmake/get_cpm.cmake`) from GitHub; with
-`-DCPM_SOURCE_CACHE=<a filled cache> -DFETCHCONTENT_FULLY_DISCONNECTED=ON` the configure needs no network.
+`-DCPM_SOURCE_CACHE=<a filled cache> -DFETCHCONTENT_FULLY_DISCONNECTED=ON` the configure needs no network. The log: `log_line` takes a `std::format` format checked
+against its arguments when compiled and hands it to `log_vline` (`std::vformat_to` into 2 KB on the stack, the line cut
+there, never thrown; a batch gathers lines as before); a wide string goes in as `wide(...)` (UTF-8). SRW locks are held
+by `exclusive_lock_t` / `shared_lock_t` for a scope.
 
 ## Files
 

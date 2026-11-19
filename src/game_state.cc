@@ -44,9 +44,8 @@ namespace edworld
 
     auto set_list(faction_list_t const & value) -> void
       {
-      AcquireSRWLockExclusive(&list_lock);
+      exclusive_lock_t const hold{list_lock};
       list = value;
-      ReleaseSRWLockExclusive(&list_lock);
       }
 
     ///\brief the whole file, empty when it cannot be read. Windows' own calls, not the CRT's streams: the state thread
@@ -226,10 +225,10 @@ namespace edworld
           }
         }
       else
-        log_line("edsm: request for %llu failed (error %lu)", static_cast<unsigned long long>(system), GetLastError());
+        log_line("edsm: request for {} failed (error {})", static_cast<unsigned long long>(system), GetLastError());
       if(status != 200 and not body.empty())
         {
-        log_line("edsm: status %lu for %llu", status, static_cast<unsigned long long>(system));
+        log_line("edsm: status {} for {}", status, static_cast<unsigned long long>(system));
         body.clear();
         }
       if(request)
@@ -279,7 +278,7 @@ namespace edworld
       if(target_view)
         {
         target_mapped = bytes;
-        log_line("state: reading the data source's target from %S (%lu bytes%s)", path.c_str(), bytes,
+        log_line("state: reading the data source's target from {} ({} bytes{})", wide(path), bytes,
                  bytes < sizeof(target_t) ? ", without factions" : "");
         }
       }
@@ -314,7 +313,7 @@ namespace edworld
           UnmapViewOfFile(target_view);
           target_view = nullptr;
           next_target_try = GetTickCount();
-          log_line("state: the data source's target grew to %u bytes, mapping it again", copy.size);
+          log_line("state: the data source's target grew to {} bytes, mapping it again", copy.size);
           }
         copied = target_mapped;
         return true;
@@ -359,7 +358,7 @@ namespace edworld
       if(surface_view)
         {
         surface_mapped = bytes;
-        log_line("state: reading where the destination stands from %S (%lu bytes%s)", path.c_str(), bytes,
+        log_line("state: reading where the destination stands from {} ({} bytes{})", wide(path), bytes,
                  bytes < sizeof(surface_t) ? ", without the docking grant" : "");
         }
       }
@@ -393,7 +392,7 @@ namespace edworld
           UnmapViewOfFile(surface_view);
           surface_view = nullptr;
           next_surface_try = GetTickCount();
-          log_line("state: the data source's surface grew to %u bytes, mapping it again", copy.size);
+          log_line("state: the data source's surface grew to {} bytes, mapping it again", copy.size);
           }
         // a writer of the first layout says nothing of a grant, whatever its file holds beyond its record
         if(copy.size < sizeof(surface_t))
@@ -459,7 +458,7 @@ namespace edworld
         {
         logged_grant = last.docking_granted_ms;
         if(last.docking_pad != 0u)
-          log_line("state: pad %u given at a %.31s (from %s)", last.docking_pad, granted ? last.station_type : "-",
+          log_line("state: pad {} given at a {:.31} (from {})", last.docking_pad, granted ? last.station_type : "-",
                    granted ? "the data source" : "the HUD's notice");
         else
           log_line("state: no pad given");
@@ -470,14 +469,13 @@ namespace edworld
         {
         std::memcpy(logged, key, sizeof logged);
         if(have)
-          log_line("state: the destination %.63s stands at %.4f, %.4f (from the data source)", last.destination_name,
+          log_line("state: the destination {:.63} stands at {:.4f}, {:.4f} (from the data source)", last.destination_name,
                    last.place_latitude, last.place_longitude);
         else if(last.destination_body != 0u)
-          log_line("state: where the destination %.63s stands is not known", last.destination_name);
+          log_line("state: where the destination {:.63} stands is not known", last.destination_name);
         }
-      AcquireSRWLockExclusive(&flight_lock);
+      exclusive_lock_t const hold{flight_lock};
       flight_now = last;
-      ReleaseSRWLockExclusive(&flight_lock);
       }
 
     // the EDSM request's thread (D13): the destination and whether the data source's allegiance stands, from the state
@@ -505,18 +503,17 @@ namespace edworld
         }
       catch(std::exception const & e)
         {
-        log_line("edsm: the answer for %llu could not be read (%s)", static_cast<unsigned long long>(dest), e.what());
+        log_line("edsm: the answer for {} could not be read ({})", static_cast<unsigned long long>(dest), e.what());
         }
       if(parsed)
         {
         // under the list's lock: a destination chosen meanwhile has cleared the list after storing itself, so the
         // answer for the old one never lands over the new one's
-        AcquireSRWLockExclusive(&list_lock);
+        exclusive_lock_t const hold{list_lock};
         if(dest == destination.load())
           list = from_edsm;
-        ReleaseSRWLockExclusive(&list_lock);
         }
-      log_line("edsm: %llu -> %s, %u faction(s)%s (%zu bytes)", static_cast<unsigned long long>(dest), allegiance_name(a),
+      log_line("edsm: {} -> {}, {} faction(s){} ({} bytes)", static_cast<unsigned long long>(dest), allegiance_name(a),
                from_edsm.count, parsed ? "" : ", answer not read", body.size());
       return 0;
       }
@@ -525,7 +522,7 @@ namespace edworld
       {
       test_fault("thread");  // tools/test.sh: EDWORLD_TEST_FAULT=thread
       std::wstring const path{status_path()};
-      log_line("state: polling %S", path.c_str());
+      log_line("state: polling {}", wide(path));
       std::uint64_t asked{};
       bool last_charging{};
       std::uint64_t target_dest{};
@@ -547,7 +544,7 @@ namespace edworld
           if(dump_known and count != dump_seen and not count.empty())
             {
             full_dump_request.store(true);
-            log_line("dump: asked by the data source (%.20s)", count.c_str());
+            log_line("dump: asked by the data source ({:.20})", count);
             }
           dump_seen = count;
           dump_known = true;
@@ -597,7 +594,7 @@ namespace edworld
           if(now_charging != last_charging)
             {
             last_charging = now_charging;
-            log_line("state: charging %s, destination %llu", now_charging ? "on" : "off", static_cast<unsigned long long>(destination.load()));
+            log_line("state: charging {}, destination {}", now_charging ? "on" : "off", static_cast<unsigned long long>(destination.load()));
             }
           }
         std::uint64_t const dest{destination.load()};
@@ -628,11 +625,11 @@ namespace edworld
               set_list(from_source);
               asked = dest;  // no EDSM for it
               }
-            log_line("state: %llu (%.64s) -> %s, from the data source; factions %s", static_cast<unsigned long long>(dest),
+            log_line("state: {} ({:.64}) -> {}, from the data source; factions {}", static_cast<unsigned long long>(dest),
                      t.name, allegiance_name(a), target_listed ? "listed by it" : "not known to it, EDSM asked for them");
             }
           else
-            log_line("state: %llu (%.64s) unknown to the data source", static_cast<unsigned long long>(dest), t.name);
+            log_line("state: {} ({:.64}) unknown to the data source", static_cast<unsigned long long>(dest), t.name);
           }
         bool const source_silent{not have_target or (not target_answered and GetTickCount() - target_since > 2000)};
         // the list comes from one source whole: what the data source does not list, EDSM lists, the emblem stays the
@@ -659,7 +656,7 @@ namespace edworld
           else
             {
             edsm_busy.store(false);
-            log_line("edsm: no thread for the request (error %lu)", GetLastError());
+            log_line("edsm: no thread for the request (error {})", GetLastError());
             }
           }
         Sleep(100);
@@ -706,18 +703,14 @@ namespace edworld
 
   auto flight() noexcept -> flight_t
     {
-    AcquireSRWLockShared(&flight_lock);
-    flight_t const copy{flight_now};
-    ReleaseSRWLockShared(&flight_lock);
-    return copy;
+    shared_lock_t const hold{flight_lock};
+    return flight_now;
     }
 
   auto destination_factions() noexcept -> faction_list_t
     {
-    AcquireSRWLockShared(&list_lock);
-    faction_list_t const copy{list};
-    ReleaseSRWLockShared(&list_lock);
-    return copy;
+    shared_lock_t const hold{list_lock};
+    return list;
     }
 
   auto allegiance_name(allegiance_e a) noexcept -> char const *

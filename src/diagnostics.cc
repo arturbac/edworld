@@ -61,7 +61,7 @@ namespace edworld
         if(host)
           host(&system, &release);
         log_line(
-          "machine: Wine %s on %s %s, seen as Windows %lu.%lu.%lu",
+          "machine: Wine {} on {} {}, seen as Windows {}.{}.{}",
           wine(),
           system,
           release,
@@ -71,7 +71,7 @@ namespace edworld
         );
         }
       else
-        log_line("machine: Windows %lu.%lu.%lu", v.dwMajorVersion, v.dwMinorVersion, v.dwBuildNumber);
+        log_line("machine: Windows {}.{}.{}", v.dwMajorVersion, v.dwMinorVersion, v.dwBuildNumber);
 
       wchar_t name[128]{};
       DWORD bytes{sizeof name};
@@ -91,7 +91,7 @@ namespace edworld
       if(not GlobalMemoryStatusEx(&memory))
         memory.ullTotalPhys = 0;
       log_line(
-        "machine: processor %s, %lu logical; memory %.1f GB",
+        "machine: processor {}, {} logical; memory {:.1f} GB",
         name[0] ? narrow_t{name}.text : "unknown",
         GetActiveProcessorCount(ALL_PROCESSOR_GROUPS),
         static_cast<double>(memory.ullTotalPhys) / 1073741824.0
@@ -124,15 +124,14 @@ namespace edworld
             LOWORD(umd.LowPart)
           );
         log_line(
-          "machine: card %u: %s (vendor %04X device %04X)%s, %llu MB own memory, driver %s",
+          "machine: card {}: {} (vendor {:04X} device {:04X}){}, {} MB own memory, driver {}",
           i,
           narrow_t{d.Description}.text,
-          d.VendorId,
-          d.DeviceId,
+          as_unsigned(d.VendorId),
+          as_unsigned(d.DeviceId),
           (d.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) ? ", software" : "",
           static_cast<unsigned long long>(d.DedicatedVideoMemory / 1048576u),
-          driver
-        );
+          driver);
         IDXGIOutput * output{};
         for(UINT o{}; SUCCEEDED(adapter->EnumOutputs(o, &output)); ++o)
           {
@@ -143,7 +142,7 @@ namespace edworld
           bool const have{EnumDisplaySettingsW(od.DeviceName, ENUM_CURRENT_SETTINGS, &mode) != FALSE};
           RECT const & r{od.DesktopCoordinates};
           log_line(
-            "machine: card %u display %u: %ldx%ld at %ld,%ld, %lu Hz",
+            "machine: card {} display {}: {}x{} at {},{}, {} Hz",
             i,
             o,
             r.right - r.left,
@@ -183,7 +182,7 @@ namespace edworld
       std::string text;
       if(not read_small_file(stralgo::stl::merge(dir, L'\\', std::wstring_view{name}), text))
         {
-        log_line("graphics: %s: none", shown.text);
+        log_line("graphics: {}: none", shown.text);
         return;
         }
       std::string pairs;
@@ -191,7 +190,7 @@ namespace edworld
       auto const flush{[&]
                        {
                        if(not pairs.empty())
-                         log_line("graphics: %s:%s", shown.text, pairs.c_str());
+                         log_line("graphics: {}:{}", shown.text, pairs);
                        logged = logged or not pairs.empty();
                        pairs.clear();
                        }};
@@ -232,7 +231,7 @@ namespace edworld
         }
       flush();
       if(not logged)
-        log_line("graphics: %s: nothing set", shown.text);
+        log_line("graphics: {}: nothing set", shown.text);
       }
 
     ///\brief `Custom.4.4.fxcfg` -> 4004; 0 for a name not of that shape
@@ -267,7 +266,7 @@ namespace edworld
         {
         while(not start.empty() and (start.back() == '\r' or start.back() == '\n' or start.back() == ' '))
           start.pop_back();
-        log_line("graphics: StartPreset.start: %s", start.c_str());
+        log_line("graphics: StartPreset.start: {}", start);
         }
       WIN32_FIND_DATAW found{};
       HANDLE const search{FindFirstFileW(stralgo::stl::merge(dir, L"\\Custom.*.fxcfg"sv).c_str(), &found)};
@@ -302,7 +301,7 @@ namespace edworld
         }
       catch(std::exception const & e)
         {
-        log_line("machine: stopped (%s)", e.what());
+        log_line("machine: stopped ({})", e.what());
         }
       catch(...)
         {
@@ -321,7 +320,7 @@ namespace edworld
     if(HANDLE const t{CreateThread(nullptr, 0, machine_thread, nullptr, 0, nullptr)})
       CloseHandle(t);
     else
-      log_line("machine: the thread could not be made (error %lu)", GetLastError());
+      log_line("machine: the thread could not be made (error {})", GetLastError());
     }
 
   auto log_device(ID3D11Device * device) noexcept -> void
@@ -346,13 +345,12 @@ namespace edworld
     };
     unsigned const level{static_cast<unsigned>(device->GetFeatureLevel())};
     log_line(
-      "device %p: card %s, feature level %u_%u, flags 0x%X, driver command lists %s",
-      static_cast<void *>(device),
+      "device {}: card {}, feature level {}_{}, flags 0x{:X}, driver command lists {}",
+      static_cast<void const *>(static_cast<void *>(device)),
       card,
       level >> 12u,
       (level >> 8u) & 0xfu,
-      device->GetCreationFlags(),
-      have_threading ? (threading.DriverCommandLists ? "yes" : "no") : "unknown"
-    );
+      as_unsigned(device->GetCreationFlags()),
+      have_threading ? (threading.DriverCommandLists ? "yes" : "no") : "unknown");
     }
   }  // namespace edworld

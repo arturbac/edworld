@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The log through `std::format` (checked when compiled; wide strings as UTF-8) in place of printf's `va_list`; the SRW
+  locks held by scope objects.
 - stralgo (and small_vectors) by CPM, the versions of elite_help_tool's: the settings' notes and the paths put together
   with `merge` in place of `+` chains.
 - **The compass in a coloured EDHM theme:** a pixel is the dot's when its hue is 30 degrees or more from the disc's

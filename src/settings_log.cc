@@ -8,7 +8,6 @@
 #include <atomic>
 #include <cerrno>
 #include <cmath>
-#include <cstdarg>
 #include <cstdio>
 #include <cstring>
 #include <cwchar>
@@ -643,7 +642,7 @@ namespace edworld
     auto log_notes(std::vector<std::string> & notes) noexcept -> void
       {
       for(std::string const & n: notes)
-        log_line("settings: %s", n.c_str());
+        log_line("settings: {}", n);
       notes.clear();
       }
     }  // namespace
@@ -691,11 +690,11 @@ namespace edworld
         }
       live.store(&next, std::memory_order_release);
       settings_serial.fetch_add(1u, std::memory_order_release);
-      log_line("settings: read again: %s", values.c_str());
+      log_line("settings: read again: {}", values);
       }
     catch(std::exception const & e)
       {
-      log_line("settings: the ini not read again: %s", e.what());
+      log_line("settings: the ini not read again: {}", e.what());
       }
     catch(...)
       {
@@ -719,7 +718,7 @@ namespace edworld
       std::FILE * const f{_wfopen(path.c_str(), L"ab")};
       if(not f)
         {
-        log_line("settings: %S cannot be written (error %d); edworld runs on as it is", path.c_str(), errno);
+        log_line("settings: {} cannot be written (error {}); edworld runs on as it is", wide(path), errno);
         return;
         }
       std::string text;
@@ -735,13 +734,13 @@ namespace edworld
       if(path == ini_path)
         ini_written = ini_write_time(ini_path);  // edworld's own addition is no change to read again
       if(written and closed)
-        log_line("settings: %zu added to %S", count, path.c_str());
+        log_line("settings: {} added to {}", count, wide(path));
       else
-        log_line("settings: writing %S failed; edworld runs on as it is", path.c_str());
+        log_line("settings: writing {} failed; edworld runs on as it is", wide(path));
       }
     catch(std::exception const & e)
       {
-      log_line("settings: the ini not completed: %s", e.what());
+      log_line("settings: the ini not completed: {}", e.what());
       }
     catch(...)
       {
@@ -761,16 +760,19 @@ namespace edworld
       std::FILE * const f{_wfopen(path, L"wb")};
       if(not f)
         {
-        log_line("settings: the settings' doc %S cannot be written (error %d)", path, errno);
+        log_line("settings: the settings' doc {} cannot be written (error {})", wide(path), errno);
         return;
         }
       bool const written{std::fwrite(doc.data(), 1, doc.size(), f) == doc.size()};
       bool const closed{std::fclose(f) == 0};
-      log_line(written and closed ? "settings: the settings' doc written to %S" : "settings: writing the settings' doc %S failed", path);
+      if(written and closed)
+        log_line("settings: the settings' doc written to {}", wide(path));
+      else
+        log_line("settings: writing the settings' doc {} failed", wide(path));
       }
     catch(std::exception const & e)
       {
-      log_line("settings: the settings' doc not written: %s", e.what());
+      log_line("settings: the settings' doc not written: {}", e.what());
       }
     catch(...)
       {
@@ -796,7 +798,7 @@ namespace edworld
     log_file = CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
                            OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if(set_aside_failed)
-      log_line("log: the last session's log could not be set aside (error %lu); appending to it", GetLastError());
+      log_line("log: the last session's log could not be set aside (error {}); appending to it", GetLastError());
     log_notes(ini_notes);  // what reading the ini at the start found wrong
     }
 
@@ -805,7 +807,7 @@ namespace edworld
     HANDLE const f{CreateFileW(path, GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr)};
     if(f == INVALID_HANDLE_VALUE)
       {
-      log_line("file: %ls could not be made (error %lu)", path, GetLastError());
+      log_line("file: {} could not be made (error {})", wide(path), GetLastError());
       return false;
       }
     auto const * at{static_cast<char const *>(data)};
@@ -823,7 +825,7 @@ namespace edworld
     if(not ok)
       {
       DeleteFileW(path);
-      log_line("file: %ls not written whole (error %lu); removed", path, error ? error : GetLastError());
+      log_line("file: {} not written whole (error {}); removed", wide(path), error ? error : GetLastError());
       }
     return ok;
     }
@@ -867,58 +869,82 @@ namespace edworld
         }
       __except(code = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER)
         {
-        log_line("thread %s: a fault (exception 0x%08lX%s), %d of %d", name, code, code == 0xE06D7363u ? ", a C++ exception" : "",
+        log_line("thread {}: a fault (exception 0x{:08X}{}), {} of {}", name, as_unsigned(code), code == 0xE06D7363u ? ", a C++ exception" : "",
                  faults + 1, attempts);
         }
       if(faults + 1 < attempts)
         Sleep(1000);
       }
-    log_line("thread %s: stopped after %d fault(s)", name, attempts);
+    log_line("thread {}: stopped after {} fault(s)", name, attempts);
     return 0;
     }
 
-  auto log_line(char const * fmt, ...) noexcept -> void
+  namespace
+    {
+    ///\brief the room a log line is made in, and an output iterator that stops at its end
+    struct cut_buffer_t
+      {
+      char * at;
+      char * end;
+      };
+
+    struct cut_out_t
+      {
+      using difference_type = std::ptrdiff_t;
+      cut_buffer_t * b;
+
+      auto operator*() noexcept -> cut_out_t & { return *this; }
+
+      auto operator=(char c) noexcept -> cut_out_t &
+        {
+        if(b->at != b->end)
+          *b->at++ = c;
+        return *this;
+        }
+
+      auto operator++() noexcept -> cut_out_t & { return *this; }
+
+      auto operator++(int) noexcept -> cut_out_t { return *this; }
+      };
+    }  // namespace
+
+  auto log_vline(std::string_view fmt, std::format_args args) noexcept -> void
     {
     if(log_file == INVALID_HANDLE_VALUE)
       return;
     SYSTEMTIME t;
     GetSystemTime(&t);
     char buf[2048];
-    int n{std::snprintf(
-      buf,
-      sizeof buf,
-      "%04u-%02u-%02uT%02u:%02u:%02u.%03uZ ",
-      t.wYear,
-      t.wMonth,
-      t.wDay,
-      t.wHour,
-      t.wMinute,
-      t.wSecond,
-      t.wMilliseconds
-    )};
-    va_list args;
-    va_start(args, fmt);
-    int const room{static_cast<int>(sizeof buf) - n - 1};  // one byte kept for the line's end
-    int const m{std::vsnprintf(buf + n, static_cast<std::size_t>(room), fmt, args)};
-    va_end(args);
-    // a cut line ends where vsnprintf put its terminator, which the line's end replaces: no NUL in the log
-    n += m < 0 ? 0 : std::min(m, room - 1);
-    buf[n++] = '\n';
+    cut_buffer_t room{buf, buf + sizeof buf - 1};  // one byte kept for the line's end
+    try
+      {
+      std::format_to(cut_out_t{&room}, "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z ", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond,
+                     t.wMilliseconds);
+      std::vformat_to(cut_out_t{&room}, fmt, args);
+      }
+    catch(...)
+      {
+      constexpr std::string_view failed{" (log: the rest of this line could not be formatted)"};
+      for(char const c: failed)
+        if(room.at != room.end)
+          *room.at++ = c;
+      }
+    *room.at++ = '\n';
+    std::size_t const n{static_cast<std::size_t>(room.at - buf)};
     if(log_batch_thread.load(std::memory_order_relaxed) == GetCurrentThreadId())
       {
-      if(log_batch_used + static_cast<std::size_t>(n) > sizeof log_batch)
+      if(log_batch_used + n > sizeof log_batch)
         {
         log_batch_end();  // full: what is gathered goes out, the batch goes on
         log_batch_begin();
         }
-      std::memcpy(log_batch + log_batch_used, buf, static_cast<std::size_t>(n));
-      log_batch_used += static_cast<std::size_t>(n);
+      std::memcpy(log_batch + log_batch_used, buf, n);
+      log_batch_used += n;
       return;
       }
     DWORD written{};
-    AcquireSRWLockExclusive(&log_lock);
+    exclusive_lock_t const hold{log_lock};
     WriteFile(log_file, buf, static_cast<DWORD>(n), &written, nullptr);
-    ReleaseSRWLockExclusive(&log_lock);
     }
 
   auto log_batch_begin() noexcept -> void
@@ -935,9 +961,10 @@ namespace edworld
     if(log_batch_used == 0)
       return;
     DWORD written{};
-    AcquireSRWLockExclusive(&log_lock);
-    WriteFile(log_file, log_batch, static_cast<DWORD>(log_batch_used), &written, nullptr);
-    ReleaseSRWLockExclusive(&log_lock);
+      {
+      exclusive_lock_t const hold{log_lock};
+      WriteFile(log_file, log_batch, static_cast<DWORD>(log_batch_used), &written, nullptr);
+      }
     log_batch_used = 0;
     }
   }  // namespace edworld

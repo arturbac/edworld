@@ -266,8 +266,8 @@ namespace edworld
                                            f = c + 1;
                                        return f;
                                      }()};
-        log_line("hooks: a fault caught (exception 0x%08lX%s at %ls+0x%llx); fault %u of 8 before the hooks stop",
-                 static_cast<unsigned long>(r.ExceptionCode), r.ExceptionCode == 0xE06D7363u ? ", a C++ exception" : "", file,
+        log_line("hooks: a fault caught (exception 0x{:08X}{} at {}+0x{:x}); fault {} of 8 before the hooks stop",
+                 static_cast<unsigned long>(r.ExceptionCode), r.ExceptionCode == 0xE06D7363u ? ", a C++ exception" : "", wide(file),
                  static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(r.ExceptionAddress) - reinterpret_cast<std::uintptr_t>(m)),
                  faults.load() + 1u);
         }
@@ -515,13 +515,12 @@ namespace edworld
       else if(asked == 2)
         why = "; context_hook = 2";
       log_line(
-        "context: %s (%zu of its first %zu methods are the system d3d11.dll's, %zu in its table%s)",
+        "context: {} ({} of its first {} methods are the system d3d11.dll's, {} in its table{})",
         own ? "a table of edworld's own, each call through the runtime's entry as it is then" : "its own table patched in place",
         in_system,
         sample,
         count,
-        why
-      );
+        why);
       return own ? context_hook_e::own_table : context_hook_e::in_place;
       }
 
@@ -552,13 +551,13 @@ namespace edworld
       void ** const entries{make_own_table(table, count)};
       if(not entries)
         {
-        log_line("context: the memory for a table of edworld's own could not be had (error %lu); patched in place",
+        log_line("context: the memory for a table of edworld's own could not be had (error {}); patched in place",
                  GetLastError());
         return false;
         }
       if(own_table.entries)
-        log_line("context: another context table (%p after %p): a new table of edworld's own, the latest device wins",
-                 static_cast<void *>(table), static_cast<void *>(own_table.runtime));
+        log_line("context: another context table ({} after {}): a new table of edworld's own, the latest device wins",
+                 static_cast<void const *>(static_cast<void *>(table)), static_cast<void const *>(static_cast<void *>(own_table.runtime)));
       own_table = own_table_t{table, entries, count};
       own_watched = 0;
       return true;
@@ -582,7 +581,7 @@ namespace edworld
         }
       multithread_at_start = mt->GetMultithreadProtected() != FALSE;
       multithread.store(mt);  // kept for the process lifetime
-      log_line("context: the multithread protection is %s at the start", multithread_at_start ? "on" : "off");
+      log_line("context: the multithread protection is {} at the start", multithread_at_start ? "on" : "off");
       }
 
     // ---- the published record (edworld_eht) ----
@@ -605,21 +604,21 @@ namespace edworld
       )};
       if(file == INVALID_HANDLE_VALUE)
         {
-        log_line("share: cannot open %S (error %lu); not publishing", path.c_str(), GetLastError());
+        log_line("share: cannot open {} (error {}); not publishing", wide(path), GetLastError());
         return;
         }
       HANDLE const mapping{CreateFileMappingW(file, nullptr, PAGE_READWRITE, 0, sizeof(share_t), nullptr)};
       CloseHandle(file);
       if(not mapping)
         {
-        log_line("share: cannot map %S (error %lu); not publishing", path.c_str(), GetLastError());
+        log_line("share: cannot map {} (error {}); not publishing", wide(path), GetLastError());
         return;
         }
       share = static_cast<share_t *>(MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(share_t)));
       CloseHandle(mapping);
       if(not share)
         {
-        log_line("share: cannot view %S (error %lu); not publishing", path.c_str(), GetLastError());
+        log_line("share: cannot view {} (error {}); not publishing", wide(path), GetLastError());
         return;
         }
       std::memset(share, 0, sizeof(share_t));
@@ -627,7 +626,7 @@ namespace edworld
       share->version = share_version;
       share->size = sizeof(share_t);
       share->writer_pid = GetCurrentProcessId();
-      log_line("share: publishing to %S (%zu bytes)", path.c_str(), sizeof(share_t));
+      log_line("share: publishing to {} ({} bytes)", wide(path), sizeof(share_t));
       }
 #endif
 
@@ -745,7 +744,7 @@ namespace edworld
     auto log_summary(slot_t const & slot, mapped_t const & m) noexcept -> void
       {
       log_line(
-        "frame %llu: %u panel draw(s); totals draws %llu published %llu dropped %llu full %llu faults %u vs %llu pool %u",
+        "frame {}: {} panel draw(s); totals draws {} published {} dropped {} full {} faults {} vs {} pool {}",
         static_cast<unsigned long long>(slot.frame),
         slot.count,
         static_cast<unsigned long long>(stat_draws),
@@ -762,7 +761,7 @@ namespace edworld
         describe(slot, m, i, p);
         auto const ndc{clip_to_ndc(p.anchor_clip)};
         log_line(
-          "  #%u vs%u surf %08llx %ux%u n%u inst%u rec%s%u pos %.3f %.3f %.3f s%.3f anchor %s %.4f %.4f w %.4f",
+          "  #{} vs{} surf {:08x} {}x{} n{} inst{} rec{}{} pos {:.3f} {:.3f} {:.3f} s{:.3f} anchor {} {:.4f} {:.4f} w {:.4f}",
           i,
           p.vs_index,
           static_cast<unsigned long long>(p.surface_id & 0xffffffffull),
@@ -899,7 +898,7 @@ namespace edworld
               }
             catch(std::exception const & e)
               {
-              log_line("dump: %S without its context (%s)", item->path, e.what());
+              log_line("dump: {} without its context ({})", wide(item->path), e.what());
               }
           if(item->context and context.empty())
             {
@@ -911,9 +910,9 @@ namespace edworld
                                 : write_whole_file(item->path, item + 1, item->bytes))
             {
             if(item->rename_to[0] and not MoveFileExW(item->path, item->rename_to, MOVEFILE_REPLACE_EXISTING))
-              log_line("dump: %S could not replace %S (error %lu)", item->path, item->rename_to, GetLastError());
+              log_line("dump: {} could not replace {} (error {})", wide(item->path), wide(item->rename_to), GetLastError());
             else if(item->loud)
-              log_line("dump: wrote %S", item->path);
+              log_line("dump: wrote {}", wide(item->path));
             }
           _aligned_free(item);
           writes_done.fetch_add(1, std::memory_order_release);
@@ -945,7 +944,7 @@ namespace edworld
             writer_running = true;
             }
           else
-            log_line("dump: the writer thread could not start (error %lu); nothing is written", GetLastError());
+            log_line("dump: the writer thread could not start (error {}); nothing is written", GetLastError());
           return TRUE;
           },
         nullptr,
@@ -956,7 +955,7 @@ namespace edworld
       auto * item{static_cast<write_item_t *>(_aligned_malloc(sizeof(write_item_t) + bytes, MEMORY_ALLOCATION_ALIGNMENT))};
       if(not item)
         {
-        log_line("dump: %S not written (no memory for %u bytes)", path, bytes);
+        log_line("dump: {} not written (no memory for {} bytes)", wide(path), bytes);
         return false;
         }
       std::memset(item, 0, sizeof(write_item_t));
@@ -1009,7 +1008,7 @@ namespace edworld
           {
           dump_armed = false;
           DeleteFileW(trigger_path().c_str());
-          log_line("dump: %u surface(s) queued", dumped_count);
+          log_line("dump: {} surface(s) queued", dumped_count);
           }
         return;
         }
@@ -1027,7 +1026,7 @@ namespace edworld
       std::snprintf(dump_stamp, sizeof dump_stamp, "%04u%02u%02uT%02u%02u%02u_%03uZ", t.wYear, t.wMonth, t.wDay, t.wHour,
                     t.wMinute, t.wSecond, t.wMilliseconds);
       CreateDirectoryW(stralgo::stl::merge(settings().dir, L"\\edworld_dumps"sv).c_str(), nullptr);
-      log_line("dump: armed (%s)", dump_stamp);
+      log_line("dump: armed ({})", dump_stamp);
       }
 
     auto queue_dump(ID3D11DeviceContext * ctx) noexcept -> void
@@ -1066,7 +1065,7 @@ namespace edworld
       if(d.SampleDesc.Count != 1 or d.ArraySize != 1)
         {
         tex->Release();
-        log_line("dump: surface %08llx %ux%u skipped (samples %u, array %u)", static_cast<unsigned long long>(id & 0xffffffffull),
+        log_line("dump: surface {:08x} {}x{} skipped (samples {}, array {})", static_cast<unsigned long long>(id & 0xffffffffull),
                  d.Width, d.Height, d.SampleDesc.Count, d.ArraySize);
         return;
         }
@@ -1120,7 +1119,7 @@ namespace edworld
           immediate.load()->Unmap(p.staging, 0);
           }
         else
-          log_line("dump: surface %08llx lost (hr 0x%08lX)", static_cast<unsigned long long>(p.id & 0xffffffffull),
+          log_line("dump: surface {:08x} lost (hr 0x{:08X})", static_cast<unsigned long long>(p.id & 0xffffffffull),
                    static_cast<unsigned long>(hr));
         p.staging->Release();
         }
@@ -1166,7 +1165,7 @@ namespace edworld
           immediate.load()->Unmap(p.staging, 0);
           }
         else
-          log_line("dump: buffer %s lost (hr 0x%08lX)", p.name, static_cast<unsigned long>(hr));
+          log_line("dump: buffer {} lost (hr 0x{:08X})", p.name, static_cast<unsigned long>(hr));
         p.staging->Release();
         }
       pending_buffer_count = kept;
@@ -1182,7 +1181,7 @@ namespace edworld
       source->GetDesc(&bd);
       if(from >= bd.ByteWidth)
         {
-        log_line("dump: %s starts past its buffer (%llu of %u)", name, static_cast<unsigned long long>(from), bd.ByteWidth);
+        log_line("dump: {} starts past its buffer ({} of {})", name, static_cast<unsigned long long>(from), bd.ByteWidth);
         return;
         }
       bytes = std::min<std::uint64_t>(bytes, bd.ByteWidth - from);
@@ -1203,8 +1202,8 @@ namespace edworld
       std::snprintf(p.name, sizeof p.name, "%s", name);
       p.qpc = qpc_now();
       if(loud)
-        log_line("dump: %s = %u byte(s) from %llu of a buffer of %u (stride %u, bind 0x%x, misc 0x%x)", name, p.bytes,
-               static_cast<unsigned long long>(from), bd.ByteWidth, bd.StructureByteStride, bd.BindFlags, bd.MiscFlags);
+        log_line("dump: {} = {} byte(s) from {} of a buffer of {} (stride {}, bind 0x{:x}, misc 0x{:x})", name, p.bytes,
+               static_cast<unsigned long long>(from), bd.ByteWidth, bd.StructureByteStride, as_unsigned(bd.BindFlags), as_unsigned(bd.MiscFlags));
       }
 
     // ---- the atmosphere read off the game's shell of it (both builds since 2026-11-11): every clouds_kind_read_s
@@ -1288,15 +1287,13 @@ namespace edworld
       atmosphere_note_t const note{atmosphere_planet_note(atmo_planets, radius, closeness, kind, volcanic, cold, now)};
       atmosphere_planet_t const & planet{atmo_planets.slot[note.index]};
       if(note.fresh or note.changed)
-        log_line("clouds: the planet of radius %.0f m is %.*s (r/g %.4f b/g %.4f)", double(radius),
-                 found ? static_cast<int>(found->name.size()) : 7, found ? found->name.data() : "unknown", double(hue.r_g),
-                 double(hue.b_g));
+        log_line("clouds: the planet of radius {:.0f} m is {} (r/g {:.4f} b/g {:.4f})", double(radius),
+                 found ? std::string_view{found->name} : "unknown"sv, double(hue.r_g), double(hue.b_g));
       else if(note.held and (planet.other_reads == 1u or note.first_unknown))
         {
         std::string_view const kept{atmo_kind_name(planet.kind)};
-        log_line("clouds: the planet of radius %.0f m stays %.*s (a read gave %.*s, r/g %.4f b/g %.4f)", double(radius),
-                 static_cast<int>(kept.size()), kept.data(), found ? static_cast<int>(found->name.size()) : 7,
-                 found ? found->name.data() : "unknown", double(hue.r_g), double(hue.b_g));
+        log_line("clouds: the planet of radius {:.0f} m stays {} (a read gave {}, r/g {:.4f} b/g {:.4f})", double(radius),
+                 std::string_view{kept}, found ? std::string_view{found->name} : "unknown"sv, double(hue.r_g), double(hue.b_g));
         }
       // the planet the clouds are for: the nearest of those read lately
       if(atmosphere_planet_t const * const closest{atmosphere_planet_nearest(atmo_planets, now)})
@@ -1333,21 +1330,21 @@ namespace edworld
                                     nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr)};
       if(file == INVALID_HANDLE_VALUE)
         {
-        log_line("atmo: cannot open %S (error %lu); not publishing", path.c_str(), GetLastError());
+        log_line("atmo: cannot open {} (error {}); not publishing", wide(path), GetLastError());
         return nullptr;
         }
       HANDLE const mapping{CreateFileMappingW(file, nullptr, PAGE_READWRITE, 0, sizeof(atmosphere_t), nullptr)};
       CloseHandle(file);
       if(not mapping)
         {
-        log_line("atmo: cannot map %S (error %lu); not publishing", path.c_str(), GetLastError());
+        log_line("atmo: cannot map {} (error {}); not publishing", wide(path), GetLastError());
         return nullptr;
         }
       auto * const view{static_cast<atmosphere_t *>(MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(atmosphere_t)))};
       CloseHandle(mapping);
       if(not view)
         {
-        log_line("atmo: cannot view %S (error %lu); not publishing", path.c_str(), GetLastError());
+        log_line("atmo: cannot view {} (error {}); not publishing", wide(path), GetLastError());
         return nullptr;
         }
       std::memset(view, 0, sizeof(atmosphere_t));
@@ -1356,7 +1353,7 @@ namespace edworld
       view->size = sizeof(atmosphere_t);
       atmo_share = view;
       atmo_share_failed = false;
-      log_line("atmo: publishing each read's print to %S (%zu bytes)", path.c_str(), sizeof(atmosphere_t));
+      log_line("atmo: publishing each read's print to {} ({} bytes)", wide(path), sizeof(atmosphere_t));
       return view;
       }
 
@@ -1403,8 +1400,8 @@ namespace edworld
         return;
       atmo_misses_t const & m{atmo_misses};
       if(m.small_target or m.no_table or m.odd_table or m.radius_off)
-        log_line("atmo: no read of the shell got through in a minute: a small target %u, no table %u, a table of more "
-                 "samples or layers %u, the radius not the planet's %u (the last radius %.0f m, distance %.0f km)",
+        log_line("atmo: no read of the shell got through in a minute: a small target {}, no table {}, a table of more "
+                 "samples or layers {}, the radius not the planet's {} (the last radius {:.0f} m, distance {:.0f} km)",
                  m.small_target, m.no_table, m.odd_table, m.radius_off, double(m.radius), double(m.distance) / 1000.0);
       atmo_misses = atmo_misses_t{};
       atmo_misses_since = now;
@@ -1453,7 +1450,7 @@ namespace edworld
           t.day_s = static_cast<float>(day);
           t.spin = turn.about_y > 0. ? 1.f : -1.f;
           if(news)
-            log_line("clouds: the planet of radius %.0f m turns in %.2f h (about %sy)", double(radius), day / 3600.,
+            log_line("clouds: the planet of radius {:.0f} m turns in {:.2f} h (about {}y)", double(radius), day / 3600.,
                      turn.about_y > 0. ? "+" : "-");
           }
         t.day = turn.ok ? day : 0.;
@@ -1518,7 +1515,7 @@ namespace edworld
         if(index != snow_bench_logged)
           {
           snow_bench_logged = index;
-          log_line("snow bench: %s from now, for 10 s", step.name);
+          log_line("snow bench: {} from now, for 10 s", step.name);
           }
         }
       else if(snow_bench_from >= 0.0)
@@ -1607,17 +1604,17 @@ namespace edworld
         atmo_cyclones_count = r.storms.count;
         atmo_cyclones_day = day;
         if(day)
-          log_line("clouds: %u storm(s) on the planet of radius %.0f m, R/L %.2f (day %.2f h)", r.storms.count, double(p.radius),
+          log_line("clouds: {} storm(s) on the planet of radius {:.0f} m, R/L {:.2f} (day {:.2f} h)", r.storms.count, double(p.radius),
                    double(r.rossby), double(p.day_s) / 3600.);
         else
-          log_line("clouds: the storms of the planet of radius %.0f m wait for its day", double(p.radius));
+          log_line("clouds: the storms of the planet of radius {:.0f} m wait for its day", double(p.radius));
         }
       if(r.aurora_on and (atmo_aurora_radius != p.radius or atmo_aurora_day != day or atmo_aurora_field != r.aurora.field))
         {
         atmo_aurora_radius = p.radius;
         atmo_aurora_day = day;
         atmo_aurora_field = r.aurora.field;
-        log_line("aurora: the planet of radius %.0f m %s, the dipole leaning %.0f degrees, substorms each %.1f h, K %.1f now, %.0f..%.0f km high%s",
+        log_line("aurora: the planet of radius {:.0f} m {}, the dipole leaning {:.0f} degrees, substorms each {:.1f} h, K {:.1f} now, {:.0f}..{:.0f} km high{}",
                  double(p.radius), r.aurora.field ? "has a field of its own" : "has no field of its own (a faint glow only)",
                  double(r.aurora.lean_deg), double(r.aurora.substorm_s) / 3600., double(r.level), double(r.height.floor * p.radius) / 1000.,
                  double(r.height.ceiling * p.radius) / 1000., day ? "" : " (its day not read yet)");
@@ -1893,7 +1890,7 @@ namespace edworld
         else
           {
           atmo_thread_up.store(false);
-          log_line("atmo: no thread of its own (error %lu); the reads are worked out on the render thread", GetLastError());
+          log_line("atmo: no thread of its own (error {}); the reads are worked out on the render thread", GetLastError());
           }
         }
       atmo_job.started = GetTickCount64();
@@ -1923,7 +1920,7 @@ namespace edworld
           return;
         ++atmo_dropped;
         atmo_thread_up.store(false);
-        log_line("atmo: a read not worked out in 10 s, dropped (%u so far); the reads are worked out on the render thread "
+        log_line("atmo: a read not worked out in 10 s, dropped ({} so far); the reads are worked out on the render thread "
                  "from now on", atmo_dropped);
         }
       else if(state == atmo_job_e::done)
@@ -1961,7 +1958,7 @@ namespace edworld
         return;
       if(FAILED(hr))
         {
-        log_line("atmo: %s lost (hr 0x%08lX)", p.stamp, static_cast<unsigned long>(hr));
+        log_line("atmo: {} lost (hr 0x{:08X})", p.stamp, static_cast<unsigned long>(hr));
         atmo_release(p);
         return;
         }
@@ -2121,10 +2118,10 @@ namespace edworld
       std::swprintf(name, MAX_PATH, L"%ls\\%hs.atmo", folder.c_str(), j.stamp);
       queue_write(name, atmo_record, static_cast<std::uint32_t>(at - atmo_record));
       atmosphere_print_t const * kind{atmosphere_kind_of(j.hue)};
-      log_line("atmo: %s radius %.0f m, distance %.0f km (band %u), t0 %016llx %ux%u f%u%s, kind %.*s (r/g %.4f b/g %.4f)",
+      log_line("atmo: {} radius {:.0f} m, distance {:.0f} km (band {}), t0 {:016x} {}x{} f{}{}, kind {} (r/g {:.4f} b/g {:.4f})",
                j.stamp, double(j.radius), double(j.distance) / 1000.0, j.band, static_cast<unsigned long long>(table), j.width,
-               j.height, j.format, new_table ? " (new table)" : "", kind ? static_cast<int>(kind->name.size()) : 7,
-               kind ? kind->name.data() : "unknown", double(j.hue.r_g), double(j.hue.b_g));
+               j.height, j.format, new_table ? " (new table)" : "", kind ? std::string_view{kind->name} : "unknown"sv,
+               double(j.hue.r_g), double(j.hue.b_g));
 #endif
       }
 
@@ -2204,7 +2201,7 @@ namespace edworld
       ID3D11Texture2D * staging{};
       if(FAILED(device->CreateTexture2D(&sd, nullptr, &staging)) or not staging)
         {
-        log_line("dump: checkpoint before a%u not made (no staging %ux%u f%u)", a, d.Width, d.Height, static_cast<unsigned>(d.Format));
+        log_line("dump: checkpoint before a{} not made (no staging {}x{} f{})", a, d.Width, d.Height, static_cast<unsigned>(d.Format));
         return;
         }
       ctx->CopySubresourceRegion(staging, 0, 0, 0, 0, tex, 0, nullptr);
@@ -2281,7 +2278,7 @@ namespace edworld
         queue_write(stralgo::stl::merge(done, L".part"sv).c_str(), text, static_cast<std::uint32_t>(n), false, done.c_str());
         }
 #endif
-      log_line("dump: whole frame's files queued (%u written of %u so far)", writes_done.load(), writes_queued.load());
+      log_line("dump: whole frame's files queued ({} written of {} so far)", writes_done.load(), writes_queued.load());
       }
 
     auto full_trigger_path() -> std::wstring { return stralgo::stl::merge(settings().dir, L"\\edworld_dump_all"sv); }
@@ -2309,12 +2306,12 @@ namespace edworld
             full_prev_rt = nullptr;
             }
           DeleteFileW(full_trigger_path().c_str());
-          log_line("dump: whole frame %llu, %u draw(s) recorded", static_cast<unsigned long long>(full_frame), full_draws);
+          log_line("dump: whole frame {}, {} draw(s) recorded", static_cast<unsigned long long>(full_frame), full_draws);
           std::uint32_t contexts{};
           for(std::atomic<ID3D11DeviceContext *> const & slot: full_other)
             contexts += slot.load(std::memory_order_relaxed) ? 1u : 0u;
-          log_line("dump: the frame ended %.2f ms after arming, at a draw after a gap of %lld us (frame_gap_us %u); "
-                   "draws of other contexts meanwhile %u in %u context(s)%s (not recorded)",
+          log_line("dump: the frame ended {:.2f} ms after arming, at a draw after a gap of {} us (frame_gap_us {}); "
+                   "draws of other contexts meanwhile {} in {} context(s){} (not recorded)",
                    static_cast<double>(now - full_armed_qpc) * 1000.0 / static_cast<double>(qpc_frequency),
                    frame_gap_qpc * 1000000 / qpc_frequency, settings().frame_gap_us, full_other_draws.load(), contexts,
                    full_other_more.load() ? " and more" : "");
@@ -2357,7 +2354,7 @@ namespace edworld
       std::snprintf(dump_stamp, sizeof dump_stamp, "%04u%02u%02uT%02u%02u%02u_%03uZ", t.wYear, t.wMonth, t.wDay, t.wHour,
                     t.wMinute, t.wSecond, t.wMilliseconds);
       CreateDirectoryW(stralgo::stl::merge(settings().dir, L"\\edworld_dumps"sv).c_str(), nullptr);
-      log_line("dump: whole frame armed (%s)", dump_stamp);
+      log_line("dump: whole frame armed ({})", dump_stamp);
       }
 
     auto holo_end_laying_over() noexcept -> void;
@@ -2376,7 +2373,7 @@ namespace edworld
         if(settings().log_interval_ms and (now - last_log_qpc) * 1000 / qpc_frequency >= settings().log_interval_ms)
           {
           last_log_qpc = now;
-          log_line("frame %llu: totals draws %llu faults %u vs %llu", static_cast<unsigned long long>(frame),
+          log_line("frame {}: totals draws {} faults {} vs {}", static_cast<unsigned long long>(frame),
                    static_cast<unsigned long long>(stat_draws), faults.load(), static_cast<unsigned long long>(vs_created.load()));
           }
         }
@@ -2452,7 +2449,7 @@ namespace edworld
       std::uint32_t const g{geometry_draws++};
       surface_cache_t surface{};
       surface_of(ctx, surface);
-      log_line("dump: g%u draw: indices %u from %u, base vertex %d, instances %u from %u, surface %08llx %ux%u", g,
+      log_line("dump: g{} draw: indices {} from {}, base vertex {}, instances {} from {}, surface {:08x} {}x{}", g,
                index_count, start_index, base_vertex, instance_count, start_instance,
                static_cast<unsigned long long>(reinterpret_cast<std::uint64_t>(surface.resource) & 0xffffffffull),
                surface.width, surface.height);
@@ -2916,8 +2913,8 @@ namespace edworld
         verdict[seen].store(verdict_e::panel, std::memory_order_relaxed);
       std::uint64_t const hash{seen < max_vs_seen ? seen_hash[seen] : 0};
       bool const ok{watch(vs, static_cast<std::uint32_t>(settings().watch_vs.size()), true)};
-      log_line("vs %016llX (%p) draws a panel surface (PS t%u %ux%u) and is not in watch_vs: %s (%s)",
-               static_cast<unsigned long long>(hash), vs, slot, w, h, ok ? "watched from now on" : "watched list full", how);
+      log_line("vs {:016X} ({}) draws a panel surface (PS t{} {}x{}) and is not in watch_vs: {} ({})",
+               static_cast<unsigned long long>(hash), static_cast<void const *>(vs), slot, w, h, ok ? "watched from now on" : "watched list full", how);
       }
 
     ///\brief a draw of a shader whose verdict is pending: a panel surface makes it watched; enough draws without, no panel
@@ -3075,21 +3072,21 @@ namespace edworld
                                     nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr)};
       if(file == INVALID_HANDLE_VALUE)
         {
-        log_line("galmap: cannot open %S (error %lu); not publishing", path.c_str(), GetLastError());
+        log_line("galmap: cannot open {} (error {}); not publishing", wide(path), GetLastError());
         return nullptr;
         }
       HANDLE const mapping{CreateFileMappingW(file, nullptr, PAGE_READWRITE, 0, sizeof(galmap_t), nullptr)};
       CloseHandle(file);
       if(not mapping)
         {
-        log_line("galmap: cannot map %S (error %lu); not publishing", path.c_str(), GetLastError());
+        log_line("galmap: cannot map {} (error {}); not publishing", wide(path), GetLastError());
         return nullptr;
         }
       auto * const view{static_cast<galmap_t *>(MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(galmap_t)))};
       CloseHandle(mapping);
       if(not view)
         {
-        log_line("galmap: cannot view %S (error %lu); not publishing", path.c_str(), GetLastError());
+        log_line("galmap: cannot view {} (error {}); not publishing", wide(path), GetLastError());
         return nullptr;
         }
       std::memset(view, 0, sizeof(galmap_t));
@@ -3098,7 +3095,7 @@ namespace edworld
       view->size = sizeof(galmap_t);
       g.share = view;
       g.share_failed = false;
-      log_line("galmap: publishing the galaxy map's names to %S (%zu bytes)", path.c_str(), sizeof(galmap_t));
+      log_line("galmap: publishing the galaxy map's names to {} ({} bytes)", wide(path), sizeof(galmap_t));
       return view;
       }
 
@@ -3252,7 +3249,7 @@ namespace edworld
         char hex[galmap_zones_x * galmap_zones_y * 3 + 1]{};
         for(std::size_t i{}; i != zones.size(); ++i)
           std::snprintf(hex + i * 3, 4, "%02x ", zones[i]);
-        log_line("galmap: a glyph not known yet at %d,%d %dx%d (nearest %u apart): %s", u0, v0, u1 - u0, v1 - v0, m.distance, hex);
+        log_line("galmap: a glyph not known yet at {},{} {}x{} (nearest {} apart): {}", u0, v0, u1 - u0, v1 - v0, m.distance, hex);
         }
       return m.c;
       }
@@ -3378,8 +3375,8 @@ namespace edworld
         std::string first;
         for(std::size_t i{}; i != std::min<std::size_t>(names.size(), 4u); ++i)
           first += (i ? ", " : "") + names[i];
-        log_line("galmap: %zu name(s) from %u text draw(s), %u glyph(s) not known yet: %s%s", names.size(), g.draw_count, unknown,
-                 first.c_str(), names.size() > 4u ? ", ..." : "");
+        log_line("galmap: {} name(s) from {} text draw(s), {} glyph(s) not known yet: {}{}", names.size(), g.draw_count, unknown,
+                 first, names.size() > 4u ? ", ..." : "");
         }
       return true;
       }
@@ -3491,7 +3488,7 @@ namespace edworld
         probe_started_ms = now;
         probe_lines = 0;
         probe_surface_draws = 0;
-        log_line("probe: a jump charges, no panel draw for over 1 s; looking at the draws for %u ms", probe_window_ms);
+        log_line("probe: a jump charges, no panel draw for over 1 s; looking at the draws for {} ms", probe_window_ms);
         }
       ID3D11VertexShader * vs{};
       ctx->VSGetShader(&vs, nullptr, nullptr);
@@ -3523,9 +3520,9 @@ namespace edworld
             if(probe_lines < probe_max_lines)
               {
               ++probe_lines;
-              log_line("probe: draw %u ctx %s vs %016llX (%p) PS t%u %ux%u surf %08llx count %u inst %u", n,
+              log_line("probe: draw {} ctx {} vs {:016X} ({}) PS t{} {}x{} surf {:08x} count {} inst {}", n,
                        ctx == immediate.load(std::memory_order_relaxed) ? "immediate" : "other",
-                       static_cast<unsigned long long>(vs_hash_of(vs)), static_cast<void *>(vs), slot, d.Width, d.Height,
+                       static_cast<unsigned long long>(vs_hash_of(vs)), static_cast<void const *>(static_cast<void *>(vs)), slot, d.Width, d.Height,
                        static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(res) & 0xffffffffull), count, instances);
               }
             }
@@ -3539,7 +3536,7 @@ namespace edworld
         vs->Release();
       if(now - probe_started_ms > probe_window_ms)
         {
-        log_line("probe: done, %u draw(s) seen, %u with a panel-sized surface at PS", n + 1, probe_surface_draws);
+        log_line("probe: done, {} draw(s) seen, {} with a panel-sized surface at PS", n + 1, probe_surface_draws);
         probe_request.store(false, std::memory_order_relaxed);
         }
       }
@@ -3768,7 +3765,7 @@ namespace edworld
       char version[64]{};
       if(at)
         std::sscanf(at + 11, "%63[^\"]", version);
-      log_line("hologram: VersionInfo.txt beside the exe names version %s", version[0] ? version : "(none read)");
+      log_line("hologram: VersionInfo.txt beside the exe names version {}", version[0] ? version : "(none read)");
       }
 
     auto holo_build() noexcept -> char const *
@@ -3783,7 +3780,7 @@ namespace edworld
                       a.ftLastWriteTime.dwLowDateTime);
       else
         std::snprintf(key, sizeof key, "unknown");
-      log_line("hologram: the game's build %s (the exe's size and last write)", key);
+      log_line("hologram: the game's build {} (the exe's size and last write)", key);
       holo_log_version(path);
       return key;
       }
@@ -3819,7 +3816,7 @@ namespace edworld
       holo_seen_t & s{holo_seen[holo_seen_count++]};
       s = holo_seen_t{count, holo_resolve(holo_models.data(), holo_models.size(), count, holo_build(), nullptr), false};
       if(s.r.model >= 0)
-        log_line("hologram: %u indices on the %s surface: %s (%s, %s)", count, holo_on_name(on),
+        log_line("hologram: {} indices on the {} surface: {} ({}, {})", count, holo_on_name(on),
                  holo_models[s.r.model].name, holo_how(s.r.how),
                  holo_models[s.r.model].status == holo_status_e::confirmed ? "confirmed" : "measured");
       else
@@ -3829,10 +3826,10 @@ namespace edworld
           if(m.count == count)
             other = &m;
         if(other)
-          log_line("hologram: %u indices on the %s surface: %s's count on build %s, not this one - unknown until its "
+          log_line("hologram: {} indices on the {} surface: {}'s count on build {}, not this one - unknown until its "
                    "fingerprint says", count, holo_on_name(on), other->name, other->build);
         else
-          log_line("hologram: %u indices on the %s surface: not in the registry", count, holo_on_name(on));
+          log_line("hologram: {} indices on the {} surface: not in the registry", count, holo_on_name(on));
         }
       return &s;
       }
@@ -3930,7 +3927,7 @@ namespace edworld
       if(vbs[1])
         vbs[1]->Release();
       if(why)
-        log_line("hologram: %u indices not sampled (%s)", count, why);
+        log_line("hologram: {} indices not sampled ({})", count, why);
       }
 
     ///\brief the fingerprint of a sample read back; false (logged) when its indices lie past the vertices read
@@ -3941,7 +3938,7 @@ namespace edworld
         std::vector<vec3_t> used;
         if(not holo_used_vertices(indices, holo_sample.index_size, holo_sample.count, vertices, holo_sample.vb_bytes, used))
           {
-          log_line("hologram: %u indices not fingerprinted (an index past the %u vertices read)", holo_sample.count,
+          log_line("hologram: {} indices not fingerprinted (an index past the {} vertices read)", holo_sample.count,
                    holo_sample.vb_bytes / vertex_stride);
           return false;
           }
@@ -3950,7 +3947,7 @@ namespace edworld
         }
       catch(std::exception const & e)
         {
-        log_line("hologram: %u indices not fingerprinted (%s)", holo_sample.count, e.what());
+        log_line("hologram: {} indices not fingerprinted ({})", holo_sample.count, e.what());
         return false;
         }
       }
@@ -3963,10 +3960,10 @@ namespace edworld
       for(vec3_t const & v: f.extreme)
         at += std::snprintf(extreme + at, sizeof extreme - static_cast<std::size_t>(at), "%s{%.4ff, %.4ff, %.4ff}", at ? ", " : "",
                             static_cast<double>(v.x), static_cast<double>(v.y), static_cast<double>(v.z));
-      log_line("hologram model fingerprint %u: {%uu, %uu, {%.4ff, %.4ff, %.4ff}, {{%s}}, {{0x%016llxull, 0x%016llxull, 0x%016llxull, "
-               "0x%016llxull, 0x%016llxull, 0x%016llxull, 0x%016llxull, 0x%016llxull}}}", count, f.vertices, f.triangles,
+      log_line("hologram model fingerprint {}: {{{}u, {}u, {{{:.4f}f, {:.4f}f, {:.4f}f}}, {{{{{}}}}}, {{{{0x{:016x}ull, 0x{:016x}ull, 0x{:016x}ull, "
+               "0x{:016x}ull, 0x{:016x}ull, 0x{:016x}ull, 0x{:016x}ull, 0x{:016x}ull}}}}}}", count, f.vertices, f.triangles,
                static_cast<double>(f.extent[0]), static_cast<double>(f.extent[1]), static_cast<double>(f.extent[2]), extreme,
-               f.grid[0], f.grid[1], f.grid[2], f.grid[3], f.grid[4], f.grid[5], f.grid[6], f.grid[7]);
+               as_unsigned(f.grid[0]), as_unsigned(f.grid[1]), as_unsigned(f.grid[2]), as_unsigned(f.grid[3]), as_unsigned(f.grid[4]), as_unsigned(f.grid[5]), as_unsigned(f.grid[6]), as_unsigned(f.grid[7]));
       }
 
     auto holo_models_dir() -> std::wstring { return stralgo::stl::merge(settings().dir, L"\\edworld_models"sv); }
@@ -3989,7 +3986,7 @@ namespace edworld
       holo_sample.done_at = now;
       if(FAILED(hr))
         {
-        log_line("hologram: the sample of %u indices lost (hr 0x%08lX)", holo_sample.count, static_cast<unsigned long>(hr));
+        log_line("hologram: the sample of {} indices lost (hr 0x{:08X})", holo_sample.count, static_cast<unsigned long>(hr));
         holo_sample_release();
         return;
         }
@@ -4001,8 +3998,8 @@ namespace edworld
         holo_resolved_t const r{holo_resolve(holo_models.data(), holo_models.size(), holo_sample.count, holo_build(), &f)};
         if(holo_seen_t * const seen{holo_seen_find(holo_sample.count)})
           seen->r = r;
-        log_line("hologram model sample: %u indices (%s surface), %u vertices, %u triangles, build %s: %s %s (likeness %.3f, "
-                 "next model %.3f, turn %d)", holo_sample.count, holo_on_name(holo_sample.on), f.vertices, f.triangles,
+        log_line("hologram model sample: {} indices ({} surface), {} vertices, {} triangles, build {}: {} {} (likeness {:.3f}, "
+                 "next model {:.3f}, turn {})", holo_sample.count, holo_on_name(holo_sample.on), f.vertices, f.triangles,
                  holo_build(), r.model >= 0 ? holo_models[r.model].name : "-", holo_how(r.how), static_cast<double>(r.score),
                  static_cast<double>(r.second), r.turn);
         holo_log_fingerprint(holo_sample.count, f);
@@ -4076,7 +4073,7 @@ namespace edworld
       else
         {
         holo_sample.surface = nullptr;
-        log_line("hologram: the target's surface of %u indices not copied (format %u, samples %u)", holo_sample.count,
+        log_line("hologram: the target's surface of {} indices not copied (format {}, samples {})", holo_sample.count,
                  static_cast<unsigned>(d.Format), d.SampleDesc.Count);
         }
       tex->Release();
@@ -4088,7 +4085,7 @@ namespace edworld
       {
       if(holo_sample.want_surface and holo_ms(holo_sample.want_since, now) > holo_surface_wait_ms)
         {
-        log_line("hologram: no picture of %u indices (its surface was not laid over within %lld ms)", holo_sample.count,
+        log_line("hologram: no picture of {} indices (its surface was not laid over within {} ms)", holo_sample.count,
                  static_cast<long long>(holo_surface_wait_ms));
         holo_sample.want_surface = nullptr;
         }
@@ -4139,12 +4136,12 @@ namespace edworld
           queue_write(name, picture, sizeof picture, true);
           }
         else
-          log_line("hologram: the target's surface of %u indices not pictured (format %u, %ux%u)", holo_sample.count,
+          log_line("hologram: the target's surface of {} indices not pictured (format {}, {}x{})", holo_sample.count,
                    static_cast<unsigned>(d.Format), d.Width, d.Height);
         ctx->Unmap(holo_sample.surface, 0);
         }
       else
-        log_line("hologram: the target's surface of %u indices lost (hr 0x%08lX)", holo_sample.count, static_cast<unsigned long>(hr));
+        log_line("hologram: the target's surface of {} indices lost (hr 0x{:08X})", holo_sample.count, static_cast<unsigned long>(hr));
       holo_sample.surface->Release();
       holo_sample.surface = nullptr;
       }
@@ -4197,7 +4194,7 @@ namespace edworld
       if(holo_rt_count == holo_max_rts)
         holo_rt_count = 0;  // the game made new ones (a new device, a resize): the oldest go
       holo_rts[holo_rt_count++] = surface;
-      log_line("hologram: a hologram's surface %p (%u known)", surface, holo_rt_count);
+      log_line("hologram: a hologram's surface {} ({} known)", static_cast<void const *>(surface), holo_rt_count);
       }
 
     ///\brief a draw of the HUD's pass (6 indices) whose pixel shader reads a hologram's surface at t4 lays it over the
@@ -4251,9 +4248,9 @@ namespace edworld
         {
         holo_target_logged = target != nullptr;
         if(target)
-          log_line("hologram: the target's surface %p (the HUD lays it over second)", target);
+          log_line("hologram: the target's surface {} (the HUD lays it over second)", static_cast<void const *>(target));
         else
-          log_line("hologram: no target's surface (the HUD lays over %s)", holo_rt_count ? "one hologram" : "none");
+          log_line("hologram: no target's surface (the HUD lays over {})", holo_rt_count ? "one hologram" : "none");
         }
       holo_target_rt = target;
       holo_own_rt = own;
@@ -4320,7 +4317,7 @@ namespace edworld
           {
           holo_swapped_logged = swapped;
           if(swapped)
-            log_line("hologram: the target's model by its kind: %u indices on the own surface (the HUD's order swapped)",
+            log_line("hologram: the target's model by its kind: {} indices on the own surface (the HUD's order swapped)",
                      parts[best].count);
           else
             log_line("hologram: the target's model on the target's surface again");
@@ -4483,18 +4480,18 @@ namespace edworld
       if(fresh != hs.shown)
         {
         hs.shown = fresh;
-        log_line(fresh ? "hologram: read" : "hologram: gone (no read for half a second)");
+        log_line("{}", fresh ? "hologram: read" : "hologram: gone (no read for half a second)");
         }
       if(fresh and holo_ms(hs.logged_at, now) >= 2000)
         {
         hs.logged_at = now;
         auto const & a{hs.view.axes};
         // the target's draw's indices tell the model (3576: a commercial outpost, 2026-10-21)
-        log_line("hologram: %u indices, scale %.5f, q %+.4f %+.4f %+.4f %+.4f | X %+.3f %+.3f %+.3f Y %+.3f %+.3f %+.3f Z %+.3f %+.3f %+.3f",
+        log_line("hologram: {} indices, scale {:.5f}, q {:+.4f} {:+.4f} {:+.4f} {:+.4f} | X {:+.3f} {:+.3f} {:+.3f} Y {:+.3f} {:+.3f} {:+.3f} Z {:+.3f} {:+.3f} {:+.3f}",
                  hs.count, static_cast<double>(hs.scale), hs.q.x, hs.q.y, hs.q.z, hs.q.w, a[0].x, a[0].y, a[0].z, a[1].x, a[1].y, a[1].z, a[2].x, a[2].y, a[2].z);
         auto const & r{hs.rows};
-        log_line("hologram: cb1 first %u, rows 270..273 %+.4f %+.4f %+.4f %+.4f | %+.4f %+.4f %+.4f %+.4f | %+.4f %+.4f %+.4f %+.4f | %+.4f %+.4f "
-                 "%+.4f %+.4f", hs.cb_first, r[0][0], r[0][1], r[0][2], r[0][3], r[1][0], r[1][1], r[1][2], r[1][3], r[2][0], r[2][1], r[2][2],
+        log_line("hologram: cb1 first {}, rows 270..273 {:+.4f} {:+.4f} {:+.4f} {:+.4f} | {:+.4f} {:+.4f} {:+.4f} {:+.4f} | {:+.4f} {:+.4f} {:+.4f} {:+.4f} | {:+.4f} {:+.4f} "
+                 "{:+.4f} {:+.4f}", hs.cb_first, r[0][0], r[0][1], r[0][2], r[0][3], r[1][0], r[1][1], r[1][2], r[1][3], r[2][0], r[2][1], r[2][2],
                  r[2][3], r[3][0], r[3][1], r[3][2], r[3][3]);
         }
       }
@@ -4521,7 +4518,7 @@ namespace edworld
           return;
         holo_kind[current_holo].store(holo_kind_e::hologram, std::memory_order_relaxed);
         holo_known.store(true);
-        log_line("hologram: vs %016llX draws %u indices to a 512x512 target - taken for the hologram's model (station_vs)",
+        log_line("hologram: vs {:016X} draws {} indices to a 512x512 target - taken for the hologram's model (station_vs)",
                  static_cast<unsigned long long>(seen_hash[current_holo]), index_count);
         }
       void * const surface{holo_surface(ctx)};
@@ -4617,7 +4614,7 @@ namespace edworld
           }
         holo_kind[at].store(kind, std::memory_order_relaxed);
         if(kind == holo_kind_e::hologram and not holo_known.exchange(true))
-          log_line("hologram: vs %016llX created (station_vs)", static_cast<unsigned long long>(hash));
+          log_line("hologram: vs {:016X} created (station_vs)", static_cast<unsigned long long>(hash));
         seen_ptr[at].store(*shader, std::memory_order_release);
         table_put(*shader, at);
         }
@@ -4627,7 +4624,7 @@ namespace edworld
       shader_catalog_note(shader_stage_e::vertex, bytecode, length, hash);
 #endif
       if(settings().log_all_vs)
-        log_line("vs %016llX %zu bytes", static_cast<unsigned long long>(hash), static_cast<std::size_t>(length));
+        log_line("vs {:016X} {} bytes", static_cast<unsigned long long>(hash), static_cast<std::size_t>(length));
       if(in_dump_vs(hash))
         {
         bool known{};
@@ -4641,7 +4638,7 @@ namespace edworld
               kept_vs[k].bytes = copy;
               kept_vs[k].length = static_cast<std::uint32_t>(length);
               kept_vs[k].hash.store(hash, std::memory_order_release);
-              log_line("vs %016llX kept for dumps (%zu bytes)", static_cast<unsigned long long>(hash), static_cast<std::size_t>(length));
+              log_line("vs {:016X} kept for dumps ({} bytes)", static_cast<unsigned long long>(hash), static_cast<std::size_t>(length));
               }
         }
 #if defined(EDWORLD_EHT)
@@ -4669,7 +4666,7 @@ namespace edworld
           if(std::uint32_t const at{table_get(*shader)}; at < max_vs_seen)
             verdict[at].store(verdict_e::panel, std::memory_order_relaxed);
           if(watch(*shader, static_cast<std::uint32_t>(i), false))
-            log_line("vs %016llX watched (list index %zu, pointer %p)", static_cast<unsigned long long>(hash), i, *shader);
+            log_line("vs {:016X} watched (list index {}, pointer {})", static_cast<unsigned long long>(hash), i, static_cast<void const *>(*shader));
           break;
           }
       return hr;
@@ -4768,7 +4765,7 @@ namespace edworld
                       reinterpret_cast<void **>(&orig_create_gs_so)) and ok;
       ok = patch_slot(dev, slot_create_input_layout, reinterpret_cast<void *>(&hook_create_input_layout),
                       reinterpret_cast<void **>(&orig_create_input_layout)) and ok;
-      log_line("shaders: the catalog %s (edworld_shaders beside the log, build %s)",
+      log_line("shaders: the catalog {} (edworld_shaders beside the log, build {})",
                ok ? "notes every shader the game creates" : "could not patch every creation; it notes the ones it could",
                game_build_key());
       }
@@ -5206,7 +5203,7 @@ namespace edworld
         device->Release();
       clouds_timing.ready = ok;
       clouds_timing.window_start = GetTickCount64();
-      log_line("clouds: GPU timing %s", ok ? "on, summed up every 5 s" : "could not be made, the clouds are drawn untimed");
+      log_line("clouds: GPU timing {}", ok ? "on, summed up every 5 s" : "could not be made, the clouds are drawn untimed");
       return ok;
       }
 
@@ -5234,7 +5231,7 @@ namespace edworld
       if(now - clouds_timing.window_start < 5000u)
         return;
       auto const s{edworld::span_summary(clouds_timing.window)};
-      log_line("clouds gpu 5s: draws %u (1 in 5 timed), ms median %.2f mean %.2f max %.2f, pixels %.2f M a draw, %.2f ms per million pixels, untimed %u",
+      log_line("clouds gpu 5s: draws {} (1 in 5 timed), ms median {:.2f} mean {:.2f} max {:.2f}, pixels {:.2f} M a draw, {:.2f} ms per million pixels, untimed {}",
                s.count, s.ms_median, s.ms_mean, s.ms_max, s.megapixels_mean, s.ms_per_megapixel, clouds_timing.busy);
       clouds_timing.window = {};
       clouds_timing.busy = 0u;
@@ -5316,7 +5313,7 @@ namespace edworld
       ok = ok and SUCCEEDED(device->CreateBuffer(&desc, &data, &params));
       device->Release();
       clouds.params = ok ? params : nullptr;
-      log_line("clouds: %s", ok ? "ready" : "could not be made, none will be drawn");
+      log_line("clouds: {}", ok ? "ready" : "could not be made, none will be drawn");
       return ok;
       }
 
@@ -5393,7 +5390,7 @@ namespace edworld
         }
       catch(std::exception const & e)
         {
-        log_line("clouds: the blue noise could not be made (%s)", e.what());
+        log_line("clouds: the blue noise could not be made ({})", e.what());
         ok = false;
         }
 
@@ -5425,7 +5422,7 @@ namespace edworld
         clouds.volume_params = params;
         clouds.volume_failed = false;
         }
-      log_line("clouds: the volume %s%s", ok ? "is ready" : "could not be made, the layer stays",
+      log_line("clouds: the volume {}{}", ok ? "is ready" : "could not be made, the layer stays",
                ok and clouds.half_failed ? ", at full size (the half size could not be made)" : "");
       return ok;
       }
@@ -5477,7 +5474,7 @@ namespace edworld
       clouds.half_width = width;
       clouds.half_height = height;
       clouds.half_failed = not ok;
-      log_line("clouds: half target %ux%u for a picture of %ux%u %s", width, height, d.Width, d.Height,
+      log_line("clouds: half target {}x{} for a picture of {}x{} {}", width, height, d.Width, d.Height,
                ok ? "made" : "could not be made, the clouds are drawn at full size");
       return ok;
       }
@@ -5544,7 +5541,7 @@ namespace edworld
             clouds.depth_width = d.Width;
             clouds.depth_height = d.Height;
             clouds.depth_format = family;
-            log_line("clouds: depth %ux%u format %d, mips %u, %s", d.Width, d.Height, static_cast<int>(view.Format), d.MipLevels,
+            log_line("clouds: depth {}x{} format {}, mips {}, {}", d.Width, d.Height, static_cast<int>(view.Format), d.MipLevels,
                      clouds.depth_view ? "copied" : "cannot be read");
             }
           if(clouds.depth_view)
@@ -5718,9 +5715,10 @@ namespace edworld
         ID3D11RenderTargetView * rtv{};
         ID3D11DepthStencilView * dsv{};
         ctx->OMGetRenderTargets(1, &rtv, &dsv);
-        log_line("clouds: the shell's depth %d write %d func %d, view %s, blend %d src %d dest %d, frame constants %s",
-                 d.DepthEnable, d.DepthWriteMask, d.DepthFunc, dsv ? "bound" : "none", b.RenderTarget[0].BlendEnable,
-                 b.RenderTarget[0].SrcBlend, b.RenderTarget[0].DestBlend, frame ? "bound" : "none");
+        log_line("clouds: the shell's depth {} write {} func {}, view {}, blend {} src {} dest {}, frame constants {}",
+                 d.DepthEnable, std::to_underlying(d.DepthWriteMask), std::to_underlying(d.DepthFunc), dsv ? "bound" : "none",
+                 b.RenderTarget[0].BlendEnable, std::to_underlying(b.RenderTarget[0].SrcBlend), std::to_underlying(b.RenderTarget[0].DestBlend),
+                 frame ? "bound" : "none");
         if(depth)
           depth->Release();
         if(rtv)
@@ -6034,8 +6032,8 @@ namespace edworld
             used = std::min(sizeof own - 1, used + static_cast<std::size_t>(n));
           }
         log_line(
-          "census %s: draws %s on the devices' own contexts (in the order they came), %u on other contexts, %u indirect, "
-          "%u command lists run; the atmosphere shell drawn %u times",
+          "census {}: draws {} on the devices' own contexts (in the order they came), {} on other contexts, {} indirect, "
+          "{} command lists run; the atmosphere shell drawn {} times",
           when,
           own,
           census_draws[census_contexts].load(),
@@ -6049,12 +6047,12 @@ namespace edworld
           {
           char hooks[1024];
           census_hooks(ctx, hooks, sizeof hooks);
-          log_line("census %s: device %u's draw hooks %s", when, i + 1, hooks);
+          log_line("census {}: device {}'s draw hooks {}", when, i + 1, hooks);
           }
       if(ID3D11Multithread * const mt{multithread.load()})
         {
         bool const now{mt->GetMultithreadProtected() != FALSE};
-        log_line("census %s: the multithread protection is %s%s", when, now ? "on" : "off",
+        log_line("census {}: the multithread protection is {}{}", when, now ? "on" : "off",
                  now != multithread_at_start ? " (it changed since the start)" : " (as at the start)");
         }
       if(context_hook == context_hook_e::own_table)
@@ -6063,7 +6061,7 @@ namespace edworld
         for(std::size_t i{}; i != own_watched; ++i)
           if(own_table.runtime[own_watch[i].slot] != own_watch[i].at_start)
             ++moved;
-        log_line("census %s: the runtime re-pointed %zu of edworld's %zu context slots in its own table since the start%s",
+        log_line("census {}: the runtime re-pointed {} of edworld's {} context slots in its own table since the start{}",
                  when, moved, own_watched, moved ? "; followed through edworld's table" : "");
         }
       }
@@ -6104,15 +6102,15 @@ namespace edworld
     if(not first_device.compare_exchange_strong(expected, dev))
       {
       if(expected != dev)
-        log_line("attach: device %p is a second device of the game; not followed, edworld stays with the first (%p)",
-                 static_cast<void *>(dev), static_cast<void *>(expected));
+        log_line("attach: device {} is a second device of the game; not followed, edworld stays with the first ({})",
+                 static_cast<void const *>(static_cast<void *>(dev)), static_cast<void const *>(static_cast<void *>(expected)));
       return;
       }
     ID3D11DeviceContext * ctx{};
     dev->GetImmediateContext(&ctx);
     if(not ctx)
       {
-      log_line("attach: device %p has no immediate context", dev);
+      log_line("attach: device {} has no immediate context", static_cast<void const *>(dev));
       return;
       }
     log_device(dev);
@@ -6194,10 +6192,9 @@ namespace edworld
         {
         ID3D11DeviceContext * const first{census_context[0].load()};
         log_line(
-          "attach: device %u's context %s the first device's table",
+          "attach: device {}'s context {} the first device's table",
           order + 1,
-          *reinterpret_cast<void **>(ctx) == *reinterpret_cast<void **>(first) ? "shares" : "does not share"
-        );
+          *reinterpret_cast<void **>(ctx) == *reinterpret_cast<void **>(first) ? "shares" : "does not share");
         }
       }
 #if defined(EDWORLD_EHT)
@@ -6216,13 +6213,13 @@ namespace edworld
           CloseHandle(t);
       }
     if(settings().patch and not settings().edsm)
-      log_line(with_eht ? "patch: on, edsm = 0 - allegiance from EHT's target only"
+      log_line("{}", with_eht ? "patch: on, edsm = 0 - allegiance from EHT's target only"
                         : "patch: on, but edsm = 0 - no allegiance, only the test frame can be drawn");
     std::uint32_t const n{watched_count.load()};
     log_line(
-      "attach: device %p context %p (context1 %s), %zu watched hash(es), %u already created",
-      dev,
-      ctx,
+      "attach: device {} context {} (context1 {}), {} watched hash(es), {} already created",
+      static_cast<void const *>(dev),
+      static_cast<void const *>(ctx),
       ctx1 ? "yes" : "no",
       settings().watch_vs.size(),
       n
