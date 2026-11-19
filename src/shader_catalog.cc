@@ -17,8 +17,14 @@
 #include <unordered_set>
 #include <vector>
 
+#include <string_view>
+
+#include <stralgo/stralgo.h>
+
 namespace edworld
   {
+  using namespace std::string_view_literals;
+
   namespace
     {
     struct noted_t
@@ -55,7 +61,7 @@ namespace edworld
     auto write(std::vector<noted_t> const & batch) -> void
       {
       std::wstring const root{settings().dir + L"\\edworld_shaders"};
-      std::wstring const dir{root + L"\\" + widen(game_build_key())};
+      std::wstring const dir{stralgo::stl::merge(root, L'\\', widen(game_build_key()))};
       CreateDirectoryW(root.c_str(), nullptr);
       CreateDirectoryW(dir.c_str(), nullptr);
       std::string catalog;  // the batch's lines, added to catalog.tsv at once

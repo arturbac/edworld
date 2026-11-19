@@ -15,8 +15,13 @@
 #include <string>
 #include <string_view>
 
+
+#include <stralgo/stralgo.h>
+
 namespace edworld
   {
+  using namespace std::string_view_literals;
+
   namespace
     {
     ///\brief a wide text as UTF-8 in a fixed buffer, trailing blanks cut (processor names are padded)
@@ -176,7 +181,7 @@ namespace edworld
       {
       narrow_t const shown{name};
       std::string text;
-      if(not read_small_file(dir + L"\\" + name, text))
+      if(not read_small_file(stralgo::stl::merge(dir, L'\\', std::wstring_view{name}), text))
         {
         log_line("graphics: %s: none", shown.text);
         return;

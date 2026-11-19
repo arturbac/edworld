@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- stralgo (and small_vectors) by CPM, the versions of elite_help_tool's: the settings' notes and the paths put together
+  with `merge` in place of `+` chains.
 - **The compass in a coloured EDHM theme:** a pixel is the dot's when its hue is 30 degrees or more from the disc's
   (60 before): a player's red disc (hue ~0) with a yellow dot (~40) gave NO DOT, not one pixel of the dot read.
   `compass_dot_hue_gap` sets it. The flash rule (a disc turned the dot's hue) takes the same gap.

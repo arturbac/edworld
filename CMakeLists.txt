@@ -23,6 +23,43 @@ if(NOT EXISTS "${EDWORLD_FXC}")
   message(FATAL_ERROR "EDWORLD_FXC='${EDWORLD_FXC}': no fxc.exe (looked in ${MSVC_ROOT}/Windows Kits/10/bin/*/x64)")
 endif()
 
+# stralgo (string operations: merge in place of chained +) and small_vectors it stands on, by CPM; the same packages,
+# versions and commits as elite_help_tool's. CPM_SOURCE_CACHE (a filled cache) and FETCHCONTENT_FULLY_DISCONNECTED=ON
+# configure without the network
+include(cmake/get_cpm.cmake)
+cpmaddpackage(
+  NAME
+  small_vectors
+  GITHUB_REPOSITORY
+  arturbac/small_vectors
+  VERSION
+  3.4.0
+  # tag v3.4.0, pinned to its commit - a tag can be moved
+  GIT_TAG
+  768316b4050952988376cf216eddb93eaeeb697e
+  EXCLUDE_FROM_ALL
+  YES)
+if(NOT TARGET small_vectors::small_vectors)
+  add_library(small_vectors::small_vectors ALIAS small_vectors)
+endif()
+cpmaddpackage(
+  NAME
+  stralgo
+  GITHUB_REPOSITORY
+  arturbac/stralgo
+  VERSION
+  1.5.0
+  # tag v1.5.0, pinned to its commit - a tag can be moved
+  GIT_TAG
+  b9ad0230efcb7f4450d4c5c2646ab7515c590f80
+  OPTIONS
+  "STRALGO_ENABLE_UNIT_TESTS OFF"
+  EXCLUDE_FROM_ALL
+  YES)
+if(NOT TARGET stralgo::stralgo)
+  add_library(stralgo::stralgo ALIAS stralgo)
+endif()
+
 set(gen "${CMAKE_BINARY_DIR}/gen")
 file(MAKE_DIRECTORY "${gen}")
 
@@ -107,7 +144,7 @@ set(edworld_sources src/proxy.cc src/hooks.cc src/settings_log.cc src/game_state
 
 foreach(variant edworld edworld_eht)
   add_library(${variant} SHARED ${edworld_sources} "${gen}/edvr_d3d11.def")
-  target_link_libraries(${variant} PRIVATE edworld_imgui edworld_thunks
+  target_link_libraries(${variant} PRIVATE edworld_imgui edworld_thunks stralgo::stralgo
                         kernel32 user32 advapi32 dxgi dxguid winhttp shell32 ole32)
   target_compile_definitions(${variant} PRIVATE UNICODE _UNICODE $<$<STREQUAL:${variant},edworld_eht>:EDWORLD_EHT>)
   target_compile_options(${variant} PRIVATE /W4 "/FI${gen}/edworld_version.h")

@@ -22,8 +22,13 @@
 #include <variant>
 #include <vector>
 
+
+#include <stralgo/stralgo.h>
+
 namespace edworld
   {
+  using namespace std::string_view_literals;
+
   namespace
     {
     // Two copies: the render thread reads the ini again into the one not in use and then publishes it, so the threads
@@ -605,7 +610,7 @@ namespace edworld
         auto const eq{text.find('=')};
         if(eq == std::string_view::npos)
           {
-          notes.push_back("line " + std::to_string(number) + " has no '=': ignored");
+          notes.push_back(stralgo::stl::merge("line "sv, std::to_string(number), " has no '=': ignored"sv));
           continue;
           }
         std::string_view const key{trim(text.substr(0, eq))};
@@ -622,10 +627,11 @@ namespace edworld
             break;
             }
         if(found == std::end(keys))
-          notes.push_back("line " + std::to_string(number) + ": no setting '" + std::string{key} + "' (a typo?): ignored");
+          notes.push_back(stralgo::stl::merge("line "sv, std::to_string(number), ": no setting '"sv, key, "' (a typo?): ignored"sv));
         else if(not read_value(s, found->field, value))
-          notes.push_back("line " + std::to_string(number) + ": '" + std::string{key} + " = " + std::string{value} +
-                          "' cannot be read (" + (found->range and *found->range ? found->range : "any") + "); its value stays " + value_text(s, found->field));
+          notes.push_back(stralgo::stl::merge("line "sv, std::to_string(number), ": '"sv, key, " = "sv, value, "' cannot be read ("sv,
+                                              found->range and *found->range ? std::string_view{found->range} : "any"sv, "); its value stays "sv,
+                                              value_text(s, found->field)));
         }
       std::fclose(f);
       return true;
@@ -642,7 +648,7 @@ namespace edworld
   auto load_settings(std::wstring const & config_dir, std::wstring const & output_dir) -> void
     {
     current.dir = output_dir;
-    ini_path = config_dir + L"\\" + plugin_name + L".ini";
+    ini_path = stralgo::stl::merge(config_dir, L'\\', std::wstring_view{plugin_name}, L".ini"sv);
     // the time first: a change made after it, before the first refresh, is read then (and not taken for this read)
     ini_written = ini_write_time(ini_path);
     read_ini(ini_path, current, ini_notes);  // its notes go to the log once it is open (log_open)
@@ -698,7 +704,7 @@ namespace edworld
     {
     try
       {
-      std::wstring const path{config_dir + L"\\" + plugin_name + L".ini"};
+      std::wstring const path{stralgo::stl::merge(config_dir, L'\\', std::wstring_view{plugin_name}, L".ini"sv)};
       std::string const ini{read_whole(path)};
       // status_file stays empty (Saved Games): the folder's full path holds the player's Windows user name, and players
       // share their ini
@@ -719,7 +725,7 @@ namespace edworld
                "; a change takes a new start of the game, but for those doc/settings.md lists as read while it runs.\n"
                "; A line left as a comment follows edworld's default.\n";
       else
-        text = (ini.back() == '\n' ? "\n" : "\n\n") + std::string{"; Settings this file did not name yet, added by edworld.\n"};
+        text = stralgo::stl::merge(ini.back() == '\n' ? "\n"sv : "\n\n"sv, "; Settings this file did not name yet, added by edworld.\n"sv);
       text += lines;
       bool const written{std::fwrite(text.data(), 1, text.size(), f) == text.size()};
       bool const closed{std::fclose(f) == 0};
@@ -773,7 +779,7 @@ namespace edworld
   // <plugin>.<UTC>.log, before this one starts - the tool beside the game takes those away (EHT's backup).
   auto log_open(std::wstring const & dir) -> void
     {
-    std::wstring const path{dir + L"\\" + plugin_name + L".log"};
+    std::wstring const path{stralgo::stl::merge(dir, L'\\', std::wstring_view{plugin_name}, L".log"sv)};
     bool set_aside_failed{};
     WIN32_FILE_ATTRIBUTE_DATA a{};
     if(GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &a) and (a.nFileSizeHigh != 0 or a.nFileSizeLow != 0))

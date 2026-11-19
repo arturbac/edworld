@@ -17,6 +17,8 @@
 #include <string_view>
 #include <mutex>
 
+#include <stralgo/stralgo.h>
+
 extern "C"
   {
   extern void * edvr_realProcs_d3d11[];
@@ -25,6 +27,8 @@ extern "C"
 
 namespace
   {
+  using namespace std::string_view_literals;
+
   char const * const export_names[]{
 #include "edvr_exports_d3d11.inc"
   };
@@ -102,7 +106,7 @@ namespace
     // list; another bare name is a file beside edworld
     bool const by_name{_wcsicmp(path.c_str(), L"d3d11.dll") == 0};
     if(not by_name and path.find(L':') == std::wstring::npos and path.find(L'\\') == std::wstring::npos)
-      path = module_dir + L"\\" + path;
+      path = stralgo::stl::merge(module_dir, L'\\', path);
     wchar_t self[MAX_PATH]{};
     GetModuleFileNameW(self_module, self, MAX_PATH);
     wchar_t want[MAX_PATH]{};

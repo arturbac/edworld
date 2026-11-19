@@ -22,8 +22,13 @@
 #include <string>
 #include <string_view>
 
+
+#include <stralgo/stralgo.h>
+
 namespace edworld
   {
+  using namespace std::string_view_literals;
+
   namespace
     {
     std::atomic<bool> started{};
@@ -754,7 +759,7 @@ namespace edworld
       for(wchar_t const c: newest)
         name += c < 0x80 ? static_cast<char>(c) : '?';
       // Windows' own calls, as read_file: the writer thread reading this may be killed at the game's exit
-      HANDLE const f{CreateFileW((dir + L"\\" + newest).c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+      HANDLE const f{CreateFileW(stralgo::stl::merge(dir, L'\\', newest).c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                                  nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr)};
       if(f != INVALID_HANDLE_VALUE)
         {
