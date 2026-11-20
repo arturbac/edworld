@@ -578,7 +578,12 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   five sizes for each storm kept before it, the most a turn moves a place), so a step outside them costs no
   storm at all; the storms' own shadow is looked at on every other cloudy step in a storm and held between. The
   half size picture's upsampling (`clouds_up.hlsl`) reads the nine cloud texels first and discards a pixel none of
-  them covers, before its ten depth reads.
+  them covers, before its ten depth reads. Each pixel's steps (the clouds', the aurora's, the snow's) start at its blue noise (64x64, fixed on the screen);
+  `clouds_noise_time` (live, 1 by default) moves that start by the frame times the golden ratio's fraction (buffer
+  value 126) while edupscale jitters the camera (its export `edupscale_jitter_frame`, the jitter's frame count or
+  -1): with the noise fixed on the screen and the picture moved under it each frame, edupscale's temporal AA threw the
+  clouds' history away and they flickered (Sjona's recordings, 2026-11-20); moved each frame, it averages the grain.
+  Without a temporal AA a moving grain stays visible (2026-11-07), so `2` (always) is for trying only.
 - Logs to `<plugin>.log` in the log folder: chain, attach, watched shaders, the patch's first draw and the
   destination's allegiance and factions (how many, from which source), and, when `log_interval_ms` is set (`0`, off,
   by default; `1000` once a second), a summary: in edworld_eht the frame's panel draws

@@ -5121,6 +5121,22 @@ namespace edworld
       }
 
     // ---- the clouds (PoC): the game's draw of its shell of the atmosphere, once more, with shaders of ours ----
+    ///\brief edupscale's jitter frame (its export edupscale_jitter_frame, 2026-11-20): the count of the frames it moved
+    /// the camera in, -1 while it does not, or when edupscale (that export) is not loaded. Looked up once in 600 calls
+    /// until found (the loader's lock under Wine), said in the log when found
+    [[nodiscard]]
+    auto edupscale_jitter_frame() noexcept -> int
+      {
+      using jitter_frame_fn = int (*)();
+      static jitter_frame_fn found{};
+      static std::uint32_t calls{};
+      if(not found and calls++ % 600u == 0u)
+        if(HMODULE const m{GetModuleHandleW(L"edupscale.dll")})
+          if((found = reinterpret_cast<jitter_frame_fn>(reinterpret_cast<void *>(GetProcAddress(m, "edupscale_jitter_frame")))))
+            log_line("clouds: edupscale's jitter frame found (clouds_noise_time)");
+      return found ? found() : -1;
+      }
+
     struct clouds_t
       {
       ID3D11VertexShader * vs{};
@@ -5139,6 +5155,7 @@ namespace edworld
       ID3D11Buffer * volume_params{};
       // the volume's parameters, the wind's seconds among them, written again for each draw
       float volume_values[128]{};
+      std::uint64_t draws_made{};  ///< the volume's draws, for clouds_noise_time 2 without edupscale's jitter
       ULONGLONG wind_start{};
       ID3D11Texture2D * depth_copy{};
       ID3D11ShaderResourceView * depth_view{};
@@ -5598,6 +5615,8 @@ namespace edworld
       now.flicker_s = seconds;
       now.pixel = half ? 2.f : 1.f;
       now.port_width = game_port_count != 0u ? game_ports[0].Width : 0.f;
+      std::uint32_t const noise_time{settings().clouds_noise_time};
+      now.noise_shift = noise_time == 0u ? 0.f : clouds_noise_shift(noise_time, edupscale_jitter_frame(), ++clouds.draws_made);
       atmo_snow_values(now.snow.data());
       clouds_planet_t const planet{atmo_clouds_planet()};
       std::array<float, clouds_value_count> values{};

@@ -158,6 +158,10 @@ namespace edworld
     /// changes where near and far meet. Near steps under clouds_near_from over the surface, far ones over clouds_near_to
     /// (parts of the planet's radius), a blend between. Read again while the game runs, with clouds_debug
     std::uint32_t clouds_mode{0};  ///< 0 by the height, 1 always near, 2 always far
+    ///\brief the clouds with depth: the start of each pixel's steps (blue noise, fixed on the screen) moved each frame,
+    /// so a temporal anti-aliasing averages its grain instead of throwing its history away when the camera jitters
+    /// (edupscale, 2026-11-20): 0 never, 1 while edupscale jitters the camera, 2 always (to try it without)
+    std::uint32_t clouds_noise_time{1};
     float clouds_far_steps{6.f};
     float clouds_near_from{0.25f};
     float clouds_near_to{0.5f};

@@ -106,7 +106,8 @@ cbuffer clouds : register(b4)
   // the weather's R/L before the planet's day was read (the kind's median) and how far the day's R/L has come in, 0..1
   float cloud_rossby_before;
   float cloud_weather_fade;
-  float2 cloud_spare;
+  float cloud_noise_shift;  // the steps' start moved each frame (clouds_noise_time), 0..1
+  float cloud_spare;
   };
 
 Texture2D<float> scene_depth : register(t0);
@@ -473,7 +474,7 @@ float4 clouds_along(ps_in input, float3 ray, float3 centre)
   // a different start at each pixel turns the bands of the steps into a fine grain. Blue noise: a hash of the pixel's
   // place gave clumps of specks on a wide target, interleaved gradient noise fine slanting stripes where the steps are
   // long (2026-11-07, at the horizon), moved each frame they stayed without a temporal anti-aliasing, as in the game's own
-  float start = blue_noise.Load(int3(uint2(input.pos.xy) & 63u, 0));
+  float start = frac(blue_noise.Load(int3(uint2(input.pos.xy) & 63u, 0)) + cloud_noise_shift);
   // along the ray the place on the screen and the place in the planet's frame change in proportion to t: worked out
   // once for the ray, each step only adds
   float4 clip_ray = frame_rows[270] * ray.x + frame_rows[271] * ray.y + frame_rows[272] * ray.z;
@@ -862,7 +863,7 @@ float3 aurora_along(ps_in input, float3 ray, float3 centre, out float eye_under)
   float time = cloud_wind_seconds;
   float4 clip_ray = frame_rows[270] * ray.x + frame_rows[271] * ray.y + frame_rows[272] * ray.z;
   float scene = scene_depth.Load(int3(input.pos.xy * cloud_pixel, 0));
-  float start = blue_noise.Load(int3(uint2(input.pos.xy) & 63u, 0));
+  float start = frac(blue_noise.Load(int3(uint2(input.pos.xy) & 63u, 0)) + cloud_noise_shift);
   // more from in or near the shell, where the thin curtains stand close
   int steps = eye_height < aurora_ceiling * 1.5f ? 64 : 16;
   int steps_a = length_b <= 0.f ? steps : length_a <= 0.f ? 0 : clamp((int)round(steps * length_a / (length_a + length_b)), 1, steps - 1);
@@ -1021,7 +1022,7 @@ float4 snow_along(ps_in input, float3 ray, float3 centre)
   float pixel_angle = 2.f * cloud_pixel / max(cloud_view_width * x_scale, 1.f);
 
   float glow = 0.f;
-  float start = blue_noise.Load(int3(uint2(input.pos.xy) & 63u, 0));
+  float start = frac(blue_noise.Load(int3(uint2(input.pos.xy) & 63u, 0)) + cloud_noise_shift);
   [loop]
   for(int i = 0; i != (with_crystals ? snow_samples : 0); ++i)
     {

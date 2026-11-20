@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `clouds_noise_time` (1 by default): the grain of the clouds with depth (the aurora and the snow too) moved each frame while edupscale's temporal
+  anti-aliasing jitters the camera, so it averages the grain instead of the clouds flickering; `0` never, `2` always.
+
 - Each d3d11 proxy before edworld in the chain is named in the log at the first device (`warning: dll before edworld
   in the chain: ...`, with its version resource), with edloader or with a chain made by hand. edworld_eht stays off
   for the session with a 3Dmigoto (EDHM) before it, told by its version resource: the log and its corner line say so,

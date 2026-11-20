@@ -16,6 +16,7 @@ In `edworld.ini` (or `edworld_eht.ini`), beside the dll or in `edloader\config`;
 | setting | default | range | what |
 |---|---|---|---|
 | `clouds_mode` | `0` | 0, 1, 2 | (test) the clouds with depth from afar in fewer steps, the same shape: `0` = by your height, `1` = always near, `2` = always far |
+| `clouds_noise_time` | `1` | 0, 1, 2 | the grain of the clouds with depth, the aurora and the snow (where each pixel's steps start) moved each frame: `1` = while edupscale's temporal anti-aliasing jitters the camera, so it averages the grain instead of flickering; `0` = never; `2` = always, also without it |
 | `clouds_far_steps` | `6` | 1 and more (clamped) | the steps through the clouds with depth from afar |
 | `clouds_near_from` | `0.25` | 0 and more | near steps under this height over the surface, as a part of the planet's radius; a blend up to `clouds_near_to` |
 | `clouds_near_to` | `0.5` | over clouds_near_from (clamped) | far steps over this height over the surface, as a part of the planet's radius |

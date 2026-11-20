@@ -37,6 +37,7 @@ namespace edworld
     double flicker_s{};       ///< the same clock in double, for the aurora's flicker
     float pixel{1.f};         ///< 2 when the volume is drawn at half size
     float port_width{};       ///< the picture's width, pixels
+    float noise_shift{};      ///< the steps' start moved by this, 0..1 (clouds_noise_shift)
     std::array<float, 12> snow{};  ///< the snow's values 112..123 (hooks.cc keeps the eye's way)
     };
 
@@ -50,6 +51,23 @@ namespace edworld
     float level{};
     aurora_height_t height{};
     };
+
+  ///\brief the shift of the steps' start (0..1) this frame: the frame times the golden ratio's fraction, so each frame's
+  /// grain differs from the last ones; by edupscale's jitter frame (-1: it does not jitter) or, with mode 2 and no
+  /// jitter, edworld's own count of the clouds' draws
+  [[nodiscard]]
+  constexpr auto clouds_noise_shift(std::uint32_t mode, int jitter_frame, std::uint64_t own_frame) noexcept -> float
+    {
+    if(mode == 0u or (mode != 2u and jitter_frame < 0))
+      return 0.f;  // a mode over 2 as 1
+    std::uint64_t const n{jitter_frame >= 0 ? static_cast<std::uint64_t>(jitter_frame) : own_frame};
+    double const x{static_cast<double>(n % 1000003u) * 0.6180339887498949};
+    return static_cast<float>(x - static_cast<double>(static_cast<std::uint64_t>(x)));
+    }
+
+  static_assert(clouds_noise_shift(0u, 5, 5u) == 0.f and clouds_noise_shift(1u, -1, 5u) == 0.f and clouds_noise_shift(2u, -1, 0u) == 0.f
+                and clouds_noise_shift(1u, 1, 0u) > 0.618f and clouds_noise_shift(1u, 1, 0u) < 0.619f
+                and clouds_noise_shift(2u, -1, 1u) > 0.618f and clouds_noise_shift(2u, 2, 7u) == clouds_noise_shift(1u, 2, 0u));
 
   ///\brief values 0..127 of the clouds' buffer
   inline auto clouds_values(settings_t const & s, clouds_planet_t const & p, clouds_frame_t const & f,
@@ -178,6 +196,7 @@ namespace edworld
     // in, over the same 4 s as the storms (C19)
     v[124] = rossby_ratio(p.kind, p.radius, 0.f);
     v[125] = p.day_s > 0.f ? p.day_fade : 1.f;
+    v[126] = f.noise_shift;  // the steps' start moved (clouds_noise_time)
 
     // the storms tower to twice the layer's height (v1.4s): the kind's top raised, the tower told to the shader
     if(v[84] > 0.f)
