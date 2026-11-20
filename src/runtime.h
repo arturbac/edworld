@@ -17,6 +17,8 @@
 #include <utility>
 #include <algorithm>
 
+#include "shader_ids.h"
+
 namespace edworld
   {
   // Two builds of one source: edworld works on its own (Status.json, EDSM); edworld_eht (EDWORLD_EHT defined) also
@@ -42,7 +44,7 @@ namespace edworld
     std::uint32_t build_info{3};
     ///\brief vertex shaders whose draws are panels: the cockpit holo panel family, its "GUI effects off" twin, and
     /// the one the game switches the same panels to near a war settlement (surface at PS t1; seen 2026-10-05)
-    std::vector<std::uint64_t> watch_vs{0x81216C77F90DEDD6ull, 0x1989E6D3B405FDE0ull, 0x925ACEDA0153AA5Bull};
+    std::vector<std::uint64_t> watch_vs{panel_family_vs, panel_plain_vs, panel_settlement_vs};
 #if defined(EDWORLD_EHT)
     ///\brief the tmpfs directory shared with EHT: `panels` is published there, `target` read from there
     /// (Z: is the Linux root under Wine); empty = neither
@@ -69,7 +71,7 @@ namespace edworld
     /// their draws, the index and vertex buffers and the t33 record pool are written too, and what their pixel shader
     /// reads (t0..t7) is listed and copied; the target's hologram: its model drawn to 512x512 surfaces (5B0068AF), laid
     /// over the scene among the panels (5559BD94) (2026-10-20)
-    std::vector<std::uint64_t> dump_vs{0x5B0068AF5630F96Bull, 0x5559BD94B6852E83ull};
+    std::vector<std::uint64_t> dump_vs{hologram_model_vs, hologram_quad_vs};
     ///\brief edworld's output directory (edloader's log directory, else the dll's); a file `edworld_dump` there
     /// asks for one dump of every panel's interface surface into `edworld_dumps\` (raw rows; size, format and row
     /// pitch in the name)
@@ -370,7 +372,7 @@ namespace edworld
     ///\brief the vertex shader the game draws the hologram's model with (5B0068AF, 2026-10-20); 0: found by its draws instead
     /// (a model shader drawing 1000 indices or more to a 512x512 target) and named in the log - only then, as the game makes
     /// the hologram's shader only when it first shows a station (a search before took another model's, 2026-10-20)
-    std::uint64_t station_vs{0x5B0068AF5630F96Bull};
+    std::uint64_t station_vs{hologram_model_vs};
     ///\brief the spheres' colours, 0xRRGGBB: a muted grey by default (doc/users.md has the 1.1.0-beta.1 blue as an
     /// example); the fainter shades (the far side, the disc's middle, the outline) are mixed from these
     ///\brief the disc behind a sphere, at its rim; its middle is a fifth of the way to compass_colour_rim
@@ -560,6 +562,11 @@ namespace edworld
 
   ///\brief once per device the game gets from the chain
   auto attach_to_device(ID3D11Device * device) noexcept -> void;
+  ///\brief edworld_eht only: the file of a 3Dmigoto (EDHM) found before edworld in the chain at the device's creation,
+  /// empty when none (and always in edworld). edworld_eht then stays off for the session: its hooks leave the game alone,
+  /// the catalog of shaders notes nothing (it would learn EDHM's replacements as the game's), the corner says why
+  [[nodiscard]]
+  auto chain_refusal() noexcept -> char const *;
   ///\brief the system copy of d3d11.dll edworld loaded (Windows' own, under Proton DXVK's); null when it could not
   [[nodiscard]]
   auto system_d3d11() noexcept -> HMODULE;

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Each d3d11 proxy before edworld in the chain is named in the log at the first device (`warning: dll before edworld
+  in the chain: ...`, with its version resource), with edloader or with a chain made by hand. edworld_eht stays off
+  for the session with a 3Dmigoto (EDHM) before it, told by its version resource: the log and its corner line say so,
+  and its catalog of shaders does not learn EDHM's replacements.
+- The game's shaders edworld knows by name in one place, `src/shader_ids.h`.
+
 - `build_info`: edupscale's and edwide_screen's lines (their version and what they do now) beside edworld's when
   they are loaded, from their export `<name>_build_info`.
 - simple_enum by CPM (the version of elite_help_tool's): enumerations in the log by their names (the shader stages

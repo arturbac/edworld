@@ -21,6 +21,20 @@ The ini and log names are fixed by the build, not taken from the dll's file name
 - Forwards every d3d11 export to the next d3d11 in the chain (`next` in `<plugin>.ini`: EDHM, a renamed
   EDVR, or the system copy). Chaining discipline from EDVR (MIT): system copy loaded in DllMain, next proxy
   on the first export call, a thread-local depth guard for a next proxy that asks for `d3d11.dll` by name.
+- At the first device's creation, each d3d11 proxy above edworld on the stack (a module that exports
+  `D3D11CreateDevice` and called down the chain to edworld: the mods before it, edloader among them) gets a line
+  `warning: dll before edworld in the chain: <path> (product "...", "...", version "...")` from its version resource,
+  so a failure says who stood before edworld also without edloader's log or with a chain made by hand. A 3Dmigoto
+  (EDHM) among them is told by its version resource (`ProductName` or `FileDescription` naming 3Dmigoto), not by its
+  file's name. edworld goes on; edworld_eht stays off for the session (`edworld_eht: off for this session: ...` in the
+  log, its corner line `edworld <version> off: 3Dmigoto before it (<file>)`): its draw hooks only draw that line, its
+  vertex shaders' hook and the catalog of shaders note nothing (before EDHM it would learn EDHM's replacements as the
+  game's shaders), and no census, data source, game state or probe starts. The look runs once, at the first device the
+  game asks for (not a nested call, not an overlay's); the game's own `d3d11.dll` there (edloader) gets a plain
+  `chain: before edworld: ...` line, not a warning.
+- The game's shaders edworld knows by name stand in one place, `src/shader_ids.h` (one line each,
+  `inline constexpr std::uint64_t <name>_<stage>{0x...ull};`); eht_private's installer reads it for edshader-catch's
+  watch list.
 - Hooks (vtable slots): `ID3D11Device::CreateVertexShader` (FNV-1a 64 of the bytecode, the hash EDVR
   names shaders by, in place) and `ID3D11DeviceContext::VSSetShader`, `Draw`, `DrawIndexed`, `DrawInstanced`,
   `DrawIndexedInstanced`, the two indirect draws and `ExecuteCommandList`, on the immediate context. When three
@@ -623,7 +637,8 @@ by `exclusive_lock_t` / `shared_lock_t` for a scope. An enumeration in a log lin
 
 | Path | What |
 |---|---|
-| `src/proxy.cc` | exports, chaining, wrapped `D3D11CreateDevice(AndSwapChain)` |
+| `src/proxy.cc` | exports, chaining, wrapped `D3D11CreateDevice(AndSwapChain)`, the dlls before edworld in the chain |
+| `src/shader_ids.h` | the game's shaders edworld knows by name |
 | `src/hooks.cc` | the observer: hooks, staging ring, readback, publishing (edworld_eht), log summary |
 | `src/panel_patch.cc` | the jump panel patch and the factions list (ImGui draw list, state saved and restored) |
 | `src/game_state.cc` | `Status.json`, EHT's `target` (edworld_eht), EDSM |
@@ -641,7 +656,7 @@ by `exclusive_lock_t` / `shared_lock_t` for a scope. An enumeration in a log lin
 | `CMakeLists.txt`, `test/CMakeLists.txt`, `CMakePresets.json`, `cmake/get_cpm.cmake` | the build (see [Build](#build)); exports from `tools/d3d11_exports.txt`; stralgo and small_vectors by CPM |
 | `cmake/clang-cl-msvc-sdk.cmake`, `cmake/version.cmake` | the toolchain (clang-cl with MSVC's and the Windows SDK's headers and libraries), the version from `git describe` |
 | `tools/d3d11_exports.txt`, `tools/gen_exports_from_list.py` | the Windows d3d11 export names, and the run of EDVR's generator on them |
-| `tools/test.sh <build dir> <scratch>` | smoke test under wine without the game, both builds (each as `d3d11.dll`), plain and chained, patch and list pixels checked, EDSM's answer read from a saved one (`test/data/`), the shaders' catalog written (edworld_eht), game shaders' shapes read when `EDWORLD_SHADER_SAMPLE` names `.dxbc` files, `doc/settings.md` compared with the one edworld_eht makes from its table of settings (`EDWORLD_SETTINGS_DOC`; on a difference it prints the `cp` that brings the doc up to date), and the render test (below) (environment: `EDWORLD_WINEPREFIX`) |
+| `tools/test.sh <build dir> <scratch>` | smoke test under wine without the game, both builds (each as `d3d11.dll`), plain and chained (also behind `test/fake_migoto.dll`, a 3Dmigoto by its version resource), patch and list pixels checked, EDSM's answer read from a saved one (`test/data/`), the shaders' catalog written (edworld_eht), game shaders' shapes read when `EDWORLD_SHADER_SAMPLE` names `.dxbc` files, `doc/settings.md` compared with the one edworld_eht makes from its table of settings (`EDWORLD_SETTINGS_DOC`; on a difference it prints the `cp` that brings the doc up to date), and the render test (below) (environment: `EDWORLD_WINEPREFIX`) |
 | `tools/bench.sh <build dir> <scratch> [<w> <h>]`, `test/data/bench/` | the cost without the game: the clouds' pass per scene under DXVK, a draw through edworld on the render thread; compared with the card's reference ([performance.md](performance.md)) |
 | `test/render_test.cc`, `src/clouds_values.h`, `test/data/render/` | the render test: the clouds' volume shader drawn with the system d3d11 (no edworld in its folder) into a 320x160 float target for six kinds (Neon, Ammonia, CarbonDioxide, Argon, Methane, Water) from orbit by day, by night at K 7, K 3 and with no field (shown 40 times brighter), at the limb, inside the layer and, for the two that snow, on the ground; its buffer made by `clouds_values`, the same function the game's draw uses. Checked by numbers (no NaN, clouds on the disc, no aurora by day, the aurora by night and stronger at K 7 than K 3, the next frame close, the snow) and against the reference pictures (a mean difference under 1.5 of 255, under 0.5% of channels off by more than 24); `EDWORLD_RENDER_UPDATE=1 tools/test.sh ...` makes the references again, after the pictures were looked at. `render_test.exe <out> [<reference>] --shaders <dir>` draws with another build's `clouds3d_vs.cso`/`clouds3d_ps.cso` (fxc `/Fo`), to compare |
 | `tools/edworld_watch.py [path]` | live view of the shared file |

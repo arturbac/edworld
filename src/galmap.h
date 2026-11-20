@@ -13,11 +13,10 @@
 #include <string>
 #include <vector>
 
+#include "shader_ids.h"
+
 namespace edworld
   {
-  ///\brief the HUD's text shader, which writes the galaxy map's labels too
-  inline constexpr std::uint64_t galmap_text_vs{0x1012E00B3CB44469ull};
-
   inline constexpr std::int32_t galmap_zones_x{6}, galmap_zones_y{9};
 
   ///\brief a font pixel over this is ink

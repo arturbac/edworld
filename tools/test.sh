@@ -112,6 +112,25 @@ second_device_case() {  # $1 = edworld | edworld_eht; a second device of the gam
   ini_check "a second device not followed, the log says so" $?
   set -e
 }
+chain_case() {  # $1 = edworld | edworld_eht; a 3Dmigoto (by its version resource) before edworld in the chain
+  set +e
+  : > "$1.ini"
+  [[ -s $1.log ]] && ! grep -h 'warning: dll before edworld' "$1".*log | grep -q .
+  ini_check "no dll before edworld said while none was" $?
+  cp "$BUILD/test/fake_migoto.dll" .
+  EDWORLD_TEST_PASSER='fake_migoto.dll' ini_run
+  grep 'warning: dll before edworld in the chain: ' "$1.log" | grep 'fake_migoto.dll' | grep -q 'product "XXMI DLL (3Dmigoto)"'
+  ini_check "the dll before edworld named with its version resource" $?
+  if [[ $1 == edworld_eht ]]; then
+    grep -q 'edworld_eht: off for this session: 3Dmigoto (fake_migoto.dll) is before it in the chain' "$1.log" \
+      && grep -q 'edworld_eht off for this session, only its corner.s line drawn' "$1.log"
+    ini_check "edworld_eht off with 3Dmigoto before it" $?
+  else
+    ! grep -q 'off for this session' "$1.log"
+    ini_check "edworld goes on with 3Dmigoto before it" $?
+  fi
+  set -e
+}
 doc_case() {  # doc/settings.md is made by edworld_eht from its table of settings (it has every setting); in the run directory
   set +e
   EDWORLD_SETTINGS_DOC=settings.md ini_run
@@ -156,6 +175,7 @@ run_variant() {  # $1 = edworld | edworld_eht; sets rc on failure
   creator_case "$V"
   fault_case "$V"
   second_device_case "$V"
+  chain_case "$V"
   bad_values_case "$V"
   [[ $V != edworld_eht ]] || doc_case
   popd >/dev/null

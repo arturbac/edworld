@@ -217,9 +217,9 @@ namespace edworld
     ID3D11Device * device{};
     ID3D11DeviceContext1 * immediate1{};
     int current_watched{-1};
-    ///\brief (PoC) the game's shell of the atmosphere over a planet that has none of its own clouds; its draw is what
-    /// the clouds are drawn after. It says where the planet is and how large, in its own constants
-    constexpr std::uint64_t atmosphere_shell_vs{0xFFB551B5E7E79CEAull};
+    // (PoC) the game's shell of the atmosphere over a planet that has none of its own clouds (atmosphere_shell_vs,
+    // shader_ids.h); its draw is what the clouds are drawn after. It says where the planet is and how large, in its
+    // own constants
     std::atomic<void *> shell_vs{};
     bool current_shell{};
     std::uint32_t current_pending{max_vs_seen};  // the bound shader's seen slot while its verdict is pending
@@ -2864,7 +2864,11 @@ namespace edworld
     // composite to the back buffer is one); SEH as around the observation
     auto guarded_build_info(ID3D11DeviceContext * ctx) noexcept -> void
       {
-      if(settings().build_info == 0 or ctx != immediate.load(std::memory_order_relaxed) or disabled.load(std::memory_order_relaxed))
+      // edworld_eht off (chain_refusal): the corner's line alone, until its first fault
+      static std::atomic<bool> refused_line_faulted{};
+      bool const refused{chain_refusal()[0] != '\0'};
+      if(settings().build_info == 0 or ctx != immediate.load(std::memory_order_relaxed)
+         or (disabled.load(std::memory_order_relaxed) and not refused) or refused_line_faulted.load(std::memory_order_relaxed))
         return;
       ++own_depth;
       __try
@@ -2874,6 +2878,8 @@ namespace edworld
       __except(fault_filter(GetExceptionInformation()))
         {
         note_fault();
+        if(refused and not refused_line_faulted.exchange(true))
+          log_line("build_info: a fault while edworld_eht is off; its corner's line left off too");
         }
       --own_depth;
       }
@@ -4589,7 +4595,7 @@ namespace edworld
     )
       {
       HRESULT const hr{orig_create_vs(self, bytecode, length, linkage, shader)};
-      if(FAILED(hr) or not shader or not *shader or not bytecode)
+      if(FAILED(hr) or not shader or not *shader or not bytecode or chain_refusal()[0])
         return hr;
       vs_created.fetch_add(1, std::memory_order_relaxed);
       std::uint64_t const hash{fnv1a64(static_cast<std::uint8_t const *>(bytecode), length)};
@@ -6106,6 +6112,9 @@ namespace edworld
       return;
       }
     log_device(dev);
+    bool const refused{chain_refusal()[0] != '\0'};
+    if(refused)
+      disabled.store(true);  // edworld_eht off for the session (proxy.cc): its hooks pass, the corner says why
     {
     LARGE_INTEGER f;
     QueryPerformanceFrequency(&f);
@@ -6134,7 +6143,8 @@ namespace edworld
       return;
       }
 #if defined(EDWORLD_EHT)
-    patch_catalog(dev);
+    if(not refused)
+      patch_catalog(dev);
 #endif
 
     ID3D11DeviceContext1 * ctx1{};
@@ -6170,6 +6180,13 @@ namespace edworld
     last_any_draw_qpc = attach_qpc;
     immediate1 = ctx1;
     immediate.store(ctx);  // the latest device wins; its context stays referenced for the process lifetime
+    if(refused)
+      {
+      // no census, share, game state or probe: only the corner's line, through the draw hooks
+      log_line("attach: device {} context {}: edworld_eht off for this session, only its corner's line drawn",
+               static_cast<void const *>(dev), static_cast<void const *>(ctx));
+      return;
+      }
     if(std::uint32_t const order{census_attached.fetch_add(1)}; order < census_contexts)
       {
       census_context[order].store(ctx);

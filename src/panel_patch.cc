@@ -3667,7 +3667,10 @@ namespace edworld
     // edworld's line, then the other plugins' that say theirs (an export <name>_build_info(char *, int) -> its length):
     // their version and mode, so a player sees that they run (edupscale leaves no blur to tell it by, 2026-11-19)
     char lines[3][96]{};
-    format_into(lines[0], "edworld {}", EDWORLD_VERSION);
+    if(char const * const refused{chain_refusal()}; refused[0])
+      format_into(lines[0], "edworld {} off: 3Dmigoto before it ({})", EDWORLD_VERSION, refused);
+    else
+      format_into(lines[0], "edworld {}", EDWORLD_VERSION);
     std::uint32_t count{1};
     using build_info_fn = int (*)(char *, int);
     for(auto const [module, name]: {std::pair{L"edupscale.dll", "edupscale_build_info"}, std::pair{L"edwide_screen.dll", "edwide_screen_build_info"}})

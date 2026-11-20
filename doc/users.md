@@ -324,6 +324,11 @@ player's log, is there by default, so keep it in the list). edworld then passes 
 over, finds the game behind it and logs `asked by EliteDangerous64.exe (past <its name>: creator_pass)`. Do not add an
 overlay's dll there (Epic's, Discord's, Steam's): edworld would follow the overlay's device instead of the game's.
 
+A line `warning: dll before edworld in the chain: ...` names each mod that stood before edworld in the chain (the
+file, its product and version; edloader itself gets a plain `chain: before edworld:` line), for a failure to tell who
+was there. Other mods before edworld are allowed; with
+edloader, `edworld.dll` (or `edworld_eht.dll`) best stands before EDHM in `edloader.txt`.
+
 30 seconds and 5 minutes after the start, `census` lines count the game's draws edworld saw and say whether its
 hooks are still in place (`draw hooks in place`, or which dll took them). No draws seen, or hooks taken, means
 edworld sees nothing of the game: the navballs, the panel and the clouds stay away.

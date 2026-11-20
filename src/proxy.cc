@@ -15,6 +15,8 @@
 #include <string_view>
 #include <mutex>
 
+#include <winver.h>
+
 #include <stralgo/stralgo.h>
 
 extern "C"
@@ -250,6 +252,135 @@ namespace
     return slash == std::wstring_view::npos ? std::wstring_view{} : p.substr(0, slash + 1);
     }
 
+  char refused_by[MAX_PATH]{};  ///< chain_refusal(): written once, before refused is set
+  std::atomic<bool> refused{};   ///< refused_by is written and stays so
+
+  ///\brief a string of a module's version resource (`ProductName`, `FileDescription`, `FileVersion`), its first
+  /// language's, as UTF-8; empty when the file has none
+  auto version_string(wchar_t const * path, wchar_t const * key, char (&out)[128]) noexcept -> void
+    {
+    out[0] = '\0';
+    out[sizeof out - 1] = '\0';
+    DWORD ignored{};
+    DWORD const size{GetFileVersionInfoSizeW(path, &ignored)};
+    if(size == 0 or size > (1u << 20))
+      return;
+    std::vector<char> data;
+    try
+      {
+      data.resize(size);
+      }
+    catch(std::exception const & e)
+      {
+      edworld::log_line("chain: the version of {} not read ({})", wide(path), e.what());
+      return;
+      }
+    if(not GetFileVersionInfoW(path, 0, size, data.data()))
+      return;
+    struct
+      {
+      WORD language, code_page;
+      } * translation{};
+    UINT n{};
+    if(not VerQueryValueW(data.data(), L"\\VarFileInfo\\Translation", reinterpret_cast<void **>(&translation), &n)
+       or n < sizeof *translation)
+      return;
+    std::wstring query;
+    try
+      {
+      query = std::format(L"\\StringFileInfo\\{:04x}{:04x}\\{}", translation->language, translation->code_page, key);
+      }
+    catch(std::exception const & e)
+      {
+      edworld::log_line("chain: the version of {} not read ({})", wide(path), e.what());
+      return;
+      }
+    wchar_t * value{};
+    if(VerQueryValueW(data.data(), query.c_str(), reinterpret_cast<void **>(&value), &n) and value and n)
+      WideCharToMultiByte(CP_UTF8, 0, value, -1, out, static_cast<int>(sizeof out) - 1, nullptr, nullptr);
+    }
+
+  ///\brief the text says "3Dmigoto", in any case
+  auto names_3dmigoto(char const (&text)[128]) noexcept -> bool
+    {
+    char lower[128]{};
+    for(std::size_t i{}; i != sizeof lower and text[i]; ++i)
+      lower[i] = static_cast<char>(stralgo::to_lower(text[i]));
+    return std::string_view{lower}.find("3dmigoto"sv) != std::string_view::npos;
+    }
+
+  ///\brief the d3d11 proxies above edworld on the stack at the first device's creation (each called down the chain to
+  /// edworld: the mods before it, edloader among them), a warning line each, so a failure says who was before edworld
+  /// even without edloader's log or with a chain made by hand. A 3Dmigoto (EDHM) among them, told by its version
+  /// resource and not by its file's name, turns edworld_eht off for the session (chain_refusal)
+  auto note_proxies_before_once() noexcept -> void
+    {
+    void * frames[48]{};
+    USHORT const n{RtlCaptureStackBackTrace(1, static_cast<DWORD>(std::size(frames)), frames, nullptr)};
+    HMODULE said[16]{};
+    std::size_t said_count{};
+    for(USHORT i{}; i != n and said_count != std::size(said); ++i)
+      {
+      HMODULE m{};
+      if(not GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                static_cast<LPCWSTR>(frames[i]), &m)
+         or not m or m == self_module or m == system_module or not GetProcAddress(m, "D3D11CreateDevice")
+         or std::find(said, said + said_count, m) != said + said_count)
+        continue;
+      said[said_count++] = m;
+      wchar_t path[MAX_PATH]{};
+      if(not GetModuleFileNameW(m, path, MAX_PATH))
+        continue;
+      char product[128]{};
+      char description[128]{};
+      char version[128]{};
+      version_string(path, L"ProductName", product);
+      version_string(path, L"FileDescription", description);
+      version_string(path, L"FileVersion", version);
+      bool const migoto{names_3dmigoto(product) or names_3dmigoto(description)};
+      // the game's own d3d11.dll (edloader, or a chain's first mod by hand) is on every chain's stack: said, not warned
+      wchar_t exe[MAX_PATH]{};
+      std::wstring_view const folder{folder_of(path)};
+      std::wstring_view const exe_folder{GetModuleFileNameW(nullptr, exe, MAX_PATH) ? folder_of(exe) : std::wstring_view{}};
+      bool const games_own{not migoto and not exe_folder.empty() and folder.size() == exe_folder.size()
+                           and CompareStringOrdinal(folder.data(), static_cast<int>(folder.size()), exe_folder.data(),
+                                                    static_cast<int>(exe_folder.size()), TRUE)
+                                 == CSTR_EQUAL
+                           and CompareStringOrdinal(path + folder.size(), -1, L"d3d11.dll", -1, TRUE) == CSTR_EQUAL};
+      edworld::log_line("{}: {} (product \"{}\", \"{}\", version \"{}\"){}",
+                        games_own ? "chain: before edworld" : "warning: dll before edworld in the chain", wide(path), product,
+                        description, version, games_own ? " - the game's d3d11.dll: edloader, or a chain's first mod" : "");
+#if defined(EDWORLD_EHT)
+      if(migoto and not refused.load(std::memory_order_relaxed))
+        {
+        if(not WideCharToMultiByte(CP_UTF8, 0, path + folder.size(), -1, refused_by, sizeof refused_by - 1, nullptr, nullptr))
+          format_into(refused_by, "3Dmigoto");
+        refused.store(true, std::memory_order_release);
+        edworld::log_line("edworld_eht: off for this session: 3Dmigoto ({}) is before it in the chain; edworld_eht.dll has "
+                          "to stand before EDHM in edloader.txt",
+                          refused_by);
+        }
+#else
+      (void)migoto;
+#endif
+      }
+    }
+
+  ///\brief note_proxies_before_once at the first device the game asks for (not a nested call, not an overlay's): once a
+  /// process, a second thread waiting until the first has looked
+  auto note_proxies_before() noexcept -> void
+    {
+    static INIT_ONCE once = INIT_ONCE_STATIC_INIT;
+    InitOnceExecuteOnce(
+      &once,
+      [](PINIT_ONCE, PVOID, PVOID *) -> BOOL
+        {
+        note_proxies_before_once();
+        return TRUE;
+        },
+      nullptr, nullptr);
+    }
+
   ///\brief who asks for a device: the first module on the stack that is neither edworld nor a d3d11 proxy (one that
   /// exports D3D11CreateDevice: edloader, EDHM, EDVR, the system copy); code outside any module (a hook's trampoline) and
   /// the dlls named in creator_pass are passed over. The game's when that module lies in the game exe's folder, foreign
@@ -315,6 +446,8 @@ namespace
 
 auto edworld::system_d3d11() noexcept -> HMODULE { return system_module; }
 
+auto edworld::chain_refusal() noexcept -> char const * { return refused.load(std::memory_order_acquire) ? refused_by : ""; }
+
 extern "C" HRESULT WINAPI edvr_impl_D3D11CreateDevice(
   IDXGIAdapter * adapter,
   D3D_DRIVER_TYPE driver_type,
@@ -343,6 +476,8 @@ extern "C" HRESULT WINAPI edvr_impl_D3D11CreateDevice(
   if(not target)
     return E_FAIL;
   creator_t const by{find_creator()};
+  if(not depth.reentrant() and by.kind != creator_e::foreign)
+    note_proxies_before();
   HRESULT const hr{target(adapter, driver_type, software, flags, levels, level_count, sdk, device, level, context)};
   bool const made{SUCCEEDED(hr) and device and *device};
   log_create("D3D11CreateDevice", hr, device != nullptr, made, depth.reentrant(), by);
@@ -372,6 +507,8 @@ extern "C" HRESULT WINAPI edvr_impl_D3D11CreateDeviceAndSwapChain(
   if(not target)
     return E_FAIL;
   creator_t const by{find_creator()};
+  if(not depth.reentrant() and by.kind != creator_e::foreign)
+    note_proxies_before();
   HRESULT const hr{
     target(adapter, driver_type, software, flags, levels, level_count, sdk, swap_desc, swap, device, level, context)
   };
