@@ -83,7 +83,7 @@ known, a planet gets the clouds of the ini; once it is known they change over 2 
 The lumps are not one size over the whole planet: a slow noise makes them larger in some regions and smaller in
 others, by a quarter either way (`clouds_size_var`, `0` = one size).
 
-**Lumps by the layer's thickness (PoC, `clouds_lumps_by_layer`).** Convection cells are about as wide as the layer
+**Lumps by the layer's thickness (`clouds_lumps_by_layer`).** Convection cells are about as wide as the layer
 they rise through is deep, and they gather into groups ten to forty times that. The layer's thickness H is taken
 from the kind's typical planet (its floor to top times the kind's median radius: edworld does not know the planet's
 gravity), the coarsest lumps are 25 H and the finest about 1.5 H; the scale stays between 4 and 40 lumps' lattice
@@ -102,7 +102,7 @@ decides it is how stable the atmosphere is, not its temperature.
 | Neon | 5435 km | 24 km | 776 / 46 km | 611 / 36 km |
 | Helium | 7711 km | 35 km | 1102 / 65 km | 867 / 51 km |
 
-**Weather (PoC, `clouds_weather`).** A cloud's edge is moved up or down by region, by at most 0.2 (the edge is
+**Weather (`clouds_weather`).** A cloud's edge is moved up or down by region, by at most 0.2 (the edge is
 `0.62 - 0.3 cover`, so 0.2 of it is as much as 0.67 of the cover), so some regions are overcast and others clear. What shapes it is R/L, as for the storms below: under 0.3
 (a slow turn for the planet's size) the clouds gather on the day side around the point under the star, where it heats
 most, as models of slowly turning planets give, and they stay with the star as the planet turns. There the clear
@@ -207,7 +207,7 @@ On a planet whose kind is known (`aurora = 1`), an aurora over the night side, o
 what it carries over from the Earth and what it chooses, the colours of each kind and how often you will meet them:
 [auroras.md](auroras.md).
 
-## Snow (PoC)
+## Snow
 
 `snow = 1` (on by default, `0` turns it off): on foot outdoors or in a ship or an SRV in the air, crystals of the air's own gas fall near
 you under the clouds, where the
@@ -252,4 +252,4 @@ between the file's updates for up to 2 s and then held where that took it, a lat
 second, so a fast flight does not jump; a new reference every 10 km, or when the altitude's reference changes, moves no
 crystal; their fall and the wind's drift are summed in double precision, so they keep their millimetres after hours). The star
 lights them, brighter as you look towards it, as ice glints; at night there are none to see. The ground and buildings
-hide those behind them. `snow_gain` scales how many. A PoC: their look and their number are to be tuned in the game.
+hide those behind them. `snow_gain` scales how many.

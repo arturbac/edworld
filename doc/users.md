@@ -133,28 +133,29 @@ the values that make sense, and whether a change shows while the game runs or ne
 | `clouds_detail` | `1` | how much the fine shape near you cuts the clouds with depth; `0` = none, a smooth fog from the ground |
 | `clouds_detail_size`, `clouds_detail_range`, `clouds_detail_edge` | `3000`, `500000`, `8` | that shape's largest lumps and how far it reaches, in metres, and how sharp a cloud's edge is near you |
 | `clouds_detail_gap` | `0.14` | how much clear sky there is among the clouds with depth near you; more = thinner, the view from orbit stays |
-| `clouds_wind_low`, `clouds_wind_high` | `100`, `400` | the wind in km/h at the floor of the clouds with depth and at their top; both `0` = still clouds |
+| `clouds_wind_low`, `clouds_wind_high` | `100`, `600` | the wind in km/h at the floor of the clouds with depth and at their top; both `0` = still clouds |
 | `clouds_top_gain` | `2` | how much lighter the clouds with depth are seen from above, over a light ground; `1` = as from under them |
 | `clouds_density`, `clouds_opacity`, `clouds_steps` | `1.2`, `0.75`, `32` | how thick they are, how much they cover at most, and the steps through them: fewer are lighter and coarser |
 | `clouds_mode` | `0` | (test) the clouds with depth from afar in fewer steps, the same shape: `0` = by your height, `1` = always near, `2` = always far |
 | `clouds_far_steps` | `6` | the steps through the clouds with depth from afar |
 | `clouds_near_from`, `clouds_near_to` | `0.25`, `0.5` | near steps under the first height over the surface, far ones over the second, a blend between; parts of the planet's radius |
+| `clouds_noise_time` | `1` | the grain of the clouds with depth, the aurora and the snow moved each frame: `1` = while edupscale's temporal anti-aliasing jitters the camera, so it averages the grain instead of flickering, `0` = never, `2` = always; read again while the game runs |
 | `clouds_debug` | `0` | (test) `1` = every pixel the clouds with depth are worked out for painted magenta, `2` = the game's fade of its atmosphere painted, green at 1, red at 0 |
 | `clouds_game_fade` | `1` | (test) `1` = the clouds with depth fade with the game's own atmosphere, `0` = never |
 | `clouds_hide_below_px`, `clouds_full_from_px` | `20`, `80` | no clouds with depth while the planet is narrower on the screen than the first many pixels, all of them from the second, a blend between; pixels of the picture the game draws, before its upscaling |
 | `clouds_max_steps` | `64` | (test) the most steps through the clouds with depth: the steps follow the way's length through them, many at the planet's edge |
 | `clouds_edge_hide_px`, `clouds_edge_full_px`, `clouds_edge_band_px` | `2`, `8`, `16` | no clouds with depth out of the planet's edge while their layer is thinner on the screen than the first many pixels, all from the second; on the disc the same within the third many pixels of the edge |
-| `clouds_kind_read_s` | `10` | how often the game's atmosphere is read for its kind and the planet's day, in seconds; `0` = never, the clouds as in 1.2.0-beta.8; read again while the game runs |
+| `clouds_kind_read_s` | `10` | how often the game's atmosphere is read for its kind and the planet's day, in seconds; `0` = never, the same clouds on every planet, by the ini; read again while the game runs |
 | `clouds_by_kind` | `1` | `1` = the clouds with depth by the atmosphere's kind (needs `clouds_kind_read_s`), `0` = the same on every planet; read again while the game runs |
 | `clouds_physics_intensity` | `1` | how strongly the kinds' clouds show, `1` = as the physics gives, `2` = twice as strong (at most `clouds_opacity`) and a haze's cover up to clouds', `0` = none; read again while the game runs |
 | `clouds_tint` | `1` | how strongly the kinds' clouds take their colour, `1` = a little off white as [clouds.md](clouds.md) gives, `0` = white on every planet, `2` = twice as far from white; read again while the game runs |
-| `clouds_size_var` | `0.25` | (PoC) the lumps' size noised by region: their scale times 1 ± this from a slow noise over the planet, so some regions have larger lumps and others smaller; `0` = one size everywhere, at most `0.9`; read again while the game runs |
+| `clouds_size_var` | `0.25` | the lumps' size noised by region: their scale times 1 ± this from a slow noise over the planet, so some regions have larger lumps and others smaller; `0` = one size everywhere, at most `0.9`; read again while the game runs |
 | `clouds_cyclones` | `1` | `1` = storms in the kinds' clouds by the planet's size, day and kind, `0` = none; read again while the game runs |
-| `clouds_lumps_by_layer` | `1` | (PoC) `1` = the kinds' lumps by the layer's thickness (larger on small planets, smaller on large ones, the fine shape near you too) and each as high as it is strong, `0` = as before; read again while the game runs |
-| `clouds_weather` | `1` | (PoC) the weather in the kinds' clouds: overcast and clear regions by how fast the planet turns for its size, `1` = as [clouds.md](clouds.md) gives, `0` = none, `2` = twice as strong; read again while the game runs |
-| `aurora` | `1` | (PoC) `1` = an aurora over the night side of a planet whose atmosphere's kind is known, as [clouds.md](clouds.md#aurora) gives, `0` = none; this and the four below read again while the game runs |
+| `clouds_lumps_by_layer` | `1` | `1` = the kinds' lumps by the layer's thickness (larger on small planets, smaller on large ones, the fine shape near you too) and each as high as it is strong, `0` = as before; read again while the game runs |
+| `clouds_weather` | `1` | the weather in the kinds' clouds: overcast and clear regions by how fast the planet turns for its size, `1` = as [clouds.md](clouds.md) gives, `0` = none, `2` = twice as strong; read again while the game runs |
+| `aurora` | `1` | `1` = an aurora over the night side of a planet whose atmosphere's kind is known, as [clouds.md](clouds.md#aurora) gives, `0` = none; this and the four below read again while the game runs |
 | `aurora_gain` | `1` | how bright the aurora is, `0`..`3` |
-| `snow` | `1` | (PoC) `1` = on foot outdoors or in a ship or an SRV in the air, crystals of the air's own gas falling near you under the clouds of an ammonia or methane planet (doc/clouds.md, "Snow"); read again while the game runs |
+| `snow` | `1` | `1` = on foot outdoors or in a ship or an SRV in the air, crystals of the air's own gas falling near you under the clouds of an ammonia or methane planet (doc/clouds.md, "Snow"); read again while the game runs |
 | `snow_gain` | `1` | how many of them |
 | `aurora_activity` | `-1` | (test) how stormy: `-1` = by the time, each 3 hours its own and the same for everyone; `0`..`9` = always this, as the Kp index (`7` for a picture of a strong one) |
 | `aurora_dance` | `1` | how much the aurora moves in seconds in a substorm (waves, folds, wiggles, curls): `1` = as designed, `0` = none of these (its rays still grow and fade), `2` = twice as much |
@@ -192,7 +193,7 @@ the values that make sense, and whether a change shows while the game runs or ne
 | `pad_text_read` | `1` | the pad's number and the grant's time read from the tower's notice on the HUD ("PROCEED TO LANDING PAD n -" over its countdown; the structure is the English text's, other languages of the game not checked): edworld takes them as the pad given (`state: pad n given ... (from the HUD's notice)` in the log); edworld_eht logs whether they agree with EHT's; `0` = off |
 | `pad_text_unsure_sample` | `1` | when the tower's notice is on the HUD but its pad's number cannot be read sure (a case the digits' templates have not met), edworld takes no pad from it, writes a log line, and with `1` keeps the notice's picture once in `edworld_padtext` next to the log (about 130 KB) for learning the digits; `0` = the log line only |
 | `station_vs` | `5B0068AF5630F96B` | (test) the game's shader for the hologram's model; after a game update that changes it, `0`: edworld finds it by its draws and names it in the log |
-| `gate_dive` | `17` | the gates down to a place (proof of concept, not drawn yet): the dive, in degrees below the planet's visible edge |
+| `gate_dive` | `17` | the gates down to a place (not drawn yet): the dive, in degrees below the planet's visible edge |
 | `gate_dive_height` | `0.3` | the gates: the height of the point the dive starts from, in planet radii |
 | `gate_arc` | `30` | the gates: the largest turn, in degrees, onto the flat line (the nose on the planet's edge) before the dive |
 | `gate_dive_steepest` | `73` | the gates: the steepest dive, in degrees below the local horizontal; from high over the place, where the straight line at it would be steeper, the gates set up the approach instead |
@@ -209,7 +210,8 @@ the values that make sense, and whether a change shows while the game runs or ne
 | `compass_colour_pad_base` | `7AB8E0` | (test) the approach view's base while the pad's plane shows (see `pad_tilt_green_deg`): light blue, so that green and red there mean the tilt to the pads alone |
 | `compass_colour_top` | `7AB8E0` | (test) in the approach view the left sphere's ring: the target seen from above, light blue as the game's own compass; the white dot stays where the view ahead has it |
 
-The rest of the settings (`doc/developers.md`) are for finding things in the game.
+All the settings, with their defaults and ranges: [settings.md](settings.md); those not listed here are for finding
+things in the game.
 
 ### Navball colours
 
@@ -255,7 +257,7 @@ long the graphics card spends on them (`ms median`, from one draw in five) and h
 report about the speed of the game near a planet, that line helps.
 Toward the horizon, where the way through the clouds is longest, they can show a fine, even grain.
 
-The clouds with depth follow the atmosphere's kind (since 1.2.0-beta.9). The kind is told by how the game's own
+The clouds with depth follow the atmosphere's kind. The kind is told by how the game's own
 atmosphere draws it (its colour table), not by the journal: each of the 15 kinds on planets you land on gets its own
 layer, height, cover, opacity and tint, from the physics of the kind's typical planet (its temperature, pressure,
 size). A gas that does not condense at its planets' temperatures gives a thin haze, not clouds; large cold planets
@@ -264,7 +266,7 @@ and for a kind not known the clouds are as above; then they change over 2 s. The
 `clouds: the planet of radius ... m is <kind>`. `clouds_physics_intensity` shows them stronger (`2` = twice, and a
 haze gets the cover of clouds) or weaker; `clouds_tint` their colour (`0` = white, `2` = twice as far from it); `clouds_by_kind = 0` gives every planet the same clouds, to compare. All
 are read again while the game runs; what each kind gets and why is in [clouds.md](clouds.md). edworld reads the game's atmosphere every `clouds_kind_read_s` seconds (10) while
-it is drawn; `0` stops that and the clouds are as in 1.2.0-beta.8. Nothing of it is written anywhere. When no read of
+it is drawn; `0` stops that and every planet gets the same clouds, by the ini. Nothing of it is written anywhere. When no read of
 the atmosphere gets through for a minute, the log says why (`atmo: no read of the shell got through in a minute: ...`).
 
 Storms (`clouds_cyclones`): in the kinds' clouds, cyclones with spiral arms and a clear eye, as many and as large
@@ -275,12 +277,12 @@ fast large one several smaller ones. They turn the planet's way on one half, the
 `clouds: N storm(s) on the planet ...`. `clouds_cyclones = 0` turns them off, read again while the game runs. Which
 planets to visit for them: [clouds.md](clouds.md#cyclones).
 
-Lumps and weather (`clouds_lumps_by_layer`, `clouds_weather`, PoC): in the kinds' clouds the lumps' size follows the
+Lumps and weather (`clouds_lumps_by_layer`, `clouds_weather`): in the kinds' clouds the lumps' size follows the
 cloud layer's thickness and each lump is as high as it is strong; the clouds gather on the day side of a planet
 that turns slowly for its size and lie in bands by latitude on a faster one. Both `0` give the clouds as before;
 read again while the game runs. Why: [clouds.md](clouds.md).
 
-Aurora (`aurora`, PoC): on the night side of a planet whose kind is known, an oval of curtains around a pole, over
+Aurora (`aurora`): on the night side of a planet whose kind is known, an oval of curtains around a pole, over
 the clouds, coloured by the gas (oxygen green and red, nitrogen violet with a pink edge, neon orange, ...). Whether
 the planet has one and how strong it is follow its size, its turn and its star; how stormy follows the time, each 3
 hours its own and the same for every player. In a substorm, every hour or two, it brightens over minutes and dances
@@ -346,7 +348,8 @@ dll and its ini. Copy them again. Through edloader only edloader's `d3d11.dll` h
 
 ## Remove
 
-Delete edworld's `d3d11.dll` and its ini; put back the mod's dll you renamed, as `d3d11.dll`.
+Delete edworld's `d3d11.dll` and its ini; put back the mod's dll you renamed, as `d3d11.dll`. Through edloader: delete `edworld.dll`
+from `edloader\plugins` and its line from `edloader.txt`.
 
 ## Known
 

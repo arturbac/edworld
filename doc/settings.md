@@ -29,21 +29,21 @@ In `edworld.ini` (or `edworld_eht.ini`), beside the dll or in `edloader\config`;
 | `clouds_edge_full_px` | `8` | over clouds_edge_hide_px (clamped) | all the clouds with depth out of the planet's edge from a layer this many pixels thick on the screen |
 | `clouds_edge_band_px` | `16` | over 0 (clamped) | on the disc, the same fading within this many pixels of the planet's edge |
 | `clouds_haze` | `0.05` | 0 and more (clamped) | from under the clouds with depth and in them, a cloud this far away covers e times less, so they fade into the haze at the horizon instead of ending in a sharp line; a part of the planet's radius, `0` = never less; from orbit they stay as they are |
-| `clouds_kind_read_s` | `10` | 0 and more | how often the game's atmosphere is read for its kind and the planet's day, in seconds; `0` = never, the clouds as in 1.2.0-beta.8 |
+| `clouds_kind_read_s` | `10` | 0 and more | how often the game's atmosphere is read for its kind and the planet's day, in seconds; `0` = never, the same clouds on every planet, by the ini |
 | `clouds_by_kind` | `1` | 0, 1 | `1` = the clouds with depth by the atmosphere's kind (needs `clouds_kind_read_s`), `0` = the same on every planet |
 | `clouds_physics_intensity` | `1` | 0 and more (clamped) | how strongly the kinds' clouds show: `1` = as the physics gives, `2` = twice as strong (at most `clouds_opacity`) and a haze's cover up to clouds', `0` = none |
 | `clouds_tint` | `1` | 0 and more (clamped) | how strongly the kinds' clouds take their colour: `1` = a little off white as [clouds.md](clouds.md) gives, `0` = white on every planet, `2` = twice as far from white |
-| `clouds_size_var` | `0.25` | 0..0.9 (clamped) | (PoC) the lumps' size noised by region: their scale times 1 +- this from a slow noise over the planet; `0` = one size everywhere |
+| `clouds_size_var` | `0.25` | 0..0.9 (clamped) | the lumps' size noised by region: their scale times 1 +- this from a slow noise over the planet; `0` = one size everywhere |
 | `clouds_cyclones` | `1` | 0, 1 | `1` = storms in the kinds' clouds by the planet's size, its day and the kind, `0` = none |
-| `clouds_lumps_by_layer` | `1` | 0, 1 | (PoC) `1` = the kinds' lumps by the layer's thickness: larger on small planets, smaller on large ones, the fine shape near you a quarter of the layer, each lump as high as it is strong; `0` = as before |
-| `clouds_weather` | `1` | 0..2 (clamped) | (PoC) the weather in the kinds' clouds: overcast and clear regions by how fast the planet turns for its size; `1` = as [clouds.md](clouds.md) gives, `0` = none, `2` = twice as strong |
-| `aurora` | `1` | 0, 1 | (PoC) `1` = an aurora over the night side of a planet whose atmosphere's kind is known, as [clouds.md](clouds.md#aurora) gives; `0` = none |
+| `clouds_lumps_by_layer` | `1` | 0, 1 | `1` = the kinds' lumps by the layer's thickness: larger on small planets, smaller on large ones, the fine shape near you a quarter of the layer, each lump as high as it is strong; `0` = as before |
+| `clouds_weather` | `1` | 0..2 (clamped) | the weather in the kinds' clouds: overcast and clear regions by how fast the planet turns for its size; `1` = as [clouds.md](clouds.md) gives, `0` = none, `2` = twice as strong |
+| `aurora` | `1` | 0, 1 | `1` = an aurora over the night side of a planet whose atmosphere's kind is known, as [clouds.md](clouds.md#aurora) gives; `0` = none |
 | `aurora_gain` | `1` | 0..3 (clamped) | how bright the aurora is; `1` = as designed |
 | `aurora_activity` | `-1` | -1, 0..9 (clamped) | (test) how stormy: `-1` = by the time, each 3 hours its own and the same for everyone; `0`..`9` = always this, as the Kp index |
 | `aurora_dance` | `1` | 0..2 (clamped) | how much the aurora moves in seconds in a substorm: waves along its arc, folds, wiggles, curls; `1` = as designed, `0` = none of these (its rays still grow and fade), `2` = twice as much |
 | `aurora_flicker` | `1` | 0, 1 | `1` = small patches of the aurora flicker a few times a second in a substorm, as real ones do; `0` = none |
 | `aurora_field` | `-1` | -1, 0, 1 | (test) whether the planet has a magnetic field of its own: `-1` = as guessed from its size and turn, `1` = always (the whole aurora on any planet whose kind is known), `0` = never (a faint glow only) |
-| `snow` | `1` | 0, 1 | (PoC) `1` = crystals of the air's own gas falling near the ground, on foot outdoors or in a ship or an SRV in the air, under the clouds, on an ammonia or methane planet (a cold ammonia one, its second colour, also a little in a clear sky); `0` = none |
+| `snow` | `1` | 0, 1 | `1` = crystals of the air's own gas falling near the ground, on foot outdoors or in a ship or an SRV in the air, under the clouds, on an ammonia or methane planet (a cold ammonia one, its second colour, also a little in a clear sky); `0` = none |
 | `snow_gain` | `1` | 0 and more | how many crystals, times the kind's own (ammonia 0.5 under a full cloud, a cold ammonia 1, methane 0.8) |
 | `snow_bench` | `0` | 0, 1 | (test) `1` = the snow's cost by its parts: every 10 s the next of all, none, the haze alone, the crystals alone, each logged as it starts (`snow bench:`), to read beside `clouds gpu 5s`; `0` = off |
 
@@ -70,7 +70,7 @@ In `edworld.ini` (or `edworld_eht.ini`), beside the dll or in `edloader\config`;
 | `clouds_detail_edge` | `8` | over 0 | how sharp a cloud's edge is near you; more = sharper |
 | `clouds_detail_gap` | `0.14` | 0..1 | how much clear sky the fine shape opens among the clouds with depth near you, from under them too; more = thinner, the view from orbit stays |
 | `clouds_wind_low` | `100` | 0 and more | the wind at the floor of the clouds with depth, km/h; with `clouds_wind_high` both `0` = still clouds |
-| `clouds_wind_high` | `400` | 0 and more | the wind at the top of the clouds with depth, km/h |
+| `clouds_wind_high` | `600` | 0 and more | the wind at the top of the clouds with depth, km/h |
 | `clouds_top_gain` | `2` | 1 and more | how much lighter the clouds with depth are seen from above, over a light ground; `1` = as from under them |
 
 ## Navballs
@@ -139,10 +139,10 @@ None.
 | `compass_hollow_max` | `180` |  | a hollow dot's pixels at most |
 | `compass_dot_hue_gap` | `30` | 0 to 180 | a coloured pixel is the dot's when its hue is this many degrees or more from the compass disc's; white always is (a red disc with a yellow dot is ~40 apart) |
 | `compass_log_ms` | `0` | 0 and more | a line of the compass's reading in the log at most this often, in milliseconds; `0` = never |
-| `gate_dive` | `17` | 0..90 | (PoC, not drawn yet) the gates down to a place: the dive, in degrees below the planet's visible edge |
-| `gate_dive_height` | `0.3` | over 0 | (PoC) the gates: the height of the point the dive starts from, in planet radii |
-| `gate_arc` | `30` | 0..180 | (PoC) the gates: the largest turn, in degrees, onto the flat line before the dive |
-| `gate_dive_steepest` | `73` | 0..90 | (PoC) the gates: the steepest dive, in degrees below the local horizontal; a straight line steeper than this sets up the approach instead |
+| `gate_dive` | `17` | 0..90 | (not drawn yet) the gates down to a place: the dive, in degrees below the planet's visible edge |
+| `gate_dive_height` | `0.3` | over 0 | the gates: the height of the point the dive starts from, in planet radii |
+| `gate_arc` | `30` | 0..180 | the gates: the largest turn, in degrees, onto the flat line before the dive |
+| `gate_dive_steepest` | `73` | 0..90 | the gates: the steepest dive, in degrees below the local horizontal; a straight line steeper than this sets up the approach instead |
 | `station_axes` | `1` | 0, 1 | (test) `1` = the target's axes in the right sphere: the X, Y and Z of the model the game shows as the target's hologram; `0` = off |
 | `pad_tilt_green_deg` | `15` | 0..pad_tilt_red_deg | (test, with `station_axes`) after the tower gives a pad, a disc of the pads' plane in the right sphere: green while the ship is tilted to the pads by at most this many degrees, then through yellow to red |
 | `pad_tilt_red_deg` | `35` | over pad_tilt_green_deg | (test) the pads' disc red from this many degrees of tilt on |

@@ -66,7 +66,7 @@ The ini and log names are fixed by the build, not taken from the dll's file name
 - (edworld_eht only) Reads the copies 1-3 frames later with `Map(DO_NOT_WAIT)` (never a CPU read of a mapped dynamic buffer:
   write-combined under DXVK) and publishes the latest frame to `panels` in `shm_dir` (seqlock; layout in
   `src/edworld_share.h`).
-- **Snow (PoC, `snow = 1`, the default)** (`src/snow.h`, `snow_along` in `shaders/clouds3d.hlsl`): in the clouds' draw, values
+- **Snow (`snow = 1`, the default)** (`src/snow.h`, `snow_along` in `shaders/clouds3d.hlsl`): in the clouds' draw, values
   112..123 of its constants: under a full cloud and in a clear sky by the kind (`snow_of`: ammonia 0.5, its second
   colour 1 and 0.05, methane 0.8), 0 unless `snow_where`: `Status.json` without an altitude and Flags2 bits 0, 4 and 15
   (on foot, on a planet, outdoors), or with an altitude, Flags bit 24, 25 or 26 (ship, fighter, SRV) and neither bit 0
@@ -467,7 +467,7 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   bytes) and the table as `t0_<hash>_<w>x<h>_f<fmt>_pitch<n>.raw`, once per content. Logged: `atmo: <stamp> radius ...,
   kind <kind> (r/g .. b/g ..)`.
   Made to put beside the journal's scans of the same planets (the radius and the time). The table itself differs per
-  planet (its hash is no key), but its hue tells the atmosphere's kind (`src/atmosphere_kind.h`, PoC 2026-11-10): over
+  planet (its hash is no key), but its hue tells the atmosphere's kind (`src/atmosphere_kind.h`, 2026-11-10): over
   the table's upper half where its green is over half its brightest, the median of red over green and of blue over
   green. Measured on 24 planets, all 15 kinds the journal names on landable planets: one hue per kind at every star
   (Argon at K6, G9 and M7 stars alike to 0.001), following the kind the journal names, not the mix of gases; the kinds
@@ -501,7 +501,7 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   kind's clouds or haze have a colour of their own, ammonia, methane, sulphur dioxide, silicate vapour; barely, only to
   tell the kinds apart, where its ices are white; water white; `atmosphere_clouds_tinted` scales its distance from
   white by `clouds_tint`).
-- (both builds, `clouds_size_var`, 2026-11-11, PoC) The shape's scale (`dir * 7`, the coarsest lumps about a 7th of
+- (both builds, `clouds_size_var`, 2026-11-11) The shape's scale (`dir * 7`, the coarsest lumps about a 7th of
   the radius) times `grow = 1 + clouds_size_var * (fbm(middle * 1.5 + seed + 31, 2) - 0.375) / 0.375`, worked out
   once a ray from its middle like the warp, so it changes only slowly over the planet; the steps get more by
   `max(grow, 1)` where the lumps are smaller, and the storms' shadow uses the same scale. Value 43 of the volume's
@@ -510,7 +510,7 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   its planet's radius go to the volume's buffer (values 33..42); `clouds3d.hlsl` takes them only for the planet of
   that radius (within 4 m), coming in over 2 s; any other planet keeps the ini's clouds. The opacity share times
   `clouds_physics_intensity`, at most 1; over 1 the cover also comes up toward 0.55, all of it at 2.
-- (both builds, `clouds_lumps_by_layer`, `clouds_weather`, 2026-11-12, PoC, design v2) `atmosphere_lumps` gives the
+- (both builds, `clouds_lumps_by_layer`, `clouds_weather`, 2026-11-12, design v2) `atmosphere_lumps` gives the
   kind's shape scale `clamp(R / (25 H), 4, 40)` (H = (top - bottom) times the kind's median radius), the fine shape's
   size H / 4 and the lean 0.55..1 from the kind's typical temperature (log scale 30..450 K); values 86..88 of the
   volume's buffer (the storms' pad before), then 89 the weather's shift (`atmosphere_weather_shift` 0.2 times
@@ -522,7 +522,7 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   middle before the wind's turn; otherwise half a band `cos(latitude / period 2 pi)` (period 50°, or 100° / (R/L / 2)
   past 4, faded to 30% toward the poles) and half a patch `fbm(middle * max(1.5 R/L, 1.5) + seed + 57, 2)`; the edge
   moves by the shift times it times the kind's weight. All zero, as before, for an unknown kind and in edworld.dll.
-- (both builds, `aurora`, 2026-11-15, PoC, the aurora's design v1) `src/aurora.h`: the kinds' colours and yields
+- (both builds, `aurora`, 2026-11-15, the aurora's design v1) `src/aurora.h`: the kinds' colours and yields
   (`aurora_colours_table`), the star's activity by the red over green of its light (`aurora_star_activity`; the
   shader works the same out of VS b1 row 293), whether the planet has a field and its dipole (`aurora_planet`, from
   the radius as the seed, the day and R/L, neon's volcanic table), the storm's level per 3 h of UTC

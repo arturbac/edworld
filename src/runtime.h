@@ -140,7 +140,7 @@ namespace edworld
     float clouds_top_gain{2.f};
     ///\brief the wind (PoC), km/h at the layer's floor and top; 0 and 0 = still clouds
     float clouds_wind_low{100.f};
-    float clouds_wind_high{400.f};
+    float clouds_wind_high{600.f};
     ///\brief the fine shape near the eye (2026-11-07: from the ground the shape alone, lumps of 25 km and up, was a fog): how
     /// much it cuts the clouds, 0 = none; its largest lumps and how far it reaches, in metres; a cloud's edge near the eye
     float clouds_detail{1.f};

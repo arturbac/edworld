@@ -12,40 +12,40 @@ Left, a Federation destination: its emblem drawn by edworld in place of the wron
 independent one: the phoenix in gold. Under each panel the destination's factions by influence, the controlling one
 starred, with the trend at the last tick and their states.
 
-## Clouds, testers wanted
+## Clouds
 
 ![The sky of a planet with a thin atmosphere, under the clouds of edworld](doc/images/clouds.jpg)
 
-Version 1.2.0-beta.2 puts clouds over the planets with an atmosphere you land on, which the game leaves without any:
+Version 1.2.0 puts clouds over the planets with an atmosphere you land on, which the game leaves without any:
 seen from orbit, on the way down through them and from the ground. They have depth, you fly through them, and they drift with the wind. They are on by default: `clouds_volume = 0` in the ini gives a flat layer
 for a weaker graphics card, `clouds = 0` turns them off, and they are only in your picture. See [Clouds](doc/users.md#clouds).
 
-Since 1.2.0-beta.9 the clouds follow the atmosphere: edworld tells its kind from how the game draws it, and each of the
+The clouds follow the atmosphere: edworld tells its kind from how the game draws it, and each of the
 15 kinds on landable planets gets its own layer, cover and tint from the physics of its typical planet (a thin neon or
 helium atmosphere only a haze). Large planets that turn fast get cyclones with spiral arms and a clear eye, as many and
 as large as the planet's size, its day and its atmosphere allow. A video: https://youtu.be/_mVhSVoFirw
 
-Since 1.2.0-beta.10 the clouds have weather: overcast and clear regions, a deck under the star on a planet that turns
+The clouds have weather: overcast and clear regions, a deck under the star on a planet that turns
 slowly, bands by latitude on a faster one. Their lumps follow the thickness of the cloud layer, weak ones low and flat,
 strong ones towering, and each kind's clouds have a colour of their own.
 
 ![A methane world's cloud deck under the star, seen from the ground](doc/images/clouds-weather.jpg)
 
-Since 1.2.0-beta.12 there is an aurora (PoC) over the night side of a planet whose atmosphere's kind is known: an oval
+There is an aurora over the night side of a planet whose atmosphere's kind is known: an oval
 of thin, tall curtains of rays around its magnetic pole, in the colours of its gas, brightening and dancing in
 substorms. How stormy follows the time, the same for every player. Seen from orbit and from the ground; `aurora = 0`
 turns it off. Its settings: [Clouds](doc/users.md#clouds).
 
 ![Auroras from the ground: a neon world's orange curtains (left), an argon-rich world's violet ones (right)](doc/images/aurora.jpg)
 
-Since 1.2.0-beta.13 it snows (PoC) under the clouds of ammonia and methane worlds, where their own gas condenses at
+It snows under the clouds of ammonia and methane worlds, where their own gas condenses at
 the planet's cold: on foot outdoors, and in a ship or an SRV in the air, crystals fall near you as fast as the gravity
 and the thin air let, glint as they turn towards the star, and further off make a grey haze. `snow = 0` turns it off;
-[doc/clouds.md](doc/clouds.md#snow-poc) says where and how much.
+[doc/clouds.md](doc/clouds.md#snow) says where and how much.
 
 How the clouds follow the physics, and where to look for cyclones: [doc/clouds.md](doc/clouds.md). The aurora, its colours and how often each shows: [doc/auroras.md](doc/auroras.md).
 
-## Navballs, testers wanted
+## Navballs
 
 ![Navballs beside the radar: the target's direction from the front (left) and from behind (right)](doc/images/navballs.jpg)
 
@@ -86,13 +86,14 @@ Measured at 9000×2160, checked in a window at 2560×1440 and 1920×1080 too; at
 - What it costs: [doc/performance.md](doc/performance.md): the clouds' and the aurora's GPU time a frame in the game
   and in the bench, the render thread's cost of a draw.
 
-Version 1.1.0 ([CHANGELOG.md](CHANGELOG.md)). Observing is read-only: every hook calls the game's call through
+Version 1.2.0 ([CHANGELOG.md](CHANGELOG.md)). Observing is read-only: every hook calls the game's call through
 unchanged; the jump panel's emblem and list and the navballs are the only things edworld changes in what the game draws. edworld runs on its own as
 the game's `d3d11.dll`, passing the calls on to one other d3d11 mod (`next`), or through
 [edloader](https://github.com/arturbac/edloader) together with several; the release zip carries edloader in its
 `edloader` folder. Checked in the game: alone in front of EDHM; through edloader with EDHM; through edloader with
 EDHM and EDVR 0.18.0 (EDHM listed before EDVR) for the jump panel. The navballs are checked through edloader with
-EDHM, not yet with EDVR. MIT licence (LICENSE).
+EDHM, not yet with EDVR. The clouds, the aurora and the snow are checked in the game under Proton on two accounts,
+through edloader with EDHM. MIT licence (LICENSE).
 
 ## Credits
 

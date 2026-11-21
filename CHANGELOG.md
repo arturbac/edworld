@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 1.2.0
+
+The clouds (by the atmosphere's kind, with weather, lumps and storms), the aurora and the snow of the betas below,
+released: no longer proofs of concept in the documentation.
+
+- `clouds_wind_high` is `600` km/h by default (`400` before): the wind at the top of the clouds with depth.
+- edloader 1.3.0 in the zip.
 
 - `clouds_noise_time` (1 by default): the grain of the clouds with depth (the aurora and the snow too) moved each frame while edupscale's temporal
   anti-aliasing jitters the camera, so it averages the grain instead of the clouds flickering; `0` never, `2` always.
