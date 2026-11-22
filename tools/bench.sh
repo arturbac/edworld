@@ -9,7 +9,7 @@
 # (more than 15% slower: FAIL), made again with EDWORLD_BENCH_UPDATE=1.
 # Usage: tools/bench.sh <build dir> <scratch dir> [<width> <height>]   (default 1920 1080)
 # Environment: EDWORLD_WINEPREFIX; EDWORLD_DXVK_DIR: a folder with DXVK's d3d11.dll and dxgi.dll (a game prefix's
-# drive_c/windows/system32)
+# drive_c/windows/system32); with no DISPLAY, WINE_USE_EGL=1 unless set
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 BUILD=$(cd "${1:?build dir}" && pwd)
@@ -23,6 +23,9 @@ for f in test/render_test.exe test/edworld_eht/test_app.exe edworld_eht/edworld_
   [[ -f $BUILD/$f ]] || { echo "$0: no $BUILD/$f (build first)" >&2; exit 1; }
 done
 export WINEPREFIX=$EDWORLD_WINEPREFIX
+# with no X server (Wayland only, e.g. another account's session) wine's OpenGL, which wined3d needs, comes only
+# through EGL, off unless WINE_USE_EGL is set
+[[ -n ${DISPLAY:-} ]] || export WINE_USE_EGL=${WINE_USE_EGL:-1}
 RUN=$(mktemp -d "$SCR/bench.XXXXXX")
 mkdir "$RUN/gpu" "$RUN/cpu"
 cp "$BUILD/test/render_test.exe" "$EDWORLD_DXVK_DIR/d3d11.dll" "$EDWORLD_DXVK_DIR/dxgi.dll" "$RUN/gpu/"
