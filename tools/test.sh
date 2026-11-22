@@ -4,7 +4,7 @@
 # the test's programs, EDWORLD_TESTS on).
 # Both builds, each copied in as d3d11.dll (its ini and log keep the build's name): edworld, then edworld_eht.
 # Usage: tools/test.sh <build dir> <scratch dir>   (a new run directory is made under the scratch dir; nothing deleted)
-# Environment: EDWORLD_WINEPREFIX: a wine prefix kept warm between runs
+# Environment: EDWORLD_WINEPREFIX: a wine prefix kept warm between runs; with no DISPLAY, WINE_USE_EGL=1 unless set
 # (made on first use, reused; a fresh one each run cost minutes in wineboot).
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")/.." && pwd)
@@ -17,6 +17,9 @@ for f in edworld/edworld.dll edworld_eht/edworld_eht.dll test/fake_next.dll test
 done
 cd "$HERE"
 export WINEPREFIX=$EDWORLD_WINEPREFIX
+# with no X server (Wayland only, e.g. another account's session) wine's OpenGL, which wined3d needs, comes only
+# through EGL, off unless WINE_USE_EGL is set
+[[ -n ${DISPLAY:-} ]] || export WINE_USE_EGL=${WINE_USE_EGL:-1}
 if [[ ! -f $WINEPREFIX/system.reg ]]; then
   mkdir -p "$WINEPREFIX"
   WINEDEBUG=-all wineboot -i >/dev/null 2>&1 || true
