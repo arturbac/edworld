@@ -43,7 +43,7 @@ float4 ps_main(ps_in input) : SV_TARGET
     }
   if(most <= 0.f)
     discard;
-  float depth = scene_depth.Load(int3(input.pos.xy, 0));
+  float depth = scene_depth.Load(int3(clamp(int2(input.pos.xy), 0, full_max), 0));
   float4 sum = 0.f;
   float weights = 0.f;
   [unroll]

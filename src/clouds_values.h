@@ -5,6 +5,7 @@
 
 #include "atmosphere_kind.h"
 #include "aurora.h"
+#include "fits.h"
 #include "runtime.h"
 
 #include <algorithm>
@@ -79,7 +80,7 @@ namespace edworld
     v[1] = s.clouds_top;
     v[2] = s.clouds_cover;
     v[3] = s.clouds_light;
-    v[4] = s.clouds_steps;
+    v[4] = clouds_steps_held(s.clouds_steps);
     v[5] = s.clouds_density;
     v[6] = s.clouds_opacity;
     v[7] = s.clouds_top_gain;
@@ -96,14 +97,14 @@ namespace edworld
     v[18] = f.pixel;
     v[19] = static_cast<float>(s.clouds_game_fade);
     v[20] = static_cast<float>(s.clouds_mode);
-    v[21] = std::max(1.f, s.clouds_far_steps);
+    v[21] = clouds_steps_held(s.clouds_far_steps);
     v[22] = s.clouds_near_from;
     v[23] = std::max(s.clouds_near_to, s.clouds_near_from + 0.001f);
     v[24] = static_cast<float>(s.clouds_debug);
     v[25] = f.port_width;
     v[26] = s.clouds_hide_below_px;
     v[27] = std::max(s.clouds_full_from_px, s.clouds_hide_below_px + 1.f);
-    v[28] = std::max(s.clouds_max_steps, 1.f);
+    v[28] = clouds_steps_held(s.clouds_max_steps);
     v[29] = s.clouds_edge_hide_px;
     v[30] = std::max(s.clouds_edge_full_px, s.clouds_edge_hide_px + 0.01f);
     v[31] = std::max(s.clouds_edge_band_px, 0.01f);

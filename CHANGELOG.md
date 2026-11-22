@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- edworld's own draws only on a fitting state of the game: the clouds over the game's shell and the list's and the
+  spheres' quads are not drawn while the game's target is an integer one, more than one target or its UAVs are bound,
+  or its constant buffers hold fewer rows than edworld's shaders read (the quads: also its records at t33 of another
+  stride, or the panel surface read in an integer format); the log names each reason once. Before, they were drawn
+  whatever the state.
+- `clouds_steps`, `clouds_far_steps`, `clouds_max_steps` held to 1..256, and the clouds' march ends at 256 steps in
+  the shader too: a value with no upper bound could make a loop the graphics card cannot end in time.
+- The storms' loops end at 8 in the shader; the clouds at half size only over a picture of the depth's size; the
+  depth and the gates read inside their textures.
+- The patch draws only on panel surfaces of the four-channel UNORM and float formats; its masks and the copy of the
+  panel's text are made again when the surface's format changes; the surface is unbound as a shader resource before
+  it is bound as the patch's target.
+- Tests: the VS drawn with the panel's PS give it the TEXCOORD0 it reads; the CPU bench draws with an input layout
+  and a vertex buffer.
+
 ## 1.2.0
 
 The clouds (by the atmosphere's kind, with weather, lumps and storms), the aurora and the snow of the betas below,

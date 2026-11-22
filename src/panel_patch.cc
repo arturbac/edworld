@@ -22,6 +22,7 @@
 #include <d3d11_1.h>
 
 #include "cb_binding.h"
+#include "own_draw.h"
 #include "d3d11_enum_names.h"
 #include "emblems.h"
 #include "game_state.h"
@@ -75,10 +76,12 @@ namespace edworld
       std::uint32_t emblem_height[4]{};
       ///\brief the panel's text area copied for reading its SUPERPOWER row (superpower_area on the surface)
       ID3D11Texture2D * text_copy{};
+      DXGI_FORMAT text_format{};  ///< the surface's format text_copy was made of
       // a copy of the panel's surface, only the patch's box written: what the game drew there this frame
       ID3D11Texture2D * mask{};
       ID3D11ShaderResourceView * mask_srv{};
       std::uint32_t mask_width{}, mask_height{};
+      DXGI_FORMAT mask_format{};
       ///\brief the pixel shader's b0: the patch's box (alpha from under the pixel) and the gate (alpha elsewhere)
       ID3D11Buffer * gate{};
       ///\brief the list's font; none when it could not be made (no list then, the emblem still)
@@ -224,11 +227,28 @@ namespace edworld
       return ok;
       }
 
-    ///\brief the mask copy, as large as the surface and of its format, made again when the size changes
+    bool told_surface_format{};
+
+    ///\brief whether the patch reads and writes a surface of this format (fits.h); the first one it does not, once in the log
+    auto patch_surface_fits(DXGI_FORMAT f) -> bool
+      {
+      if(is_patch_surface(f))
+        return true;
+      if(not told_surface_format)
+        {
+        told_surface_format = true;
+        log_line("patch: a surface in format {}, not one the patch reads as float; not drawn on", static_cast<unsigned>(f));
+        }
+      return false;
+      }
+
+    ///\brief the mask copy, as large as the surface and of its format, made again when the size or the format changes
     auto mask_for(D3D11_TEXTURE2D_DESC const & surface) -> ID3D11ShaderResourceView *
       {
-      if(r.mask and r.mask_width == surface.Width and r.mask_height == surface.Height)
+      if(r.mask and r.mask_width == surface.Width and r.mask_height == surface.Height and r.mask_format == surface.Format)
         return r.mask_srv;
+      if(not patch_surface_fits(surface.Format))
+        return nullptr;
       if(r.mask_srv)
         r.mask_srv->Release();
       if(r.mask)
@@ -257,6 +277,7 @@ namespace edworld
         }
       r.mask_width = surface.Width;
       r.mask_height = surface.Height;
+      r.mask_format = surface.Format;
       return r.mask_srv;
       }
 
@@ -268,7 +289,7 @@ namespace edworld
           return c.rtv;
       D3D11_TEXTURE2D_DESC d{};
       tex->GetDesc(&d);
-      if(not(d.BindFlags & D3D11_BIND_RENDER_TARGET))
+      if(not(d.BindFlags & D3D11_BIND_RENDER_TARGET) or not patch_surface_fits(d.Format))
         return nullptr;
       D3D11_RENDER_TARGET_VIEW_DESC vd{};
       vd.Format = d.Format == DXGI_FORMAT_R8G8B8A8_TYPELESS ? DXGI_FORMAT_R8G8B8A8_UNORM : d.Format;
@@ -912,8 +933,15 @@ namespace edworld
         reading = reading_t{destination, {}, false, false, 0};
       if(reading.done)
         return;
+      if(r.text_copy and r.text_format != d.Format)
+        {
+        r.text_copy->Release();  // the surface in another format: a copy of the same (a copy between formats fails)
+        r.text_copy = nullptr;
+        reading.copied = false;
+        }
       if(not r.text_copy)
         {
+        r.text_format = d.Format;
         D3D11_TEXTURE2D_DESC c{};
         c.Width = static_cast<UINT>(text_width);
         c.Height = static_cast<UINT>(text_height);
@@ -1078,7 +1106,7 @@ namespace edworld
     gate_t const gate{
       {static_cast<std::int32_t>(area.left), static_cast<std::int32_t>(area.top), static_cast<std::int32_t>(area.right),
        static_cast<std::int32_t>(area.bottom)},
-      {static_cast<std::int32_t>(s.patch_x), static_cast<std::int32_t>(centre_y), 0, 0}
+      {held_inside(s.patch_x, d.Width), held_inside(centre_y, d.Height), 0, 0}  // read by Load: inside the surface
     };
     std::memcpy(m.pData, &gate, sizeof gate);
     ctx->Unmap(r.gate, 0);
@@ -1118,8 +1146,11 @@ namespace edworld
     // the backend puts back what it binds itself; the targets and the surface's own slots are ours to put back
     {
     state_scope_t const kept{ctx};
+    // the surface the game's draw reads (PS t2, or t1 near a war settlement) is the target now: no longer read before
+    // it is bound as one (put back after, with the targets)
+    ID3D11ShaderResourceView * const read[3]{mask, nullptr, nullptr};
+    ctx->PSSetShaderResources(1, 3, read);
     ctx->OMSetRenderTargets(1, &rtv, nullptr);
-    ctx->PSSetShaderResources(1, 1, &mask);
     ctx->PSSetConstantBuffers(0, 1, &r.gate);
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
     }
@@ -1180,6 +1211,64 @@ namespace edworld
       }
     }
 
+  namespace
+    {
+    ///\brief why a quad of list.hlsl (the list, the spheres) does not fit the game's state after the panel's draw; none
+    /// when it fits: the game's targets (own_draw_now), its buffers b0 and b1 holding the rows list.hlsl reads, its
+    /// records at VS t33 a structured buffer of record_t's stride, the surface read (when there is one) not integer
+    [[nodiscard]]
+    auto quad_misfit(ID3D11DeviceContext * ctx, ID3D11ShaderResourceView * surface) -> misfit_e
+      {
+      if(misfit_e const fit{misfit_of(own_draw_now(ctx))}; fit != misfit_e::none)
+        return fit;
+      cb_binding_t b0{get_cb(ctx, cb_stage_e::vertex, 0)};
+      cb_binding_t b1{get_cb(ctx, cb_stage_e::vertex, 1)};
+      bool const buffers{cb_fits(b0, list_cb0_rows) and cb_fits(b1, list_cb1_rows)};
+      b0.release();
+      b1.release();
+      if(not buffers)
+        return misfit_e::buffers;
+      ID3D11ShaderResourceView * records{};
+      ctx->VSGetShaderResources(33, 1, &records);
+      bool fits{};
+      if(records)
+        {
+        D3D11_SHADER_RESOURCE_VIEW_DESC v{};
+        records->GetDesc(&v);
+        ID3D11Resource * res{};
+        records->GetResource(&res);
+        records->Release();
+        ID3D11Buffer * buffer{};
+        if(res)
+          {
+          res->QueryInterface(__uuidof(ID3D11Buffer), reinterpret_cast<void **>(&buffer));
+          res->Release();
+          }
+        if(buffer)
+          {
+          D3D11_BUFFER_DESC d{};
+          buffer->GetDesc(&d);
+          buffer->Release();
+          fits = (v.ViewDimension == D3D11_SRV_DIMENSION_BUFFER or v.ViewDimension == D3D11_SRV_DIMENSION_BUFFEREX)
+                 and (d.MiscFlags & D3D11_RESOURCE_MISC_BUFFER_STRUCTURED) and d.StructureByteStride == record_stride;
+          }
+        }
+      if(not fits)
+        return misfit_e::records;
+      if(surface)
+        {
+        D3D11_SHADER_RESOURCE_VIEW_DESC v{};
+        surface->GetDesc(&v);
+        if(is_integer(v.Format))
+          return misfit_e::integer_surface;
+        }
+      return misfit_e::none;
+      }
+
+    misfit_log_t list_misfits{};    ///< the list's quad's reasons told
+    misfit_log_t sphere_misfits{};  ///< the spheres' quads'
+    }  // namespace
+
   auto panel_list_after(ID3D11DeviceContext * ctx, std::uint64_t frame, std::uint32_t index_count, std::uint32_t start_index,
                         std::int32_t base_vertex, std::uint32_t start_instance) -> void
     {
@@ -1188,6 +1277,7 @@ namespace edworld
       return;
     // only the panel surface's draws: PS t2 (the panel family), t1 (near a war settlement)
     ID3D11ShaderResourceView * surface{};
+    UINT surface_w{}, surface_h{};
     for(UINT const slot: {2u, 1u})
       {
       ID3D11ShaderResourceView * srv{};
@@ -1211,6 +1301,8 @@ namespace edworld
       if(t and d.Width == s.patch_surface_width and d.Height == s.patch_surface_height)
         {
         surface = srv;
+        surface_w = d.Width;
+        surface_h = d.Height;
         break;
         }
       srv->Release();
@@ -1259,7 +1351,7 @@ namespace edworld
       ib->Release();
     if(vb)
       vb->Release();
-    if(not entry or entry->state != panel_draw_t::state_e::jump_panel)
+    if(not entry or entry->state != panel_draw_t::state_e::jump_panel or not drawn_or_told("list", list_misfits, quad_misfit(ctx, surface)))
       {
       surface->Release();
       return;
@@ -1284,8 +1376,8 @@ namespace edworld
       }
     cb.uv_extent[0] = 1.f;
     cb.uv_extent[1] = list_used / static_cast<float>(r.list_height);
-    cb.gate[0] = static_cast<std::int32_t>(s.patch_x);
-    cb.gate[1] = static_cast<std::int32_t>(patch_centre_y);
+    cb.gate[0] = held_inside(s.patch_x, surface_w);  // read by Load: inside the surface
+    cb.gate[1] = held_inside(patch_centre_y, surface_h);
     cb.gain[0] = s.list_gain;
     D3D11_MAPPED_SUBRESOURCE m{};
     if(FAILED(ctx->Map(r.list_cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &m)))
@@ -1389,6 +1481,7 @@ namespace edworld
       ID3D11Texture2D * mask{};
       ID3D11ShaderResourceView * mask_srv{};
       std::uint32_t mask_width{}, mask_height{};
+      DXGI_FORMAT mask_format{};
       compass_reading_t reading{};  ///< the last one read, plausible or not
       bool have_reading{};
       compass_reading_t shown{};  ///< the last plausible one: what the angles come from
@@ -1514,8 +1607,10 @@ namespace edworld
 
     auto compass_mask_for(D3D11_TEXTURE2D_DESC const & surface) -> ID3D11ShaderResourceView *
       {
-      if(cs.mask and cs.mask_width == surface.Width and cs.mask_height == surface.Height)
+      if(cs.mask and cs.mask_width == surface.Width and cs.mask_height == surface.Height and cs.mask_format == surface.Format)
         return cs.mask_srv;
+      if(not patch_surface_fits(surface.Format))
+        return nullptr;
       release(cs.mask_srv);
       release(cs.mask);
       D3D11_TEXTURE2D_DESC d{};
@@ -1539,6 +1634,7 @@ namespace edworld
         }
       cs.mask_width = surface.Width;
       cs.mask_height = surface.Height;
+      cs.mask_format = surface.Format;
       return cs.mask_srv;
       }
 
@@ -2897,8 +2993,11 @@ namespace edworld
 
     state_scope_t const kept{ctx};
 
+    // the surface the game's draw reads (PS t2, or t1 near a war settlement) is the target now: no longer read before
+    // it is bound as one (put back after, with the targets)
+    ID3D11ShaderResourceView * const read[3]{mask, nullptr, nullptr};
+    ctx->PSSetShaderResources(1, 3, read);
     ctx->OMSetRenderTargets(1, &rtv, nullptr);
-    ctx->PSSetShaderResources(1, 1, &mask);
     ctx->PSSetConstantBuffers(0, 1, &r.gate);
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
     }
@@ -2938,6 +3037,8 @@ namespace edworld
     /// in that draw's local plane, the texture's used part to its edges
     auto draw_sphere_quad(ID3D11DeviceContext * ctx, std::uint32_t k, float const (&corners)[4][3], std::uint32_t start_instance) -> bool
       {
+      if(not drawn_or_told("compass spheres", sphere_misfits, quad_misfit(ctx, nullptr)))
+        return false;
       settings_t const & s{settings()};
       bool const above{s.compass_sphere_text_above != 0};
       float const used_w{above ? above_w : below_w}, used_h{above ? above_h : below_h};

@@ -24,6 +24,7 @@
 #include "clouds_values.h"
 #include "panel_patch.h"
 #include "d3d11_enum_names.h"
+#include "own_draw.h"
 #include "runtime.h"
 #include "snow.h"
 #include "shader_catalog.h"
@@ -5175,6 +5176,9 @@ namespace edworld
       UINT half_height{};
       bool half_failed{};
       ID3D11ShaderResourceView * blue_noise{};  // where each pixel's steps start
+      // whether the clouds fit the game's state at the shell's draws (fits.h): each reason once in the log
+      misfit_log_t misfits{};
+      bool told_full_size{};  ///< the half size off while the picture and the depth differ, told
       };
     clouds_t clouds;
 
@@ -5420,7 +5424,7 @@ namespace edworld
       // 112..123 the snow, 124..127 the weather's R/L before the day was read and how far it has come in
       float const values[128]{
         settings().clouds_bottom, settings().clouds_top, settings().clouds_cover, settings().clouds_light,
-        settings().clouds_steps, settings().clouds_density, settings().clouds_opacity, settings().clouds_top_gain,
+        clouds_steps_held(settings().clouds_steps), settings().clouds_density, settings().clouds_opacity, settings().clouds_top_gain,
         settings().clouds_min_light, settings().clouds_under_gain, settings().clouds_detail, settings().clouds_detail_size,
         settings().clouds_detail_range, settings().clouds_detail_edge, settings().clouds_detail_gap, 0.f,
         settings().clouds_wind_low / 3.6f, settings().clouds_wind_high / 3.6f, 1.f, 0.f,
@@ -5599,12 +5603,33 @@ namespace edworld
       ID3D11RenderTargetView * game_rtv[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT]{};
       ID3D11DepthStencilView * game_dsv{};
       ctx->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, game_rtv, &game_dsv);
+      // the pixel shader's UAVs share the targets' slots: binding the half target over them would unbind them (none
+      // while the clouds fit, own_draw_now; kept so the targets go back as they were whatever comes)
+      UINT game_rtvs{};
+      for(UINT i{}; i != D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT; ++i)
+        if(game_rtv[i])
+          game_rtvs = i + 1;
+      ID3D11UnorderedAccessView * game_uav[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT]{};
+      if(game_rtvs < D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT)
+        ctx->OMGetRenderTargetsAndUnorderedAccessViews(0, nullptr, nullptr, game_rtvs, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT - game_rtvs,
+                                                       game_uav + game_rtvs);
+      bool game_any_uav{};
+      for(ID3D11UnorderedAccessView * u: game_uav)
+        game_any_uav = game_any_uav or u;
       D3D11_VIEWPORT game_ports[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE]{};
       UINT game_port_count{D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE};
       ctx->RSGetViewports(&game_port_count, game_ports);
       ID3D11Device * device{};
       ctx->GetDevice(&device);
-      bool const half{game_port_count != 0u and make_half(device, game_rtv[0])};
+      // at half size only over a picture of the depth's size: clouds_up.hlsl reads the depth at the picture's pixels
+      auto const picture_size{view_size(game_rtv[0])}, depth_size{view_size(game_dsv)};
+      if(picture_size != depth_size and not clouds.told_full_size)
+        {
+        clouds.told_full_size = true;
+        log_line("clouds: at full size while the picture {}x{} and the depth {}x{} differ", picture_size.first, picture_size.second,
+                 depth_size.first, depth_size.second);
+        }
+      bool const half{game_port_count != 0u and picture_size == depth_size and make_half(device, game_rtv[0])};
       if(device)
         device->Release();
 
@@ -5657,7 +5682,11 @@ namespace edworld
         ctx->IAGetInputLayout(&game_layout);
         ctx->IAGetPrimitiveTopology(&game_topology);
         ctx->PSGetShaderResources(1, 1, &game_t1);
-        ctx->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, game_rtv, game_dsv);
+        if(game_any_uav)
+          ctx->OMSetRenderTargetsAndUnorderedAccessViews(game_rtvs, game_rtv, game_dsv, game_rtvs,
+                                                         D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT - game_rtvs, game_uav + game_rtvs, nullptr);
+        else
+          ctx->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, game_rtv, game_dsv);
         ctx->RSSetViewports(game_port_count, game_ports);
         ctx->IASetInputLayout(nullptr);
         ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -5675,6 +5704,9 @@ namespace edworld
           game_t1->Release();
         }
       for(ID3D11RenderTargetView * held: game_rtv)
+        if(held)
+          held->Release();
+      for(ID3D11UnorderedAccessView * held: game_uav)
         if(held)
           held->Release();
       if(game_dsv)
@@ -5702,6 +5734,12 @@ namespace edworld
       {
       if(not make_clouds(ctx))
         return;
+      // only where the clouds fit the game's targets (fits.h): elsewhere the game draws its shell as without edworld
+      if(misfit_e const fit{misfit_of(own_draw_now(ctx))}; fit != misfit_e::none)
+        {
+        (void)drawn_or_told("clouds", clouds.misfits, fit);
+        return;
+        }
       ID3D11VertexShader * game_vs{};
       ID3D11PixelShader * game_ps{};
       ID3D11BlendState * game_blend{};
@@ -5719,8 +5757,12 @@ namespace edworld
       cb_binding_t game_ps_b0{get_cb(ctx, cb_stage_e::pixel, 0)};
       cb_binding_t game_ps_b1{get_cb(ctx, cb_stage_e::pixel, 1)};
       cb_binding_t game_ps_b4{get_cb(ctx, cb_stage_e::pixel, 4)};
-      ID3D11Buffer * const object{object_b.buffer};
-      ID3D11Buffer * const frame{frame_b.buffer};
+      // the game's buffers handed to the clouds' shaders only when their windows hold the rows those read
+      bool const buffers_fit{cb_fits(object_b, clouds_object_rows) and cb_fits(frame_b, clouds_frame_rows)};
+      if(object_b.buffer and frame_b.buffer)
+        (void)drawn_or_told("clouds", clouds.misfits, buffers_fit ? misfit_e::none : misfit_e::buffers);
+      ID3D11Buffer * const object{buffers_fit ? object_b.buffer : nullptr};
+      ID3D11Buffer * const frame{buffers_fit ? frame_b.buffer : nullptr};
 
       if(not clouds.told)
         {

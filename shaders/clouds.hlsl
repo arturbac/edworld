@@ -5,12 +5,12 @@
 // layer reads them. The clouds themselves are worked out here, from noise on the sphere.
 cbuffer object : register(b0)
   {
-  float4 object_rows[13];
+  float4 object_rows[13];  // fits.h clouds_object_rows: the game's window must hold these
   };
 
 cbuffer frame : register(b1)
   {
-  float4 frame_rows[336];
+  float4 frame_rows[336];  // fits.h clouds_frame_rows
   };
 
 cbuffer clouds : register(b4)

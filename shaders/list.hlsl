@@ -7,12 +7,12 @@
 // scales it by the surface's alpha at the gate, so the list goes and comes with the panel.
 cbuffer game_cb0 : register(b0)
   {
-  float4 cb0[8];
+  float4 cb0[8];  // fits.h list_cb0_rows: the game's window must hold these
   };
 
 cbuffer game_cb1 : register(b1)
   {
-  float4 cb1[276];
+  float4 cb1[276];  // fits.h list_cb1_rows
   };
 
 struct record_t
@@ -25,7 +25,7 @@ struct record_t
   uint pad[77];
   };
 
-StructuredBuffer<record_t> records : register(t33);
+StructuredBuffer<record_t> records : register(t33);  // fits.h record_stride: 336 bytes
 
 cbuffer list_cb : register(b4)
   {

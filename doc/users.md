@@ -135,15 +135,15 @@ the values that make sense, and whether a change shows while the game runs or ne
 | `clouds_detail_gap` | `0.14` | how much clear sky there is among the clouds with depth near you; more = thinner, the view from orbit stays |
 | `clouds_wind_low`, `clouds_wind_high` | `100`, `600` | the wind in km/h at the floor of the clouds with depth and at their top; both `0` = still clouds |
 | `clouds_top_gain` | `2` | how much lighter the clouds with depth are seen from above, over a light ground; `1` = as from under them |
-| `clouds_density`, `clouds_opacity`, `clouds_steps` | `1.2`, `0.75`, `32` | how thick they are, how much they cover at most, and the steps through them: fewer are lighter and coarser |
+| `clouds_density`, `clouds_opacity`, `clouds_steps` | `1.2`, `0.75`, `32` | how thick they are, how much they cover at most, and the steps through them (at most 256): fewer are lighter and coarser |
 | `clouds_mode` | `0` | (test) the clouds with depth from afar in fewer steps, the same shape: `0` = by your height, `1` = always near, `2` = always far |
-| `clouds_far_steps` | `6` | the steps through the clouds with depth from afar |
+| `clouds_far_steps` | `6` | the steps through the clouds with depth from afar (at most 256) |
 | `clouds_near_from`, `clouds_near_to` | `0.25`, `0.5` | near steps under the first height over the surface, far ones over the second, a blend between; parts of the planet's radius |
 | `clouds_noise_time` | `1` | the grain of the clouds with depth, the aurora and the snow moved each frame: `1` = while edupscale's temporal anti-aliasing jitters the camera, so it averages the grain instead of flickering, `0` = never, `2` = always; read again while the game runs |
 | `clouds_debug` | `0` | (test) `1` = every pixel the clouds with depth are worked out for painted magenta, `2` = the game's fade of its atmosphere painted, green at 1, red at 0 |
 | `clouds_game_fade` | `1` | (test) `1` = the clouds with depth fade with the game's own atmosphere, `0` = never |
 | `clouds_hide_below_px`, `clouds_full_from_px` | `20`, `80` | no clouds with depth while the planet is narrower on the screen than the first many pixels, all of them from the second, a blend between; pixels of the picture the game draws, before its upscaling |
-| `clouds_max_steps` | `64` | (test) the most steps through the clouds with depth: the steps follow the way's length through them, many at the planet's edge |
+| `clouds_max_steps` | `64` | (test) the most steps through the clouds with depth: the steps follow the way's length through them, many at the planet's edge; at most 256 |
 | `clouds_edge_hide_px`, `clouds_edge_full_px`, `clouds_edge_band_px` | `2`, `8`, `16` | no clouds with depth out of the planet's edge while their layer is thinner on the screen than the first many pixels, all from the second; on the disc the same within the third many pixels of the edge |
 | `clouds_kind_read_s` | `10` | how often the game's atmosphere is read for its kind and the planet's day, in seconds; `0` = never, the same clouds on every planet, by the ini; read again while the game runs |
 | `clouds_by_kind` | `1` | `1` = the clouds with depth by the atmosphere's kind (needs `clouds_kind_read_s`), `0` = the same on every planet; read again while the game runs |

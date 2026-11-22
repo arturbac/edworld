@@ -23,6 +23,7 @@
 #include "../src/compass_math.h"
 #include "../src/edworld_share.h"
 #include "../src/faction_list.h"
+#include "../src/fits.h"
 #include "../src/blue_noise.h"
 #include "../src/galmap.h"
 #include "../src/gate_math.h"
@@ -42,6 +43,28 @@
 
 namespace
   {
+  // edworld's own draws only on a fitting state of the game (fits.h); the rules hold at compile time
+  using edworld::own_draw;
+  using edworld::own_draw_e;
+  static_assert(own_draw(true, DXGI_FORMAT_R11G11B10_FLOAT, false, false) == own_draw_e::fits, "the game's HDR target fits");
+  static_assert(own_draw(true, DXGI_FORMAT_R8G8B8A8_UNORM, false, true) == own_draw_e::uav, "the game's UAVs bound: not drawn");
+  static_assert(own_draw(false, DXGI_FORMAT_UNKNOWN, false, false) == own_draw_e::no_target, "no first target: not drawn");
+  static_assert(own_draw(true, DXGI_FORMAT_R16G16B16A16_FLOAT, true, false) == own_draw_e::more_targets, "more targets: not drawn");
+  static_assert(own_draw(true, DXGI_FORMAT_R32_UINT, false, false) == own_draw_e::integer, "an integer target: not drawn");
+  static_assert(edworld::clouds_steps_held(1e30f) == 256.f and edworld::clouds_steps_held(0.f) == 1.f
+                  and edworld::clouds_steps_held(32.f) == 32.f,
+                "the clouds' steps held to 1..256");
+  static_assert(edworld::cb_holds(336u * 16u, 0, 0, 336) and not edworld::cb_holds(336u * 16u, 1, 0, 336)
+                  and not edworld::cb_holds(4096u * 16u, 0, 100, 336) and edworld::cb_holds(4096u * 16u, 10, 336, 336)
+                  and not edworld::cb_holds(16u, 2, 0, 1),
+                "a buffer's window holds the rows read, or not");
+  static_assert(edworld::is_patch_surface(DXGI_FORMAT_R8G8B8A8_TYPELESS) and not edworld::is_patch_surface(DXGI_FORMAT_R8G8B8A8_UINT)
+                  and not edworld::is_patch_surface(DXGI_FORMAT_R24G8_TYPELESS),
+                "the patch only on the panels' formats it reads as float");
+  static_assert(edworld::held_inside(-5.f, 100u) == 0 and edworld::held_inside(250.f, 100u) == 99 and edworld::held_inside(42.f, 100u) == 42
+                  and edworld::held_inside(10.f, 0u) == 0,
+                "a gate held inside the surface");
+
   int failures{};
 
   auto check(bool ok, char const * what) -> void
@@ -1958,9 +1981,26 @@ int main()
                             D3D11_SUBRESOURCE_DATA init{indices, 0, 0};
                             ID3D11Buffer * ib{};
                             d->CreateBuffer(&bd, &init, &ib);
+                            // other_vs's inputs from a layout and a buffer of its own: a draw without them is not valid
+                            D3D11_INPUT_ELEMENT_DESC const elements[2]{
+                              {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+                              {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0}
+                            };
+                            ID3D11InputLayout * layout{};
+                            d->CreateInputLayout(elements, 2, g_other_vs, sizeof g_other_vs, &layout);
+                            float const vertices[3][5]{{-1.f, -1.f, 0.f, 0.f, 1.f}, {-1.f, 1.f, 0.f, 0.f, 0.f}, {1.f, -1.f, 0.f, 1.f, 1.f}};
+                            D3D11_BUFFER_DESC vd{};
+                            vd.ByteWidth = sizeof vertices;
+                            vd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+                            D3D11_SUBRESOURCE_DATA const vertex_data{vertices, 0, 0};
+                            ID3D11Buffer * vb{};
+                            d->CreateBuffer(&vd, &vertex_data, &vb);
+                            UINT const vertex_stride{sizeof vertices[0]}, vertex_offset{};
                             D3D11_VIEWPORT const port{0.f, 0.f, 16.f, 16.f, 0.f, 1.f};
                             c->OMSetRenderTargets(1, &rtv, nullptr);
                             c->RSSetViewports(1, &port);
+                            c->IASetInputLayout(layout);
+                            c->IASetVertexBuffers(0, 1, &vb, &vertex_stride, &vertex_offset);
                             c->IASetIndexBuffer(ib, DXGI_FORMAT_R16_UINT, 0);
                             c->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
                             c->PSSetShader(ps, nullptr, 0);
@@ -1980,7 +2020,8 @@ int main()
                               QueryPerformanceCounter(&b);
                               best = std::min(best, double(b.QuadPart - a.QuadPart) * 1e6 / double(f.QuadPart) / draws);
                               }
-                            for(IUnknown * u: std::initializer_list<IUnknown *>{ib, rtv, tex, ps, vs})
+                            c->IASetInputLayout(nullptr);
+                            for(IUnknown * u: std::initializer_list<IUnknown *>{layout, vb, ib, rtv, tex, ps, vs})
                               if(u)
                                 u->Release();
                             return best;
@@ -2306,6 +2347,9 @@ int main()
     std::fclose(lf);
     }
   check(relaid_calls > 0, "the game's draws reached the runtime's re-pointed entries");
+  // the test's state fits edworld's own draws (fits.h): none of them may be off by the rules
+  check(log_text.find("not drawn while") == std::string::npos and log_text.find("patch: a surface in format") == std::string::npos,
+        "edworld's own draws fit the test's state (none off by fits.h)");
   check(log_text.find("context: a table of edworld's own") != std::string::npos, "the log says the context is on edworld's table");
   check(log_text.find("asked by test_foreign.dll from outside the game's folder: not followed") != std::string::npos,
         "an overlay's device from another folder is not followed");
@@ -2367,6 +2411,8 @@ int main()
   check(compass_log.find("compass: dot filled dot +10.00 -10.00") != std::string::npos, "compass: the dot read back where it was put");
   check(compass_log.find("compass: spheres rendered (896x672 px each)") != std::string::npos, "spheres: both textures drawn");
   check(compass_log.find("compass: spheres written to edworld_dumps") != std::string::npos, "spheres: both textures written for a look");
+  check(compass_log.find("not drawn while") == std::string::npos and compass_log.find("patch: a surface in format") == std::string::npos,
+        "compass: edworld's own draws fit the test's state (none off by fits.h)");
   }
   WIN32_FIND_DATAW found{};
   HANDLE const dumps{FindFirstFileW((output_dir + L"\\edworld_dumps\\*_512x128_f27_*.raw").c_str(), &found)};

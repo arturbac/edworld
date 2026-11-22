@@ -5,6 +5,8 @@
 
 #include <d3d11_1.h>
 
+#include "fits.h"
+
 namespace edworld
   {
   enum struct cb_stage_e : unsigned char
@@ -79,5 +81,16 @@ namespace edworld
       ctx->VSSetConstantBuffers(slot, 1, &b.buffer);
     else
       ctx->PSSetConstantBuffers(slot, 1, &b.buffer);
+    }
+
+  ///\brief whether the slot's window into its buffer holds the rows (float4 rows[n]) a shader of edworld's reads
+  [[nodiscard]]
+  inline auto cb_fits(cb_binding_t const & b, std::uint32_t rows) noexcept -> bool
+    {
+    if(not b.buffer)
+      return false;
+    D3D11_BUFFER_DESC d{};
+    b.buffer->GetDesc(&d);
+    return cb_holds(d.ByteWidth, b.first, b.count, rows);
     }
   }  // namespace edworld

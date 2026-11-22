@@ -17,14 +17,14 @@ In `edworld.ini` (or `edworld_eht.ini`), beside the dll or in `edloader\config`;
 |---|---|---|---|
 | `clouds_mode` | `0` | 0, 1, 2 | (test) the clouds with depth from afar in fewer steps, the same shape: `0` = by your height, `1` = always near, `2` = always far |
 | `clouds_noise_time` | `1` | 0, 1, 2 | the grain of the clouds with depth, the aurora and the snow (where each pixel's steps start) moved each frame: `1` = while edupscale's temporal anti-aliasing jitters the camera, so it averages the grain instead of flickering; `0` = never; `2` = always, also without it |
-| `clouds_far_steps` | `6` | 1 and more (clamped) | the steps through the clouds with depth from afar |
+| `clouds_far_steps` | `6` | 1..256 (clamped) | the steps through the clouds with depth from afar |
 | `clouds_near_from` | `0.25` | 0 and more | near steps under this height over the surface, as a part of the planet's radius; a blend up to `clouds_near_to` |
 | `clouds_near_to` | `0.5` | over clouds_near_from (clamped) | far steps over this height over the surface, as a part of the planet's radius |
 | `clouds_debug` | `0` | 0, 1, 2 | (test) `1` = every pixel the clouds with depth are worked out for painted magenta, `2` = the game's fade of its atmosphere painted, green at 1, red at 0; `0` = off |
 | `clouds_game_fade` | `1` | 0, 1 | (test) `1` = the clouds with depth fade with the game's own atmosphere, `0` = never |
 | `clouds_hide_below_px` | `20` | 0 and more | no clouds with depth while the planet is narrower on the screen than this many pixels (of the picture the game draws, before its upscaling); a blend up to `clouds_full_from_px` |
 | `clouds_full_from_px` | `80` | over clouds_hide_below_px (clamped) | all the clouds with depth from a planet this many pixels across |
-| `clouds_max_steps` | `64` | 1 and more (clamped) | (test) the most steps through the clouds with depth: the steps follow the way's length through them, many at the planet's edge |
+| `clouds_max_steps` | `64` | 1..256 (clamped) | (test) the most steps through the clouds with depth: the steps follow the way's length through them, many at the planet's edge |
 | `clouds_edge_hide_px` | `2` | 0 and more | no clouds with depth out of the planet's edge while their layer is thinner on the screen than this many pixels; a blend up to `clouds_edge_full_px` |
 | `clouds_edge_full_px` | `8` | over clouds_edge_hide_px (clamped) | all the clouds with depth out of the planet's edge from a layer this many pixels thick on the screen |
 | `clouds_edge_band_px` | `16` | over 0 (clamped) | on the disc, the same fading within this many pixels of the planet's edge |
@@ -59,7 +59,7 @@ In `edworld.ini` (or `edworld_eht.ini`), beside the dll or in `edloader\config`;
 | `clouds_volume` | `1` | 0, 1 | `1` = clouds with depth you fly through; `0` = the flat layer, lighter for a weaker graphics card |
 | `clouds_bottom` | `0.003` | 0..clouds_top | where the clouds with depth begin over the surface, as a part of the planet's radius |
 | `clouds_top` | `0.012` | over clouds_bottom | where the clouds with depth end over the surface, as a part of the planet's radius |
-| `clouds_steps` | `32` | 1 and more | the steps a ray takes through the clouds with depth: fewer are lighter for the graphics card and coarser |
+| `clouds_steps` | `32` | 1..256 (clamped) | the steps a ray takes through the clouds with depth: fewer are lighter for the graphics card and coarser |
 | `clouds_density` | `1.2` | 0 and more | how thick the clouds with depth are |
 | `clouds_opacity` | `0.75` | 0..1 | how much the clouds with depth cover at most; the kinds' clouds (`clouds_by_kind`) are scaled by it |
 | `clouds_min_light` | `400` | 0 and more | the star's light the clouds with depth get at least, in the game's units, so a faint star does not lose them; the light's hue stays; `0` = as the game gives it |

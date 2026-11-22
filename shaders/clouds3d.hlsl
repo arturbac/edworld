@@ -5,12 +5,12 @@
 // reversed as the game keeps it, so a ray ends at the ground or at the ship.
 cbuffer object : register(b0)
   {
-  float4 object_rows[13];
+  float4 object_rows[13];  // fits.h clouds_object_rows: the game's window must hold these
   };
 
 cbuffer frame : register(b1)
   {
-  float4 frame_rows[336];
+  float4 frame_rows[336];  // fits.h clouds_frame_rows
   };
 
 cbuffer clouds : register(b4)
@@ -63,7 +63,7 @@ cbuffer clouds : register(b4)
   float cloud_size_var;     // the lumps' size noised by region: their scale times 1 +- this; 0 = the same everywhere
   // the storms (edworld_eht) of that planet: each its centre on the unit sphere in the planet's frame and its size (an
   // angle), then the twists at their middles (radians), four to a row, then how many
-  float4 cyclone_at[8];
+  float4 cyclone_at[8];  // cyclones_most below
   float4 cyclone_twist[2];
   float cyclone_count;
   float cyclone_tower;      // how many times the layer's height the storms reach, the rest keeping its lower part
@@ -217,6 +217,11 @@ float fbm(float3 p, int octaves)
 // down; wallness: how much d is in that wall, inward: the way to the eye's middle there (both for its light). mask: the
 // storms to look at, a bit each (storms_near_ray: those a ray passes; all_storms elsewhere)
 static const uint all_storms = 0xffu;
+// the storms' loops end at the array's size whatever cyclone_count says (edworld holds it to 8, atmosphere_kind.h)
+static const int cyclones_most = 8;
+// the most steps of the clouds' march, as edworld holds the settings (fits.h clouds_steps_most): a value with no
+// upper bound gave a loop the graphics card could not end in time
+static const int march_steps_most = 256;
 
 float3 storms(float3 d, float weight, float height, inout float eye, inout float wall, inout float inner,
               inout float wallness, inout float3 inward, uint mask)
@@ -224,7 +229,7 @@ float3 storms(float3 d, float weight, float height, inout float eye, inout float
   if(weight <= 0.f || mask == 0u)
     return d;
   [loop]
-  for(int i = 0; i < (int)cyclone_count; ++i)
+  for(int i = 0; i < min((int)cyclone_count, cyclones_most); ++i)
     {
     if(((mask >> i) & 1u) == 0u)
       continue;
@@ -271,7 +276,7 @@ uint storms_near_ray(float3 first, float3 last)
   float wide = length(across);
   float3 n = wide > 1e-6f ? across / wide : 0.f;
   [loop]
-  for(int i = 0; i < (int)cyclone_count; ++i)
+  for(int i = 0; i < min((int)cyclone_count, cyclones_most); ++i)
     {
     float4 c = cyclone_at[i];
     float nearest = min(length(first - c.xyz), length(last - c.xyz));
@@ -468,7 +473,7 @@ float4 clouds_along(ps_in input, float3 ray, float3 centre)
   // set for near or far, at most cloud_max_steps
   float least_steps = lerp(cloud_far_steps, cloud_steps, near_weight);
   float wanted_steps = (leave - enter) / (planet / 236.f) * (max(shape_scale, 7.f) / 7.f);  // smaller lumps, shorter steps
-  int steps = max(1, (int)ceil(clamp(wanted_steps, least_steps, max(cloud_max_steps, least_steps))));
+  int steps = clamp((int)ceil(clamp(wanted_steps, least_steps, max(cloud_max_steps, least_steps))), 1, march_steps_most);
   float step_length = (leave - enter) / steps;
   float through = step_length / (top - bottom);
   // a different start at each pixel turns the bands of the steps into a fine grain. Blue noise: a hash of the pixel's

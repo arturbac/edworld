@@ -611,6 +611,19 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   the buffer (`cb_binding.h`, `*ConstantBuffers1`), and the game's buffers handed to edworld's cloud shaders keep it;
   the kept state includes the pixel shader's UAVs (they share the targets' slots) and the hull, domain and compute
   shaders, which ImGui's backend clears. A panel surface's size is read at each draw, not kept by address.
+- edworld's own draws only on a fitting state of the game (`src/fits.h`, rules checked at compile time in
+  `test/test_app.cc`; `src/own_draw.h` reads the state): the clouds over the game's shell and the list's and the
+  spheres' quads are drawn only into one first target of a float or UNORM format, with no other target and none of
+  the game's UAVs bound, and only when the game's constant buffer windows hold the rows edworld's shaders read
+  (the quads also need the game's records at VS t33 as a structured buffer of 336-byte records). Elsewhere the game
+  draws as without edworld, and the log says `<part>: not drawn while ...` once for each reason, and `<part>: drawn
+  where it fits` once after one (a part checked at several draws a frame, the shell for the picture and for its
+  reflections, logs no more). The clouds at half size only over a picture of the depth's size (`clouds: at full
+  size while the picture ... and the depth ... differ` once otherwise). The patch draws only on panel
+  surfaces of the four-channel UNORM and float formats (`patch: a surface in format ...` once otherwise); its masks
+  and copies are made again when the surface's format changes. Loops in the shaders end at constants: the clouds'
+  march at 256 steps (the settings held to 1..256), the storms at 8; the pixels read by `Load` are held inside
+  their textures.
   One file per game session: at start, the last session's `<plugin>.log` is renamed `<plugin>.<UTC>.log` (the time it
   was last written); EHT's backup compresses those into its own directory and removes them from the game's folder.
 
@@ -645,6 +658,7 @@ by `exclusive_lock_t` / `shared_lock_t` for a scope. An enumeration in a log lin
 | `src/proxy.cc` | exports, chaining, wrapped `D3D11CreateDevice(AndSwapChain)`, the dlls before edworld in the chain |
 | `src/shader_ids.h` | the game's shaders edworld knows by name |
 | `src/hooks.cc` | the observer: hooks, staging ring, readback, publishing (edworld_eht), log summary |
+| `src/fits.h`, `src/own_draw.h` | whether edworld's own draws fit the game's state: the rules, and the state read |
 | `src/panel_patch.cc` | the jump panel patch and the factions list (ImGui draw list, state saved and restored) |
 | `src/game_state.cc` | `Status.json`, EHT's `target` (edworld_eht), EDSM |
 | `src/faction_list.h` | the factions list from either source: `target` or EDSM's answer (a small JSON reader) |
