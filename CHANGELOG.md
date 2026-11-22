@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The version in the log: `vX.Y.Z` only for a release; any other build `<the last tag>-<commit's short hash>`, with
+  `-dirty` when built from uncommitted changes (before, `git describe`: a build of uncommitted changes on the tag's
+  commit said only `vX.Y.Z-dirty`).
 - edworld's own draws only on a fitting state of the game: the clouds over the game's shell and the list's and the
   spheres' quads are not drawn while the game's target is an integer one, more than one target or its UAVs are bound,
   or its constant buffers hold fewer rows than edworld's shaders read (the quads: also its records at t33 of another

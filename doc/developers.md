@@ -643,7 +643,9 @@ tools/test.sh build/edworld-release <scratch dir>
 
 Presets: `edworld-debug` and `edworld-release` build in `build/<preset>`; `kdev-edworld-debug` and
 `kdev-edworld-release` are the same without a build directory, for an IDE that chooses its own. The version in
-the log is `git describe` of the tree, taken at each build. `EDWORLD_TESTS` (on) builds the smoke test's programs. stralgo (strings
+the log is taken from git at each build (`cmake/version.cmake`): `vX.Y.Z` for a release (HEAD on its tag, no
+uncommitted changes), otherwise `<the last vX.Y.Z tag>-<HEAD's short hash>`, with `-dirty` when tracked files differ
+from HEAD (`v0.0.0-<hash>` before the first tag). `EDWORLD_TESTS` (on) builds the smoke test's programs. stralgo (strings
 put together with its `merge`) and small_vectors come by CPM (`cmake/get_cpm.cmake`) from GitHub; with
 `-DCPM_SOURCE_CACHE=<a filled cache> -DFETCHCONTENT_FULLY_DISCONNECTED=ON` the configure needs no network. The log: `log_line` takes a `std::format` format checked
 against its arguments when compiled and hands it to `log_vline` (`std::vformat_to` into 2 KB on the stack, the line cut
@@ -673,7 +675,7 @@ by `exclusive_lock_t` / `shared_lock_t` for a scope. An enumeration in a log lin
 | `src/imgui_config.h`, `shaders/imgui.hlsl`, `third_party/imgui/` | Dear ImGui build options, backend shaders, the vendored sources |
 | `third_party/fonts/`, `tools/gen_font.py` | the list's font (Noto Sans Mono, SIL OFL 1.1), embedded at build time as `<build dir>/gen/list_font.h` |
 | `CMakeLists.txt`, `test/CMakeLists.txt`, `CMakePresets.json`, `cmake/get_cpm.cmake` | the build (see [Build](#build)); exports from `tools/d3d11_exports.txt`; stralgo and small_vectors by CPM |
-| `cmake/clang-cl-msvc-sdk.cmake`, `cmake/version.cmake` | the toolchain (clang-cl with MSVC's and the Windows SDK's headers and libraries), the version from `git describe` |
+| `cmake/clang-cl-msvc-sdk.cmake`, `cmake/version.cmake` | the toolchain (clang-cl with MSVC's and the Windows SDK's headers and libraries), the version from git (`vX.Y.Z`, `vX.Y.Z-<hash>`, `-dirty`) |
 | `tools/d3d11_exports.txt`, `tools/gen_exports_from_list.py` | the Windows d3d11 export names, and the run of EDVR's generator on them |
 | `tools/test.sh <build dir> <scratch>` | smoke test under wine without the game, both builds (each as `d3d11.dll`), plain and chained (also behind `test/fake_migoto.dll`, a 3Dmigoto by its version resource), patch and list pixels checked, EDSM's answer read from a saved one (`test/data/`), the shaders' catalog written (edworld_eht), game shaders' shapes read when `EDWORLD_SHADER_SAMPLE` names `.dxbc` files, `doc/settings.md` compared with the one edworld_eht makes from its table of settings (`EDWORLD_SETTINGS_DOC`; on a difference it prints the `cp` that brings the doc up to date), and the render test (below) (environment: `EDWORLD_WINEPREFIX`) |
 | `tools/bench.sh <build dir> <scratch> [<w> <h>]`, `test/data/bench/` | the cost without the game: the clouds' pass per scene under DXVK, a draw through edworld on the render thread; compared with the card's reference ([performance.md](performance.md)) |
