@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.2.1
 
+Corrections to 1.2.0: edworld draws only when the game's state fits its shaders, and its shaders' loops have an end.
+
+- edloader 1.3.1 in the zip.
 - The version in the log: `vX.Y.Z` only for a release; any other build `<the last tag>-<commit's short hash>`, with
   `-dirty` when built from uncommitted changes (before, `git describe`: a build of uncommitted changes on the tag's
   commit said only `vX.Y.Z-dirty`).
