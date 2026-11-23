@@ -50,16 +50,8 @@ endif()
 set(gen "${CMAKE_BINARY_DIR}/gen")
 file(MAKE_DIRECTORY "${gen}")
 
-# exports: the Windows d3d11 names from a list, thunked by EDVR's generator (tools/gen_exports.py, MIT)
-add_custom_command(
-  OUTPUT "${gen}/edvr_d3d11.def" "${gen}/edvr_thunks_d3d11.asm" "${gen}/edvr_exports_d3d11.inc"
-  COMMAND "${Python3_EXECUTABLE}" tools/gen_exports.py --self-test
-  COMMAND "${Python3_EXECUTABLE}" tools/gen_exports_from_list.py --source tools/d3d11_exports.txt --tag d3d11
-          --out "${gen}" --wrap D3D11CreateDevice --wrap D3D11CreateDeviceAndSwapChain
-  DEPENDS tools/gen_exports.py tools/gen_exports_from_list.py tools/d3d11_exports.txt
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-  COMMENT "d3d11 exports"
-  VERBATIM)
+# exports: the Windows d3d11 names from a list, a thunk each but the two edworld defines (gen/d3d11_proxy.*)
+edplugin_common_proxy_exports(d3d11 tools/d3d11_exports.txt WRAP D3D11CreateDevice D3D11CreateDeviceAndSwapChain)
 
 # Dear ImGui's D3D11 backend shaders, compiled here so the game needs no d3dcompiler_XX.dll (third_party/imgui/README.md)
 edplugin_common_fxc("${gen}/imgui_vs.h" vs_4_0 vs_main g_imgui_vs "${CMAKE_SOURCE_DIR}/shaders/imgui.hlsl" /O3)
@@ -84,7 +76,6 @@ add_custom_command(
   VERBATIM)
 
 add_custom_target(edworld_generated DEPENDS
-  "${gen}/edvr_d3d11.def" "${gen}/edvr_thunks_d3d11.asm" "${gen}/edvr_exports_d3d11.inc"
   "${gen}/imgui_vs.h" "${gen}/imgui_ps.h" "${gen}/list_vs.h" "${gen}/list_ps.h" "${gen}/list_font.h"
   "${gen}/clouds_vs.h" "${gen}/clouds_ps.h" "${gen}/clouds3d_vs.h" "${gen}/clouds3d_ps.h"
   "${gen}/clouds_up_vs.h" "${gen}/clouds_up_ps.h")
@@ -99,16 +90,14 @@ target_include_directories(edworld_imgui PUBLIC src ${imgui} "${gen}")
 target_compile_options(edworld_imgui PRIVATE /W3)
 add_dependencies(edworld_imgui edworld_generated)
 
-add_library(edworld_thunks OBJECT "${gen}/edvr_thunks_d3d11.asm")
-set_source_files_properties("${gen}/edvr_thunks_d3d11.asm" PROPERTIES GENERATED TRUE)
+add_library(edworld_thunks OBJECT "${d3d11_PROXY_ASM}")
 target_compile_options(edworld_thunks PRIVATE /nologo)
-add_dependencies(edworld_thunks edworld_generated)
 
 set(edworld_sources src/proxy.cc src/hooks.cc src/settings_log.cc src/game_state.cc src/panel_patch.cc
                     src/shader_catalog.cc src/diagnostics.cc)
 
 foreach(variant edworld edworld_eht)
-  add_library(${variant} SHARED ${edworld_sources} "${gen}/edvr_d3d11.def")
+  add_library(${variant} SHARED ${edworld_sources} "${d3d11_PROXY_DEF}")
   target_link_libraries(${variant} PRIVATE edworld_imgui edworld_thunks edplugin_common::edplugin_common simple_enum::simple_enum
                         kernel32 user32 advapi32 dxgi dxguid winhttp shell32 ole32 version)
   target_compile_definitions(${variant} PRIVATE $<$<STREQUAL:${variant},edworld_eht>:EDWORLD_EHT>)

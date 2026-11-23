@@ -698,7 +698,7 @@ by `exclusive_lock_t` / `shared_lock_t` for a scope (both from edplugin_common).
 | `third_party/fonts/`, `tools/gen_font.py` | the list's font (Noto Sans Mono, SIL OFL 1.1), embedded at build time as `<build dir>/gen/list_font.h` |
 | `CMakeLists.txt`, `test/CMakeLists.txt`, `CMakePresets.json` | the build (see [Build](#build)); exports from `tools/d3d11_exports.txt`; stralgo and small_vectors by CPM through edplugin_common |
 | `edplugin_common.commit` | the commit of the clone `edplugin_common/` (the toolchain, the version from git, fxc, the shared code) |
-| `tools/d3d11_exports.txt`, `tools/gen_exports_from_list.py` | the Windows d3d11 export names, and the run of EDVR's generator on them |
+| `tools/d3d11_exports.txt` | the Windows d3d11 export names, made into exports by `edplugin_common_proxy_exports` |
 | `tools/test.sh <build dir> <scratch>` | smoke test under wine without the game, both builds (each as `d3d11.dll`), plain and chained (also behind `test/fake_migoto.dll`, a 3Dmigoto by its version resource), patch and list pixels checked, EDSM's answer read from a saved one (`test/data/`), the shaders' catalog written (edworld_eht), game shaders' shapes read when `EDWORLD_SHADER_SAMPLE` names `.dxbc` files, `doc/settings.md` compared with the one edworld_eht makes from its table of settings (`EDWORLD_SETTINGS_DOC`; on a difference it prints the `cp` that brings the doc up to date), and the render test (below) (environment: `EDWORLD_WINEPREFIX`; with no `DISPLAY` (Wayland only) it sets `WINE_USE_EGL=1` unless it is set already: wine's OpenGL, which wined3d needs, comes then only through EGL) |
 | `tools/bench.sh <build dir> <scratch> [<w> <h>]`, `test/data/bench/` | the cost without the game: the clouds' pass per scene under DXVK, a draw through edworld on the render thread; compared with the card's reference ([performance.md](performance.md)); with no `DISPLAY`, `WINE_USE_EGL=1` unless set |
 | `test/render_test.cc`, `src/clouds_values.h`, `test/data/render/` | the render test: the clouds' volume shader drawn with the system d3d11 (no edworld in its folder) into a 320x160 float target for six kinds (Neon, Ammonia, CarbonDioxide, Argon, Methane, Water) from orbit by day, by night at K 7, K 3 and with no field (shown 40 times brighter), at the limb, inside the layer and, for the two that snow, on the ground; its buffer made by `clouds_values`, the same function the game's draw uses. Checked by numbers (no NaN, clouds on the disc, no aurora by day, the aurora by night and stronger at K 7 than K 3, the next frame close, the snow) and against the reference pictures (a mean difference under 1.5 of 255, under 0.5% of channels off by more than 24); `EDWORLD_RENDER_UPDATE=1 tools/test.sh ...` makes the references again, after the pictures were looked at. `render_test.exe <out> [<reference>] --shaders <dir>` draws with another build's `clouds3d_vs.cso`/`clouds3d_ps.cso` (fxc `/Fo`), to compare |
@@ -707,7 +707,6 @@ by `exclusive_lock_t` / `shared_lock_t` for a scope (both from edplugin_common).
 | `tools/shader_catalog.py` | the shaders' catalog offline: `names` (the planets' generator's archives), `diff` (two builds) |
 | `tools/holo_db.py` | the hologram models' descriptions offline: `scan` (samples, pictures, the journal's hints, the docked pads from the logs), `form` (the page on 127.0.0.1), `models-header` (the confirmed models into `src/holo_models_generated.h`), `header` (their pads into `src/holo_pads_generated.h`), `--self-test` |
 | `tools/pad_text_digits.py` | the digits' templates of the pad's text read (`src/pad_text_digits_generated.h`) from `edworld_padtext` samples whose data source named the pad |
-| `tools/gen_exports.py`, `tools/EDVR-LICENSE.txt` | EDVR's export thunk generator (MIT) |
 | `NOTICE` | third-party work, file by file, with the licences |
 
 ## Settings (`<plugin>.ini`)
@@ -825,9 +824,9 @@ default `/dev/shm/eht`).
 edworld is one example of a d3d11 proxy plugin for Elite Dangerous; edloader runs several of them in one game.
 What a plugin of this kind needs, as edworld does it:
 
-1. **Be a `d3d11.dll`.** Export every d3d11 function. edworld's exports are thunks generated at build time from
-   the Windows d3d11 export names in `tools/d3d11_exports.txt` (`tools/gen_exports_from_list.py` runs EDVR's
-   `tools/gen_exports.py` on them); each thunk jumps to the next d3d11's function.
+1. **Be a `d3d11.dll`.** Export every d3d11 function. edworld's exports are thunks made at configure time from
+   the Windows d3d11 export names in `tools/d3d11_exports.txt` by edplugin_common's `edplugin_common_proxy_exports`;
+   each thunk jumps to the next d3d11's function.
 2. **Find the next d3d11 without the loader lock.** In `DllMain` load nothing but the system's `d3d11.dll`; load
    the next proxy (`next` in the ini) on the first export call. Ask for the next one by the name your settings
    give: `d3d11.dll` reaches edloader, which passes the call on down its list (doc/developers.md in edloader).

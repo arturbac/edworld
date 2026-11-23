@@ -4,11 +4,7 @@ Copyright (c) 2026 Artur Bać
 edworld contains or builds on the following third-party work.
 
 EDVR unofficial patch — https://github.com/characterecho-sean/edvr-unofficial-patch
-  MIT License, Copyright (c) 2026 characterecho-sean. Full text: tools/EDVR-LICENSE.txt
-  - tools/gen_exports.py: EDVR's export thunk generator, copied unchanged; build/gen/edvr_* are its output,
-    and src/proxy.cc uses the edvr_* names it generates. tools/gen_exports_from_list.py (edworld's own) runs
-    it on the Windows d3d11 export names in tools/d3d11_exports.txt at build time; no EDVR binary is part of
-    edworld or its build.
+  MIT License, Copyright (c) 2026 characterecho-sean. Full text: at the end of this file.
   - src/proxy.cc: the proxy chaining discipline of EDVR's src/d3d11/d3d11_proxy.cpp (system copy loaded in
     DllMain, next proxy on the first export call, depth guard for a next proxy that asks for d3d11.dll by name).
   - src/hooks.cc: lessons from EDVR and its Proton issue 65 (per-draw work kept to a pointer compare, GPU copies
@@ -34,3 +30,29 @@ Noto Sans Mono — https://github.com/notofonts/latin-greek-cyrillic
 
 Elite Dangerous is a trademark of Frontier Developments plc. edworld is not affiliated with or endorsed by
 Frontier Developments.
+
+---
+
+EDVR unofficial patch licence:
+
+MIT License
+
+Copyright (c) 2026 characterecho-sean
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

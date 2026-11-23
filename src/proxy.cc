@@ -8,6 +8,7 @@
 //    goes to the system copy, or the chain recurses until the stack runs out.
 #include "runtime.h"
 #include "edplugin_common_commit.h"
+#include "d3d11_proxy.h"
 
 #include <exception>
 #include <cstring>
@@ -20,22 +21,11 @@
 
 #include <stralgo/stralgo.h>
 
-extern "C"
-  {
-  extern void * edvr_realProcs_d3d11[];
-  void edvr_unresolved_d3d11();
-  }
-
 namespace
   {
   using namespace std::string_view_literals;
   using edworld::format_into;
   using edworld::wide;
-
-  char const * const export_names[]{
-#include "edvr_exports_d3d11.inc"
-  };
-  constexpr std::size_t export_count{sizeof(export_names) / sizeof(export_names[0])};
 
   using create_device_fn = HRESULT(WINAPI *)(
     IDXGIAdapter *, D3D_DRIVER_TYPE, HMODULE, UINT, D3D_FEATURE_LEVEL const *, UINT, UINT, ID3D11Device **,
@@ -57,17 +47,17 @@ namespace
   auto resolve_from(HMODULE preferred, HMODULE fallback) noexcept -> std::size_t
     {
     std::size_t missing{};
-    for(std::size_t i{}; i != export_count; ++i)
+    for(std::size_t i{}; i != d3d11_proxy_count; ++i)
       {
-      void * p{preferred ? reinterpret_cast<void *>(GetProcAddress(preferred, export_names[i])) : nullptr};
+      void * p{preferred ? reinterpret_cast<void *>(GetProcAddress(preferred, d3d11_proxy_names[i])) : nullptr};
       if(not p and fallback)
-        p = reinterpret_cast<void *>(GetProcAddress(fallback, export_names[i]));
+        p = reinterpret_cast<void *>(GetProcAddress(fallback, d3d11_proxy_names[i]));
       if(not p)
         {
         ++missing;
-        p = reinterpret_cast<void *>(&edvr_unresolved_d3d11);
+        p = reinterpret_cast<void *>(&d3d11_proxy_unresolved);
         }
-      edvr_realProcs_d3d11[i] = p;
+      d3d11_proxy_real_procs[i] = p;
       }
     return missing;
     }
@@ -450,7 +440,7 @@ auto edworld::system_d3d11() noexcept -> HMODULE { return system_module; }
 
 auto edworld::chain_refusal() noexcept -> char const * { return refused.load(std::memory_order_acquire) ? refused_by : ""; }
 
-extern "C" HRESULT WINAPI edvr_impl_D3D11CreateDevice(
+extern "C" HRESULT WINAPI d3d11_proxy_impl_D3D11CreateDevice(
   IDXGIAdapter * adapter,
   D3D_DRIVER_TYPE driver_type,
   HMODULE software,
@@ -488,7 +478,7 @@ extern "C" HRESULT WINAPI edvr_impl_D3D11CreateDevice(
   return hr;
   }
 
-extern "C" HRESULT WINAPI edvr_impl_D3D11CreateDeviceAndSwapChain(
+extern "C" HRESULT WINAPI d3d11_proxy_impl_D3D11CreateDeviceAndSwapChain(
   IDXGIAdapter * adapter,
   D3D_DRIVER_TYPE driver_type,
   HMODULE software,

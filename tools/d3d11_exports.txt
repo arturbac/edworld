@@ -1,5 +1,6 @@
-# The Windows d3d11.dll export names edworld forwards (one per line; # starts a comment).
-# Taken once, 2026-10-08, from the build's generated .def; the list of a system dll does not change.
+# The Windows d3d11.dll export names edworld forwards (one per line, # starts a comment), read by
+# edplugin_common_proxy_exports in CMakeLists.txt.
+# Taken once, 2026-10-08, from the build's generated .def: the list of a system dll does not change.
 CreateDirect3D11DeviceFromDXGIDevice
 CreateDirect3D11SurfaceFromDXGISurface
 D3D11CoreCreateDevice

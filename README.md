@@ -98,8 +98,8 @@ through edloader with EDHM. MIT licence (LICENSE).
 ## Credits
 
 edworld builds on the work of the [EDVR unofficial patch](https://github.com/characterecho-sean/edvr-unofficial-patch)
-team (MIT): the proxy chaining discipline, the export thunk generator (`tools/gen_exports.py`, unchanged), the
-shader hash and EDVR's decode of the cockpit panels' constant buffers and instance records. It also uses
+team (MIT): the proxy chaining discipline, the shader hash and EDVR's decode of the cockpit panels' constant buffers
+and instance records. It also uses
 [Dear ImGui](https://github.com/ocornut/imgui) (MIT), the emblems of
 [EDAssets](https://github.com/Venefilyn/EDAssets) (MIT; artwork of Frontier Developments) and the
 [Noto Sans Mono](https://github.com/notofonts/latin-greek-cyrillic) font (SIL OFL 1.1). What comes from where,
