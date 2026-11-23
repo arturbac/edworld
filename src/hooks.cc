@@ -564,6 +564,80 @@ namespace edworld
       return true;
       }
 
+    ///\brief the PE section of `module` holding `p` (its name, up to 8 characters), or "-" when none does or its headers
+    /// cannot be read (each part looked at before it is read: the game's process, no fault)
+    auto section_of(HMODULE module, void const * p, char (&name)[9]) noexcept -> void
+      {
+      std::strcpy(name, "-");
+      auto const * const base{reinterpret_cast<std::uint8_t const *>(module)};
+      auto const * const dos{reinterpret_cast<IMAGE_DOS_HEADER const *>(base)};
+      if(not readable(dos) or not readable(base + sizeof *dos - 1) or dos->e_magic != IMAGE_DOS_SIGNATURE or dos->e_lfanew <= 0
+         or dos->e_lfanew > 0x10000)
+        return;
+      auto const * const nt{reinterpret_cast<IMAGE_NT_HEADERS const *>(base + dos->e_lfanew)};
+      if(not readable(nt) or not readable(reinterpret_cast<std::uint8_t const *>(nt) + sizeof *nt - 1) or nt->Signature != IMAGE_NT_SIGNATURE)
+        return;
+      std::uintptr_t const rva{reinterpret_cast<std::uintptr_t>(p) - reinterpret_cast<std::uintptr_t>(base)};
+      IMAGE_SECTION_HEADER const * const sections{IMAGE_FIRST_SECTION(nt)};
+      if(WORD const n{nt->FileHeader.NumberOfSections};
+         n == 0 or not readable(sections) or not readable(reinterpret_cast<std::uint8_t const *>(sections + n) - 1))
+        return;
+      for(WORD i{}; i != nt->FileHeader.NumberOfSections; ++i)
+        {
+        IMAGE_SECTION_HEADER const & s{sections[i]};
+        DWORD const size{std::max(s.Misc.VirtualSize, s.SizeOfRawData)};
+        if(rva >= s.VirtualAddress and rva < std::uintptr_t{s.VirtualAddress} + size)
+          {
+          std::memcpy(name, s.Name, 8);
+          name[8] = '\0';
+          return;
+          }
+        }
+      }
+
+    ///\brief a diagnosis of hooks on Windows (2026-11-23), said once at the attach, nothing changed: where the context's
+    /// table lies (its memory's type and protection, the module and PE section holding it) and which of the context's
+    /// interfaces come at its own pointer, so a rule for a table of edworld's own can be told by where Windows keeps it
+    auto log_context_table(ID3D11DeviceContext * ctx) noexcept -> void
+      {
+      void ** const table{*reinterpret_cast<void ***>(ctx)};
+      MEMORY_BASIC_INFORMATION m{};
+      bool const queried{VirtualQuery(table, &m, sizeof m) == sizeof m};
+      char const * const type{not queried                  ? "?"
+                              : m.State == MEM_FREE   ? "free"
+                              : m.Type == MEM_IMAGE   ? "image"
+                              : m.Type == MEM_PRIVATE ? "private"
+                              : m.Type == MEM_MAPPED  ? "mapped"
+                                                      : "other"};
+      HMODULE module{};
+      wchar_t path[MAX_PATH]{L"-"};
+      char section[9]{"-"};
+      if(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                            reinterpret_cast<LPCWSTR>(table), &module)
+         and module)
+        {
+        if(GetModuleFileNameW(module, path, MAX_PATH) == 0)
+          std::wcscpy(path, L"?");
+        section_of(module, table, section);
+        }
+      log_line("context: its table at {} ({} memory, protection 0x{:X}, {} entries), in {} section {}{}",
+               static_cast<void const *>(static_cast<void *>(table)), type, queried ? m.Protect : 0u, table_length(table), wide(path),
+               section, module and module == system_d3d11() ? " (the system d3d11.dll)" : "");
+      auto same = [&](REFIID id) -> char const *
+        {
+        void * other{};
+        if(FAILED(ctx->QueryInterface(id, &other)) or not other)
+          return "none";
+        // pointers compared, not identities: an interface of the same object may come at another pointer
+        char const * const answer{other == static_cast<void *>(ctx) ? "same pointer" : "other pointer"};
+        static_cast<IUnknown *>(other)->Release();
+        return answer;
+        };
+      log_line("context: its interfaces - ID3D11DeviceContext1 {}, 2 {}, 3 {}, 4 {}; ID3D11Multithread {}",
+               same(__uuidof(ID3D11DeviceContext1)), same(__uuidof(ID3D11DeviceContext2)), same(__uuidof(ID3D11DeviceContext3)),
+               same(__uuidof(ID3D11DeviceContext4)), same(__uuidof(ID3D11Multithread)));
+      }
+
     ///\brief the multithread protection decides which of the runtime's variants of the context's methods run; asked
     /// at the start and in the census, never set
     auto note_multithread(ID3D11Device * dev, ID3D11DeviceContext * ctx) noexcept -> void
@@ -6182,6 +6256,7 @@ namespace edworld
     qpc_frequency = f.QuadPart ? f.QuadPart : 1;
     }
     note_multithread(dev, ctx);
+    log_context_table(ctx);
     context_hook = pick_context_hook(ctx);
     if(context_hook == context_hook_e::own_table and not prepare_own_table(ctx))
       context_hook = context_hook_e::in_place;

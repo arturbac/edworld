@@ -43,7 +43,12 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   the runtime's entry of that slot at the call (EDVR's LiveCopy, `src/common/vtable_hook.h` there), so a rewrite of
   the runtime's table is followed; the two words before the table (the C++ type information) are copied. Any other
   context (a wrapper's: 3Dmigoto, ReShade) is hooked in place. `context_hook` (`0` auto, `1` in place, `2` own table)
-  overrides the choice.
+  overrides the choice. Before the choice the log says once where the context's table lies (its address, the memory's
+  type - `free` when none is committed there - and protection from `VirtualQuery`, its length, the module and PE
+  section holding it, `-` when the module's headers cannot be read, and whether that module is the system d3d11) and
+  which of `ID3D11DeviceContext1`..`4` and `ID3D11Multithread` the context answers at its own pointer (`same pointer`),
+  at another (`other pointer`: the pointers are compared, not the objects' identities) or not at all; nothing changes
+  by it.
 - Watches the cockpit holo-panel vertex shaders (`81216C77F90DEDD6`, and `1989E6D3B405FDE0` when the game's
   "Disable GUI effects" is on, and `925ACEDA0153AA5B`, which the game switches the same panels to near a war
   settlement, with the surface at PS t1). Whether that shader's instance records decode like the family's is not

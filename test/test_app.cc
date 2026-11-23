@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -2351,6 +2352,16 @@ int main()
   check(log_text.find("not drawn while") == std::string::npos and log_text.find("patch: a surface in format") == std::string::npos,
         "edworld's own draws fit the test's state (none off by fits.h)");
   check(log_text.find("context: a table of edworld's own") != std::string::npos, "the log says the context is on edworld's table");
+  // the diagnosis of hooks on Windows: where the context's table lies and which interfaces come at its pointer, said once
+  // in this session (runs started within one second share a log: the last one cannot be set aside under the same name)
+  std::size_t const session_at{log_text.rfind(", read-only d3d11 observer")};
+  check(session_at != std::string::npos, "the log has the session's header line");
+  std::string_view const session{session_at == std::string::npos ? std::string_view{log_text}
+                                                                   : std::string_view{log_text}.substr(session_at)};
+  check(session.find("context: its table at ") != std::string_view::npos and session.find(" memory, protection 0x") != std::string_view::npos
+          and session.find("context: its interfaces - ID3D11DeviceContext1 ") != std::string_view::npos
+          and session.find("context: its table at ") == session.rfind("context: its table at "),
+        "the log says once in this session where the context's table lies and its interfaces");
   check(log_text.find("asked by test_foreign.dll from outside the game's folder: not followed") != std::string::npos,
         "an overlay's device from another folder is not followed");
   check(log_text.find("asked by test_app.exe") != std::string::npos, "the game's device is asked by the exe");

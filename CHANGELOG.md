@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- The log says once where the game's context table lies (memory type, module and section) and which of
+  `ID3D11DeviceContext1`..`4` and `ID3D11Multithread` the context answers at its own pointer; a diagnosis for hooks on
+  Windows, nothing changes by it.
+
 ## 1.2.1
 
 Corrections to 1.2.0: edworld draws only when the game's state fits its shaders, and its shaders' loops have an end.
