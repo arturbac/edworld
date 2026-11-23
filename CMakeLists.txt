@@ -1,11 +1,22 @@
 # edworld: the d3d11.dll proxy, two builds of one source (README "Two builds"): edworld and edworld_eht.
 # Built on Linux with clang-cl against MSVC's and the Windows SDK's headers and libraries
-# (cmake/clang-cl-msvc-sdk.cmake, MSVC_ROOT); the shaders compiled by the SDK's fxc.exe under wine.
+# (edplugin_common/cmake/clang-cl-msvc-sdk.cmake, MSVC_ROOT); the shaders compiled by the SDK's fxc.exe under wine.
 cmake_minimum_required(VERSION 3.29)
+
+# the shared library edplugin_common, a clone in this directory on the commit edplugin_common.commit pins: the
+# toolchain is in it, so it is looked for before project()
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/edplugin_common/CMakeLists.txt")
+  file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/edplugin_common.commit" edplugin_common_pinned LIMIT_COUNT 1)
+  string(STRIP "${edplugin_common_pinned}" edplugin_common_pinned)
+  message(FATAL_ERROR "no clone of edplugin_common in ${CMAKE_CURRENT_SOURCE_DIR}; in that directory:\n"
+                      "  git clone https://github.com/arturbac/edplugin_common.git edplugin_common\n"
+                      "  git -C edplugin_common checkout ${edplugin_common_pinned}")
+endif()
+
 project(edworld LANGUAGES CXX ASM_MASM)
 
 if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
-  message(FATAL_ERROR "edworld builds with clang-cl: configure with a preset or -DCMAKE_TOOLCHAIN_FILE=cmake/clang-cl-msvc-sdk.cmake")
+  message(FATAL_ERROR "edworld builds with clang-cl: configure with a preset or -DCMAKE_TOOLCHAIN_FILE=edplugin_common/cmake/clang-cl-msvc-sdk.cmake")
 endif()
 
 set(CMAKE_CXX_STANDARD 23)
@@ -14,51 +25,11 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT Embedded)
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-find_program(EDWORLD_WINE wine REQUIRED)
-file(GLOB fxc_found "${MSVC_ROOT}/Windows Kits/10/bin/*/x64/fxc.exe")
-list(SORT fxc_found)
-list(POP_BACK fxc_found fxc_newest)
-set(EDWORLD_FXC "${fxc_newest}" CACHE FILEPATH "fxc.exe of a Windows SDK, run under wine")
-if(NOT EXISTS "${EDWORLD_FXC}")
-  message(FATAL_ERROR "EDWORLD_FXC='${EDWORLD_FXC}': no fxc.exe (looked in ${MSVC_ROOT}/Windows Kits/10/bin/*/x64)")
-endif()
+# edplugin_common: the code and the build steps the plugins share, with CPM and stralgo (string operations: merge in
+# place of chained +; small_vectors under it), pinned there. CPM_SOURCE_CACHE (a filled cache) and
+# FETCHCONTENT_FULLY_DISCONNECTED=ON configure without the network
+add_subdirectory(edplugin_common)
 
-# stralgo (string operations: merge in place of chained +) and small_vectors it stands on, by CPM; the same packages,
-# versions and commits as elite_help_tool's. CPM_SOURCE_CACHE (a filled cache) and FETCHCONTENT_FULLY_DISCONNECTED=ON
-# configure without the network
-include(cmake/get_cpm.cmake)
-cpmaddpackage(
-  NAME
-  small_vectors
-  GITHUB_REPOSITORY
-  arturbac/small_vectors
-  VERSION
-  3.4.0
-  # tag v3.4.0, pinned to its commit - a tag can be moved
-  GIT_TAG
-  768316b4050952988376cf216eddb93eaeeb697e
-  EXCLUDE_FROM_ALL
-  YES)
-if(NOT TARGET small_vectors::small_vectors)
-  add_library(small_vectors::small_vectors ALIAS small_vectors)
-endif()
-cpmaddpackage(
-  NAME
-  stralgo
-  GITHUB_REPOSITORY
-  arturbac/stralgo
-  VERSION
-  1.5.0
-  # tag v1.5.0, pinned to its commit - a tag can be moved
-  GIT_TAG
-  b9ad0230efcb7f4450d4c5c2646ab7515c590f80
-  OPTIONS
-  "STRALGO_ENABLE_UNIT_TESTS OFF"
-  EXCLUDE_FROM_ALL
-  YES)
-if(NOT TARGET stralgo::stralgo)
-  add_library(stralgo::stralgo ALIAS stralgo)
-endif()
 # simple_enum (an enumeration's value in the log by its name), the version of elite_help_tool's
 cpmaddpackage(
   NAME
@@ -79,21 +50,6 @@ endif()
 set(gen "${CMAKE_BINARY_DIR}/gen")
 file(MAKE_DIRECTORY "${gen}")
 
-# fxc is a Windows program: options start with '/', so the paths it gets are relative to the build directory
-# (outputs) or Windows paths through wine's Z: drive (inputs)
-function(edworld_fxc out profile entry var source)
-  cmake_path(RELATIVE_PATH out BASE_DIRECTORY "${CMAKE_BINARY_DIR}" OUTPUT_VARIABLE out_rel)
-  add_custom_command(
-    OUTPUT "${out}"
-    COMMAND ${CMAKE_COMMAND} -E env WINEDEBUG=-all
-            "${EDWORLD_WINE}" "${EDWORLD_FXC}" /nologo ${ARGN} /T ${profile} /E ${entry} /Vn ${var}
-            /Fh "${out_rel}" "Z:${source}"
-    DEPENDS "${source}"
-    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
-    COMMENT "fxc ${profile} ${var}"
-    VERBATIM)
-endfunction()
-
 # exports: the Windows d3d11 names from a list, thunked by EDVR's generator (tools/gen_exports.py, MIT)
 add_custom_command(
   OUTPUT "${gen}/edvr_d3d11.def" "${gen}/edvr_thunks_d3d11.asm" "${gen}/edvr_exports_d3d11.inc"
@@ -106,18 +62,18 @@ add_custom_command(
   VERBATIM)
 
 # Dear ImGui's D3D11 backend shaders, compiled here so the game needs no d3dcompiler_XX.dll (third_party/imgui/README.md)
-edworld_fxc("${gen}/imgui_vs.h" vs_4_0 vs_main g_imgui_vs "${CMAKE_SOURCE_DIR}/shaders/imgui.hlsl" /O3)
-edworld_fxc("${gen}/imgui_ps.h" ps_4_0 ps_main g_imgui_ps "${CMAKE_SOURCE_DIR}/shaders/imgui.hlsl" /O3)
+edplugin_common_fxc("${gen}/imgui_vs.h" vs_4_0 vs_main g_imgui_vs "${CMAKE_SOURCE_DIR}/shaders/imgui.hlsl" /O3)
+edplugin_common_fxc("${gen}/imgui_ps.h" ps_4_0 ps_main g_imgui_ps "${CMAKE_SOURCE_DIR}/shaders/imgui.hlsl" /O3)
 # the list's quad under the jump panel (SM5: it reads the game's structured record buffer)
-edworld_fxc("${gen}/list_vs.h" vs_5_0 vs_main g_list_vs "${CMAKE_SOURCE_DIR}/shaders/list.hlsl" /O3)
-edworld_fxc("${gen}/list_ps.h" ps_5_0 ps_main g_list_ps "${CMAKE_SOURCE_DIR}/shaders/list.hlsl" /O3)
+edplugin_common_fxc("${gen}/list_vs.h" vs_5_0 vs_main g_list_vs "${CMAKE_SOURCE_DIR}/shaders/list.hlsl" /O3)
+edplugin_common_fxc("${gen}/list_ps.h" ps_5_0 ps_main g_list_ps "${CMAKE_SOURCE_DIR}/shaders/list.hlsl" /O3)
 # the layer of clouds over a planet with an atmosphere (PoC)
-edworld_fxc("${gen}/clouds_vs.h" vs_5_0 vs_main g_clouds_vs "${CMAKE_SOURCE_DIR}/shaders/clouds.hlsl" /O3)
-edworld_fxc("${gen}/clouds_ps.h" ps_5_0 ps_main g_clouds_ps "${CMAKE_SOURCE_DIR}/shaders/clouds.hlsl" /O3)
-edworld_fxc("${gen}/clouds3d_vs.h" vs_5_0 vs_main g_clouds3d_vs "${CMAKE_SOURCE_DIR}/shaders/clouds3d.hlsl" /O3)
-edworld_fxc("${gen}/clouds3d_ps.h" ps_5_0 ps_main g_clouds3d_ps "${CMAKE_SOURCE_DIR}/shaders/clouds3d.hlsl" /O3)
-edworld_fxc("${gen}/clouds_up_vs.h" vs_5_0 vs_main g_clouds_up_vs "${CMAKE_SOURCE_DIR}/shaders/clouds_up.hlsl" /O3)
-edworld_fxc("${gen}/clouds_up_ps.h" ps_5_0 ps_main g_clouds_up_ps "${CMAKE_SOURCE_DIR}/shaders/clouds_up.hlsl" /O3)
+edplugin_common_fxc("${gen}/clouds_vs.h" vs_5_0 vs_main g_clouds_vs "${CMAKE_SOURCE_DIR}/shaders/clouds.hlsl" /O3)
+edplugin_common_fxc("${gen}/clouds_ps.h" ps_5_0 ps_main g_clouds_ps "${CMAKE_SOURCE_DIR}/shaders/clouds.hlsl" /O3)
+edplugin_common_fxc("${gen}/clouds3d_vs.h" vs_5_0 vs_main g_clouds3d_vs "${CMAKE_SOURCE_DIR}/shaders/clouds3d.hlsl" /O3)
+edplugin_common_fxc("${gen}/clouds3d_ps.h" ps_5_0 ps_main g_clouds3d_ps "${CMAKE_SOURCE_DIR}/shaders/clouds3d.hlsl" /O3)
+edplugin_common_fxc("${gen}/clouds_up_vs.h" vs_5_0 vs_main g_clouds_up_vs "${CMAKE_SOURCE_DIR}/shaders/clouds_up.hlsl" /O3)
+edplugin_common_fxc("${gen}/clouds_up_ps.h" ps_5_0 ps_main g_clouds_up_ps "${CMAKE_SOURCE_DIR}/shaders/clouds_up.hlsl" /O3)
 
 add_custom_command(
   OUTPUT "${gen}/list_font.h"
@@ -125,13 +81,6 @@ add_custom_command(
   DEPENDS tools/gen_font.py third_party/fonts/NotoSansMono-Regular.ttf
   WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
   COMMENT "list font"
-  VERBATIM)
-
-add_custom_target(edworld_version
-  COMMAND ${CMAKE_COMMAND} -DSRC=${CMAKE_SOURCE_DIR} -DOUT=${gen}/edworld_version.h -DNAME=EDWORLD_VERSION
-          -P ${CMAKE_SOURCE_DIR}/cmake/version.cmake
-  BYPRODUCTS "${gen}/edworld_version.h"
-  COMMENT "edworld version"
   VERBATIM)
 
 add_custom_target(edworld_generated DEPENDS
@@ -160,18 +109,20 @@ set(edworld_sources src/proxy.cc src/hooks.cc src/settings_log.cc src/game_state
 
 foreach(variant edworld edworld_eht)
   add_library(${variant} SHARED ${edworld_sources} "${gen}/edvr_d3d11.def")
-  target_link_libraries(${variant} PRIVATE edworld_imgui edworld_thunks stralgo::stralgo simple_enum::simple_enum
+  target_link_libraries(${variant} PRIVATE edworld_imgui edworld_thunks edplugin_common::edplugin_common simple_enum::simple_enum
                         kernel32 user32 advapi32 dxgi dxguid winhttp shell32 ole32 version)
-  target_compile_definitions(${variant} PRIVATE UNICODE _UNICODE $<$<STREQUAL:${variant},edworld_eht>:EDWORLD_EHT>)
-  target_compile_options(${variant} PRIVATE /W4 "/FI${gen}/edworld_version.h")
+  target_compile_definitions(${variant} PRIVATE $<$<STREQUAL:${variant},edworld_eht>:EDWORLD_EHT>)
+  target_compile_options(${variant} PRIVATE /W4)
   target_link_options(${variant} PRIVATE /DEBUG:FULL $<$<NOT:$<CONFIG:Debug>>:/OPT:REF /OPT:ICF>)
   set_target_properties(${variant} PROPERTIES
     PREFIX ""
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${variant}"
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${variant}"
     PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${variant}")
-  add_dependencies(${variant} edworld_version edworld_generated)
+  add_dependencies(${variant} edworld_generated)
 endforeach()
+edplugin_common_version(EDWORLD_VERSION edworld_version.h edworld edworld_eht)
+edplugin_common_pin(edworld edworld_eht)
 
 option(EDWORLD_TESTS "build the smoke test's programs (tools/test.sh runs them under wine)" ON)
 if(EDWORLD_TESTS)

@@ -8,7 +8,7 @@ foreach(shader panel_vs:vs_5_0 other_vs:vs_5_0 found_vs:vs_5_0 panel_ps:ps_5_0 c
   string(REPLACE ":" ";" parts "${shader}")
   list(GET parts 0 name)
   list(GET parts 1 profile)
-  edworld_fxc("${test_gen}/${name}.h" ${profile} main g_${name} "${CMAKE_CURRENT_SOURCE_DIR}/${name}.hlsl")
+  edplugin_common_fxc("${test_gen}/${name}.h" ${profile} main g_${name} "${CMAKE_CURRENT_SOURCE_DIR}/${name}.hlsl")
   list(APPEND test_shaders "${test_gen}/${name}.h")
 endforeach()
 add_custom_target(edworld_test_shaders DEPENDS ${test_shaders})
@@ -32,7 +32,8 @@ add_executable(render_test render_test.cc)
 target_compile_definitions(render_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS EDWORLD_EHT)
 target_include_directories(render_test PRIVATE "${CMAKE_SOURCE_DIR}/src" "${CMAKE_BINARY_DIR}/gen")
 target_compile_options(render_test PRIVATE /W4)
-target_link_libraries(render_test PRIVATE d3d11 dxgi dxguid windowscodecs ole32 simple_enum::simple_enum)  # runtime.h (clouds_values.h)
+target_link_libraries(render_test PRIVATE d3d11 dxgi dxguid windowscodecs ole32 simple_enum::simple_enum
+                      edplugin_common::edplugin_common)  # runtime.h (clouds_values.h)
 set_target_properties(render_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${test_gen}")
 add_dependencies(render_test edworld_eht)
 

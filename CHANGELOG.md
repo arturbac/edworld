@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Built with edplugin_common, the library the plugins share: a clone in the plugin's directory on the commit
+  `edplugin_common.commit` pins. Without the clone the build stops with the commands that make it; another commit or
+  changes in it are a warning, and an error in a release build. The log says the library's commit in a line of its
+  own after the version (`edplugin_common <hash>`).
 - The log says once where the game's context table lies (memory type, module and section) and which of
   `ID3D11DeviceContext1`..`4` and `ID3D11Multithread` the context answers at its own pointer; a diagnosis for hooks on
   Windows, nothing changes by it.

@@ -7,6 +7,7 @@
 //  - a chained 3Dmigoto asks for "d3d11.dll" by name, which is this proxy: the second entry on the same thread
 //    goes to the system copy, or the chain recurses until the stack runs out.
 #include "runtime.h"
+#include "edplugin_common_commit.h"
 
 #include <exception>
 #include <cstring>
@@ -166,6 +167,7 @@ namespace
       edworld::load_settings(directory_from(L"EDLOADER_CONFIG_DIR"), log_dir);
       edworld::log_open(log_dir);
       edworld::log_line("{} {}, read-only d3d11 observer", wide(edworld::plugin_name), EDWORLD_VERSION);
+      edworld::log_line("edplugin_common {}", EDPLUGIN_COMMON_COMMIT);
       edworld::log_machine();
       edworld::complete_settings(directory_from(L"EDLOADER_CONFIG_DIR"));
       edworld::write_settings_doc();

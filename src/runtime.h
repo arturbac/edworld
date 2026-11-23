@@ -5,11 +5,15 @@
 
 #include <d3d11.h>
 
+#include <edplugin_common/core/lock.h>
+#include <edplugin_common/text/format.h>
+
 #include <atomic>
 #include <cstdint>
 #include <string>
 #include <vector>
 #include <format>
+#include <optional>
 
 #include <simple_enum/std_format.hpp>
 #include <string_view>
@@ -422,82 +426,13 @@ namespace edworld
   auto write_settings_doc() noexcept -> void;
 
   auto log_open(std::wstring const & dir) -> void;
-  ///\brief an SRW lock held exclusively for a scope: let go on every way out of it
-  class exclusive_lock_t
-    {
-    SRWLOCK & lock_;
-
-  public:
-    explicit exclusive_lock_t(SRWLOCK & lock) noexcept : lock_{lock} { AcquireSRWLockExclusive(&lock_); }
-
-    ~exclusive_lock_t() { ReleaseSRWLockExclusive(&lock_); }
-
-    exclusive_lock_t(exclusive_lock_t const &) = delete;
-    auto operator=(exclusive_lock_t const &) -> exclusive_lock_t & = delete;
-    };
-
-  ///\brief an SRW lock held shared for a scope
-  class shared_lock_t
-    {
-    SRWLOCK & lock_;
-
-  public:
-    explicit shared_lock_t(SRWLOCK & lock) noexcept : lock_{lock} { AcquireSRWLockShared(&lock_); }
-
-    ~shared_lock_t() { ReleaseSRWLockShared(&lock_); }
-
-    shared_lock_t(shared_lock_t const &) = delete;
-    auto operator=(shared_lock_t const &) -> shared_lock_t & = delete;
-    };
-
-  ///\brief a wide string in a log line, written as UTF-8 (std::format takes no wide string into a narrow line)
-  struct wide_t
-    {
-    std::wstring_view text;
-    };
-
-  [[nodiscard]]
-  inline auto wide(std::wstring_view text) noexcept -> wide_t
-    {
-    return {text};
-    }
-
-  [[nodiscard]]
-  inline auto wide(wchar_t const * text) noexcept -> wide_t
-    {
-    return {text ? std::wstring_view{text} : std::wstring_view{L"(null)"}};
-    }
-
-  ///\brief a value for a hexadecimal field: a signed one (HRESULT, LONG) as its bits, as printf's %X showed it
-  template<typename value_t>
-  [[nodiscard]]
-  constexpr auto as_unsigned(value_t value) noexcept
-    {
-    if constexpr(std::is_enum_v<value_t>)
-      return as_unsigned(std::to_underlying(value));
-    else if constexpr(std::is_integral_v<value_t> and std::is_signed_v<value_t>)
-      return static_cast<std::make_unsigned_t<value_t>>(value);
-    else
-      return value;
-    }
-
-  ///\brief a narrow (UTF-8) string in a wide text, as UTF-16 (std::format takes no narrow string into a wide text)
-  struct utf8_t
-    {
-    std::string_view text;
-    };
-
-  [[nodiscard]]
-  inline auto utf8(std::string_view text) noexcept -> utf8_t
-    {
-    return {text};
-    }
-
-  [[nodiscard]]
-  inline auto utf8(char const * text) noexcept -> utf8_t
-    {
-    return {text ? std::string_view{text} : std::string_view{"(null)"}};
-    }
+  using edplugin_common::as_unsigned;
+  using edplugin_common::exclusive_lock_t;
+  using edplugin_common::shared_lock_t;
+  using edplugin_common::utf8;
+  using edplugin_common::utf8_t;
+  using edplugin_common::wide;
+  using edplugin_common::wide_t;
 
   auto log_vline(std::string_view fmt, std::format_args args) noexcept -> void;
 
@@ -507,20 +442,10 @@ namespace edworld
   auto format_into(char_t * buf, std::size_t size, std::type_identity_t<std::basic_format_string<char_t, args_t...>> fmt,
                    args_t &&... args) noexcept -> std::size_t
     {
-    if(size == 0)
-      return 0;
-    std::size_t n{};
-    try
-      {
-      n = static_cast<std::size_t>(std::format_to_n(buf, static_cast<std::ptrdiff_t>(size - 1), fmt, std::forward<args_t>(args)...).out - buf);
-      }
-    catch(...)
-      {
-      n = 0;
+    std::optional<std::size_t> const n{edplugin_common::try_format_into(buf, size, fmt, std::forward<args_t>(args)...)};
+    if(not n)
       log_vline("format: a text could not be made; left empty", std::make_format_args());
-      }
-    buf[n] = char_t{};
-    return n;
+    return n.value_or(0);
     }
 
   template<typename char_t, std::size_t size, typename... args_t>
@@ -581,49 +506,3 @@ namespace edworld
   ///\brief the card a device of the game stands on, its feature level and flags, whether the driver takes command lists
   auto log_device(ID3D11Device * device) noexcept -> void;
   }  // namespace edworld
-
-///\brief a narrow string (edworld::utf8) in a wide text as UTF-16
-template<>
-struct std::formatter<edworld::utf8_t, wchar_t> : std::formatter<std::wstring_view, wchar_t>
-  {
-  auto format(edworld::utf8_t const & u, std::wformat_context & ctx) const -> std::wformat_context::iterator
-    {
-    auto out{ctx.out()};
-    std::string_view rest{u.text};
-    wchar_t buf[256];
-    while(not rest.empty())
-      {
-      std::size_t len{std::min<std::size_t>(rest.size(), 240)};
-      while(len < rest.size() and len > 0 and (static_cast<unsigned char>(rest[len]) & 0xC0u) == 0x80u)
-        --len;  // a character's bytes stay whole
-      int const n{MultiByteToWideChar(CP_UTF8, 0, rest.data(), static_cast<int>(len), buf, static_cast<int>(std::size(buf)))};
-      for(int i{}; i < n; ++i)
-        *out++ = buf[i];
-      rest.remove_prefix(len);
-      }
-    return out;
-    }
-  };
-
-///\brief a wide string (edworld::wide) in a log line as UTF-8, by pieces through a buffer on the stack
-template<>
-struct std::formatter<edworld::wide_t, char> : std::formatter<std::string_view, char>
-  {
-  auto format(edworld::wide_t const & w, std::format_context & ctx) const -> std::format_context::iterator
-    {
-    auto out{ctx.out()};
-    std::wstring_view rest{w.text};
-    char buf[512];
-    while(not rest.empty())
-      {
-      std::size_t len{std::min<std::size_t>(rest.size(), 120)};
-      if(len < rest.size() and rest[len - 1] >= 0xD800 and rest[len - 1] <= 0xDBFF)
-        --len;  // a surrogate pair stays whole
-      int const n{WideCharToMultiByte(CP_UTF8, 0, rest.data(), static_cast<int>(len), buf, static_cast<int>(sizeof buf), nullptr, nullptr)};
-      for(int i{}; i < n; ++i)
-        *out++ = buf[i];
-      rest.remove_prefix(len);
-      }
-    return out;
-    }
-  };

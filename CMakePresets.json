@@ -6,7 +6,7 @@
       "name": "cfg-base",
       "hidden": true,
       "generator": "Ninja",
-      "toolchainFile": "${sourceDir}/cmake/clang-cl-msvc-sdk.cmake",
+      "toolchainFile": "${sourceDir}/edplugin_common/cmake/clang-cl-msvc-sdk.cmake",
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }

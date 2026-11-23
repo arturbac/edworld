@@ -638,7 +638,24 @@ On Linux with CMake, Ninja, LLVM (clang-cl, lld-link, llvm-lib, llvm-ml64, llvm-
 no MSVC compiler is run. The headers and libraries come from MSVC and the Windows SDK in one directory in clang's
 `/winsysroot` layout (`VC/Tools/MSVC/<version>`, `Windows Kits/10`), e.g. the one msvc-wine installs; its path
 is `MSVC_ROOT` (a cache variable, or the environment variable of the same name). The shaders are compiled by that
-SDK's `fxc.exe` under wine (`EDWORLD_FXC`, found in the SDK by default).
+SDK's `fxc.exe` under wine (`EDPLUGIN_COMMON_FXC`, found in the SDK by default; wine by `EDPLUGIN_COMMON_WINE`).
+
+The shared library edplugin_common (the toolchain, CPM with stralgo and small_vectors, the version build steps, the
+SRW locks and the text helpers such as `wide(...)`) is a clone in `edplugin_common/`, ignored by git, on the commit
+the file `edplugin_common.commit` pins:
+
+```
+git clone https://github.com/arturbac/edplugin_common.git edplugin_common
+git -C edplugin_common checkout $(cat edplugin_common.commit)
+```
+
+Without it the configure stops with these two commands. At every build the clone is checked against
+`edplugin_common.commit`: another commit, changes in the clone, or the pinned commit missing from it (then `git -C
+edplugin_common fetch origin` first) are a warning, and an error in a release build (HEAD on a tag `vX.Y.Z`, a
+pre-release tag `vX.Y.Z-beta.N` too). The log says the clone's commit in a line of its own at the start
+(`edplugin_common <hash>`, `-dirty` for changes in it, ` (pinned <hash>)` when it is not on the pinned commit). A
+build directory made before the toolchain moved into the clone keeps the old path: configure it again with `--fresh`.
+A commit of the library is pushed to GitHub before a commit of this plugin that pins it.
 
 ```
 MSVC_ROOT=<dir> cmake --preset edworld-release
@@ -648,14 +665,14 @@ tools/test.sh build/edworld-release <scratch dir>
 
 Presets: `edworld-debug` and `edworld-release` build in `build/<preset>`; `kdev-edworld-debug` and
 `kdev-edworld-release` are the same without a build directory, for an IDE that chooses its own. The version in
-the log is taken from git at each build (`cmake/version.cmake`): `vX.Y.Z` for a release (HEAD on its tag, no
+the log is taken from git at each build (`edplugin_common/cmake/version.cmake`): `vX.Y.Z` for a release (HEAD on its tag, no
 uncommitted changes), otherwise `<the last vX.Y.Z tag>-<HEAD's short hash>`, with `-dirty` when tracked files differ
 from HEAD (`v0.0.0-<hash>` before the first tag). `EDWORLD_TESTS` (on) builds the smoke test's programs. stralgo (strings
-put together with its `merge`) and small_vectors come by CPM (`cmake/get_cpm.cmake`) from GitHub; with
+put together with its `merge`) and small_vectors come by CPM (`edplugin_common/cmake/get_cpm.cmake`) from GitHub; with
 `-DCPM_SOURCE_CACHE=<a filled cache> -DFETCHCONTENT_FULLY_DISCONNECTED=ON` the configure needs no network. The log: `log_line` takes a `std::format` format checked
 against its arguments when compiled and hands it to `log_vline` (`std::vformat_to` into 2 KB on the stack, the line cut
 there, never thrown; a batch gathers lines as before); a wide string goes in as `wide(...)` (UTF-8). SRW locks are held
-by `exclusive_lock_t` / `shared_lock_t` for a scope. An enumeration in a log line comes out by its name through simple_enum
+by `exclusive_lock_t` / `shared_lock_t` for a scope (both from edplugin_common). An enumeration in a log line comes out by its name through simple_enum
 (`simple_enum/std_format.hpp` in `runtime.h`); D3D11's own get their bounds in `src/d3d11_enum_names.h`.
 
 ## Files
@@ -679,8 +696,8 @@ by `exclusive_lock_t` / `shared_lock_t` for a scope. An enumeration in a log lin
 | `src/emblems.h`, `tools/gen_emblems.py`, `assets/*.svg` | the emblems as coverage masks, generated from EDAssets |
 | `src/imgui_config.h`, `shaders/imgui.hlsl`, `third_party/imgui/` | Dear ImGui build options, backend shaders, the vendored sources |
 | `third_party/fonts/`, `tools/gen_font.py` | the list's font (Noto Sans Mono, SIL OFL 1.1), embedded at build time as `<build dir>/gen/list_font.h` |
-| `CMakeLists.txt`, `test/CMakeLists.txt`, `CMakePresets.json`, `cmake/get_cpm.cmake` | the build (see [Build](#build)); exports from `tools/d3d11_exports.txt`; stralgo and small_vectors by CPM |
-| `cmake/clang-cl-msvc-sdk.cmake`, `cmake/version.cmake` | the toolchain (clang-cl with MSVC's and the Windows SDK's headers and libraries), the version from git (`vX.Y.Z`, `vX.Y.Z-<hash>`, `-dirty`) |
+| `CMakeLists.txt`, `test/CMakeLists.txt`, `CMakePresets.json` | the build (see [Build](#build)); exports from `tools/d3d11_exports.txt`; stralgo and small_vectors by CPM through edplugin_common |
+| `edplugin_common.commit` | the commit of the clone `edplugin_common/` (the toolchain, the version from git, fxc, the shared code) |
 | `tools/d3d11_exports.txt`, `tools/gen_exports_from_list.py` | the Windows d3d11 export names, and the run of EDVR's generator on them |
 | `tools/test.sh <build dir> <scratch>` | smoke test under wine without the game, both builds (each as `d3d11.dll`), plain and chained (also behind `test/fake_migoto.dll`, a 3Dmigoto by its version resource), patch and list pixels checked, EDSM's answer read from a saved one (`test/data/`), the shaders' catalog written (edworld_eht), game shaders' shapes read when `EDWORLD_SHADER_SAMPLE` names `.dxbc` files, `doc/settings.md` compared with the one edworld_eht makes from its table of settings (`EDWORLD_SETTINGS_DOC`; on a difference it prints the `cp` that brings the doc up to date), and the render test (below) (environment: `EDWORLD_WINEPREFIX`; with no `DISPLAY` (Wayland only) it sets `WINE_USE_EGL=1` unless it is set already: wine's OpenGL, which wined3d needs, comes then only through EGL) |
 | `tools/bench.sh <build dir> <scratch> [<w> <h>]`, `test/data/bench/` | the cost without the game: the clouds' pass per scene under DXVK, a draw through edworld on the render thread; compared with the card's reference ([performance.md](performance.md)); with no `DISPLAY`, `WINE_USE_EGL=1` unless set |
