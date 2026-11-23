@@ -4,30 +4,24 @@
 # the test's programs, EDWORLD_TESTS on).
 # Both builds, each copied in as d3d11.dll (its ini and log keep the build's name): edworld, then edworld_eht.
 # Usage: tools/test.sh <build dir> <scratch dir>   (a new run directory is made under the scratch dir; nothing deleted)
-# Environment: EDWORLD_WINEPREFIX: a wine prefix kept warm between runs; with no DISPLAY, WINE_USE_EGL=1 unless set
-# (made on first use, reused; a fresh one each run cost minutes in wineboot).
+# Environment: EDWORLD_WINEPREFIX: a wine prefix kept warm between runs (made on first use, reused; a fresh one each
+# run cost minutes in wineboot), WINE_COMMON_TIMEOUT (seconds for one wine run, 600 unless set); with no DISPLAY,
+# WINE_USE_EGL=1 unless set. Needs edplugin_common cloned in the checkout (its tools/wine-common.sh).
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")/.." && pwd)
+COMMON=$HERE/edplugin_common/tools/wine-common.sh
+[[ -f $COMMON ]] || { echo "$0: no $COMMON; in $HERE:" \
+  "git clone https://github.com/arturbac/edplugin_common.git edplugin_common" >&2; exit 1; }
+. "$COMMON"
 BUILD=$(cd "${1:?build dir}" && pwd)
 SCR=${2:?scratch dir}
-need() { [[ -n ${!1:-} ]] || { echo "$0: set $1 ($2)" >&2; exit 1; }; }
-need EDWORLD_WINEPREFIX "a wine prefix kept between runs"
 for f in edworld/edworld.dll edworld_eht/edworld_eht.dll test/fake_next.dll test/edworld/test_app.exe test/edworld_eht/test_app.exe test/render_test.exe; do
   [[ -f $BUILD/$f ]] || { echo "$0: no $BUILD/$f (build first)" >&2; exit 1; }
 done
 cd "$HERE"
-export WINEPREFIX=$EDWORLD_WINEPREFIX
-# with no X server (Wayland only, e.g. another account's session) wine's OpenGL, which wined3d needs, comes only
-# through EGL, off unless WINE_USE_EGL is set
-[[ -n ${DISPLAY:-} ]] || export WINE_USE_EGL=${WINE_USE_EGL:-1}
-if [[ ! -f $WINEPREFIX/system.reg ]]; then
-  mkdir -p "$WINEPREFIX"
-  WINEDEBUG=-all wineboot -i >/dev/null 2>&1 || true
-fi
-# one wineserver for all the runs below and the next test within ten minutes
-wineserver -p600 >/dev/null 2>&1 || true  # already running (e.g. from wineboot) is fine
+wine_common_prefix EDWORLD_WINEPREFIX
 rc=0
-ini_run() { EDWORLD_TEST_INI_KEEP=1 WINEDEBUG=-all WINEDLLOVERRIDES="d3d11=n,b" wine test_app.exe >/dev/null || echo "--- ini: test_app exit $?"; }
+ini_run() { wine_common_exec EDWORLD_TEST_INI_KEEP=1 WINEDLLOVERRIDES="d3d11=n,b" -- test_app.exe >/dev/null || echo "--- ini: test_app exit $?"; }
 ini_check() {  # $1 = what, $2 = a condition's result
   echo "--- ini: $1: $([[ $2 -eq 0 ]] && echo ok || echo FAIL)"
   [[ $2 -eq 0 ]] || rc=1
@@ -81,7 +75,7 @@ fault_case() {  # $1 = edworld | edworld_eht; a fault in a guard and in a thread
       draw-cpp) want='hooks: a fault caught \(exception 0xE06D7363, a C\+\+ exception' ;;
       thread) want='thread state: a fault \(exception 0xE06D7363, a C\+\+ exception\), 1 of 8' ;;
     esac
-    EDWORLD_TEST_FAULT=$what WINEDEBUG=-all WINEDLLOVERRIDES="d3d11=n,b" wine test_app.exe > "fault-$what.out"
+    wine_common_exec EDWORLD_TEST_FAULT=$what WINEDLLOVERRIDES="d3d11=n,b" -- test_app.exe > "fault-$what.out"
     local r=$?
     sleep 2  # the thread's line comes after its restart's second
     grep -qE "$want" "$1.log"
@@ -145,7 +139,7 @@ doc_case() {  # doc/settings.md is made by edworld_eht from its table of setting
 }
 run_variant() {  # $1 = edworld | edworld_eht; sets rc on failure
   local V=$1 RUN r
-  RUN=$(mktemp -d "$SCR/$V-test.XXXXXX")
+  RUN=$(wine_common_run_dir "$SCR" "$V-test")
   cp "$BUILD/test/$V/test_app.exe" "$BUILD/test/fake_next.dll" test/data/edsm_factions_shinrarta.json "$RUN/"
   cp "$BUILD/$V/$V.dll" "$RUN/d3d11.dll"
   mkdir "$RUN/overlay"
@@ -153,17 +147,17 @@ run_variant() {  # $1 = edworld | edworld_eht; sets rc on failure
   echo "=== $V ($RUN)"
   pushd "$RUN" >/dev/null
   set +e
-  EDWORLD_TEST_CATALOG=1 WINEDEBUG=-all WINEDLLOVERRIDES="d3d11=n,b" wine test_app.exe
+  wine_common_exec EDWORLD_TEST_CATALOG=1 WINEDLLOVERRIDES="d3d11=n,b" -- test_app.exe
   r=$?; [[ $r -eq 0 ]] || rc=1
   local sessions=2
   if [[ $V == edworld_eht ]]; then
     echo "--- with EDSM allowed: the data source knows the destination, so EDSM must not be asked"
-    EDWORLD_TEST_EDSM=1 WINEDEBUG=-all WINEDLLOVERRIDES="d3d11=n,b" wine test_app.exe | grep -E "PASSED|FAILED"
+    wine_common_exec EDWORLD_TEST_EDSM=1 WINEDLLOVERRIDES="d3d11=n,b" -- test_app.exe | grep -E "PASSED|FAILED"
     sleep 2; grep -E "edsm:|from the data source" $V.log | tail -2
     sessions=3
   fi
   echo "--- chained through fake_next.dll (calls d3d11.dll by name)"
-  EDWORLD_TEST_NEXT=fake_next.dll WINEDEBUG=-all WINEDLLOVERRIDES="d3d11=n,b" wine test_app.exe
+  wine_common_exec EDWORLD_TEST_NEXT=fake_next.dll WINEDLLOVERRIDES="d3d11=n,b" -- test_app.exe
   r=$?; [[ $r -eq 0 ]] || rc=1
   set -e
   # sessions in one directory: all but the last set aside as <plugin>.<UTC>.log when the next began
@@ -187,12 +181,12 @@ run_variant() {  # $1 = edworld | edworld_eht; sets rc on failure
 # edworld in its folder), compared with test/data/render/*.png; EDWORLD_RENDER_UPDATE=1 makes those again
 render_case() {
   local RUN r
-  RUN=$(mktemp -d "$SCR/render-test.XXXXXX")
+  RUN=$(wine_common_run_dir "$SCR" render-test)
   cp "$BUILD/test/render_test.exe" "$RUN/"
   mkdir -p "$RUN/reference"
   cp test/data/render/*.png "$RUN/reference/" 2>/dev/null || true
   set +e
-  (cd "$RUN" && WINEDEBUG=-all wine render_test.exe pictures reference ${EDWORLD_RENDER_UPDATE:+--update} > render.out 2>&1)
+  wine_common_run "$RUN" "$RUN/render.out" -- render_test.exe pictures reference ${EDWORLD_RENDER_UPDATE:+--update}
   r=$?
   set -e
   cat "$RUN/render.out"
