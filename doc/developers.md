@@ -663,17 +663,21 @@ cmake --build build/edworld-release
 tools/test.sh build/edworld-release <scratch dir>
 ```
 
-Presets: `edworld-debug` and `edworld-release` build in `build/<preset>`; `kdev-edworld-debug` and
-`kdev-edworld-release` are the same without a build directory, for an IDE that chooses its own. The version in
-the log is taken from git at each build (`edplugin_common/cmake/version.cmake`): `vX.Y.Z` for a release (HEAD on its tag, no
-uncommitted changes), otherwise `<the last vX.Y.Z tag>-<HEAD's short hash>`, with `-dirty` when tracked files differ
-from HEAD (`v0.0.0-<hash>` before the first tag). `EDWORLD_TESTS` (on) builds the smoke test's programs. stralgo (strings
-put together with its `merge`) and small_vectors come by CPM (`edplugin_common/cmake/get_cpm.cmake`) from GitHub; with
-`-DCPM_SOURCE_CACHE=<a filled cache> -DFETCHCONTENT_FULLY_DISCONNECTED=ON` the configure needs no network. The log: `log_line` takes a `std::format` format checked
-against its arguments when compiled and hands it to `log_vline` (`std::vformat_to` into 2 KB on the stack, the line cut
-there, never thrown; a batch gathers lines as before); a wide string goes in as `wide(...)` (UTF-8). SRW locks are held
-by `exclusive_lock_t` / `shared_lock_t` for a scope (both from edplugin_common). An enumeration in a log line comes out by its name through simple_enum
-(`simple_enum/std_format.hpp` in `runtime.h`); D3D11's own get their bounds in `src/d3d11_enum_names.h`.
+Presets: `edworld-debug` and `edworld-release` build in `build/<preset>`. The presets `kdev-edworld-debug` and
+`kdev-edworld-release` build without a build directory, for an IDE that chooses its own, with clang's GNU-style driver
+(`edplugin_common/cmake/clang-msvc-sdk.cmake`; clang, clang++, llvm-ar, llvm-ranlib) instead of clang-cl: an IDE that
+hands `compile_commands.json` to libclang (KDevelop) does not take clang-cl's options. Releases are built with
+clang-cl. The version in the log is taken from git at each build (`edplugin_common/cmake/version.cmake`): `vX.Y.Z` for
+a release (HEAD on its tag, no uncommitted changes), otherwise `<the last vX.Y.Z tag>-<HEAD's short hash>`, with
+`-dirty` when tracked files differ from HEAD (`v0.0.0-<hash>` before the first tag). `EDWORLD_TESTS` (on) builds the
+smoke test's programs. stralgo (strings put together with its `merge`) and small_vectors come by CPM
+(`edplugin_common/cmake/get_cpm.cmake`) from GitHub; with `-DCPM_SOURCE_CACHE=<a filled cache>
+-DFETCHCONTENT_FULLY_DISCONNECTED=ON` the configure needs no network. The log: `log_line` takes a `std::format` format
+checked against its arguments when compiled and hands it to `log_vline` (`std::vformat_to` into 2 KB on the stack, the
+line cut there, never thrown; a batch gathers lines as before); a wide string goes in as `wide(...)` (UTF-8). SRW
+locks are held by `exclusive_lock_t` / `shared_lock_t` for a scope (both from edplugin_common). An enumeration in a
+log line comes out by its name through simple_enum (`simple_enum/std_format.hpp` in `runtime.h`); D3D11's own get
+their bounds in `src/d3d11_enum_names.h`.
 
 ## Files
 

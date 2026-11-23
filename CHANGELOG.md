@@ -11,6 +11,9 @@
 - The log says once where the game's context table lies (memory type, module and section) and which of
   `ID3D11DeviceContext1`..`4` and `ID3D11Multithread` the context answers at its own pointer; a diagnosis for hooks on
   Windows, nothing changes by it.
+- The `kdev-*` presets build with clang's GNU-style driver (edplugin_common's `clang-msvc-sdk.cmake`) instead of
+  clang-cl, so an IDE whose code model is libclang (KDevelop) reads the compile commands; releases stay with
+  clang-cl. Warnings through `edplugin_common_warnings`, linker options with CMake's `LINKER:` prefix.
 
 ## 1.2.1
 

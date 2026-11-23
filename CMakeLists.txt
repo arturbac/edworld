@@ -15,8 +15,11 @@ endif()
 
 project(edworld LANGUAGES CXX ASM_MASM)
 
-if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
-  message(FATAL_ERROR "edworld builds with clang-cl: configure with a preset or -DCMAKE_TOOLCHAIN_FILE=edplugin_common/cmake/clang-cl-msvc-sdk.cmake")
+# clang-cl, or clang's GNU-style driver targeting the MSVC ABI (the kdev-* presets, clang-msvc-sdk.cmake: an IDE's
+# code model)
+if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang"
+   OR NOT (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC" OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC"))
+  message(FATAL_ERROR "edworld builds with clang-cl (or clang for the MSVC ABI): configure with a preset or -DCMAKE_TOOLCHAIN_FILE=edplugin_common/cmake/clang-cl-msvc-sdk.cmake")
 endif()
 
 set(CMAKE_CXX_STANDARD 23)
@@ -87,7 +90,7 @@ add_library(edworld_imgui OBJECT
 target_compile_definitions(edworld_imgui PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS
                            "IMGUI_USER_CONFIG=\"imgui_config.h\"")
 target_include_directories(edworld_imgui PUBLIC src ${imgui} "${gen}")
-target_compile_options(edworld_imgui PRIVATE /W3)
+target_compile_options(edworld_imgui PRIVATE $<IF:$<STREQUAL:${CMAKE_CXX_COMPILER_FRONTEND_VARIANT},MSVC>,/W3,-Wall>)
 add_dependencies(edworld_imgui edworld_generated)
 
 add_library(edworld_thunks OBJECT "${d3d11_PROXY_ASM}")
@@ -101,8 +104,8 @@ foreach(variant edworld edworld_eht)
   target_link_libraries(${variant} PRIVATE edworld_imgui edworld_thunks edplugin_common::edplugin_common simple_enum::simple_enum
                         kernel32 user32 advapi32 dxgi dxguid winhttp shell32 ole32 version)
   target_compile_definitions(${variant} PRIVATE $<$<STREQUAL:${variant},edworld_eht>:EDWORLD_EHT>)
-  target_compile_options(${variant} PRIVATE /W4)
-  target_link_options(${variant} PRIVATE /DEBUG:FULL $<$<NOT:$<CONFIG:Debug>>:/OPT:REF /OPT:ICF>)
+  edplugin_common_warnings(${variant})
+  target_link_options(${variant} PRIVATE LINKER:/DEBUG:FULL $<$<NOT:$<CONFIG:Debug>>:LINKER:/OPT:REF,/OPT:ICF>)
   set_target_properties(${variant} PROPERTIES
     PREFIX ""
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${variant}"

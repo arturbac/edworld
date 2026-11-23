@@ -18,7 +18,7 @@ foreach(variant edworld edworld_eht)
   target_compile_definitions(${variant}_test_app PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS
                              $<$<STREQUAL:${variant},edworld_eht>:EDWORLD_EHT>)
   target_include_directories(${variant}_test_app PRIVATE "${test_gen}")
-  target_compile_options(${variant}_test_app PRIVATE /W4)
+  edplugin_common_warnings(${variant}_test_app)
   target_link_libraries(${variant}_test_app PRIVATE d3d11 dxguid)
   set_target_properties(${variant}_test_app PROPERTIES
     OUTPUT_NAME test_app
@@ -31,7 +31,7 @@ endforeach()
 add_executable(render_test render_test.cc)
 target_compile_definitions(render_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS EDWORLD_EHT)
 target_include_directories(render_test PRIVATE "${CMAKE_SOURCE_DIR}/src" "${CMAKE_BINARY_DIR}/gen")
-target_compile_options(render_test PRIVATE /W4)
+edplugin_common_warnings(render_test)
 target_link_libraries(render_test PRIVATE d3d11 dxgi dxguid windowscodecs ole32 simple_enum::simple_enum
                       edplugin_common::edplugin_common)  # runtime.h (clouds_values.h)
 set_target_properties(render_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${test_gen}")
@@ -39,8 +39,8 @@ add_dependencies(render_test edworld_eht)
 
 add_library(fake_next SHARED fake_next.cc)
 target_compile_definitions(fake_next PRIVATE WIN32_LEAN_AND_MEAN)
-target_compile_options(fake_next PRIVATE /W4)
-target_link_options(fake_next PRIVATE /EXPORT:D3D11CreateDevice=fake_D3D11CreateDevice)
+edplugin_common_warnings(fake_next)
+target_link_options(fake_next PRIVATE LINKER:/EXPORT:D3D11CreateDevice=fake_D3D11CreateDevice)
 set_target_properties(fake_next PROPERTIES
   PREFIX ""
   RUNTIME_OUTPUT_DIRECTORY "${test_gen}"
@@ -48,7 +48,7 @@ set_target_properties(fake_next PROPERTIES
 
 add_library(test_foreign SHARED test_foreign.cc)
 target_compile_definitions(test_foreign PRIVATE WIN32_LEAN_AND_MEAN)
-target_compile_options(test_foreign PRIVATE /W4)
+edplugin_common_warnings(test_foreign)
 target_link_libraries(test_foreign PRIVATE d3d11)
 set_target_properties(test_foreign PROPERTIES
   PREFIX ""
@@ -59,8 +59,8 @@ set_target_properties(test_foreign PROPERTIES
 # dlls before it and edworld_eht's staying off
 add_library(fake_migoto SHARED fake_migoto.cc fake_migoto.rc)
 target_compile_definitions(fake_migoto PRIVATE WIN32_LEAN_AND_MEAN)
-target_compile_options(fake_migoto PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4>)
-target_link_options(fake_migoto PRIVATE /EXPORT:D3D11CreateDevice=fake_migoto_D3D11CreateDevice)
+edplugin_common_warnings(fake_migoto)
+target_link_options(fake_migoto PRIVATE LINKER:/EXPORT:D3D11CreateDevice=fake_migoto_D3D11CreateDevice)
 set_target_properties(fake_migoto PROPERTIES
   PREFIX ""
   RUNTIME_OUTPUT_DIRECTORY "${test_gen}"
