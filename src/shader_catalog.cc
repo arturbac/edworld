@@ -86,7 +86,7 @@ namespace edworld
           continue;
           }
         // a file not written whole is removed (and logged), so a later session writes it again
-        if(not write_whole_file(path.c_str(), n.bytes.data(), n.bytes.size()))
+        if(not write_whole_file(path, n.bytes.data(), n.bytes.size()))
           continue;
         char line[8192];
         int length{};
@@ -107,7 +107,7 @@ namespace edworld
         ++added;
         bytes += n.bytes.size();
         }
-      if(not catalog.empty() and not append_to_file(stralgo::stl::merge(dir, L"\\catalog.tsv"sv).c_str(), catalog.data(), catalog.size()))
+      if(not catalog.empty() and not append_to_file(stralgo::stl::merge(dir, L"\\catalog.tsv"sv), catalog.data(), catalog.size()))
         log_line("shaders: catalog.tsv not written whole (error {})", GetLastError());
       // the shaders created this session by stage, each by its name (simple_enum)
       char by_stage[192];

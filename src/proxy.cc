@@ -64,11 +64,9 @@ namespace
 
   auto loader_phase() noexcept -> void
     {
-    wchar_t path[MAX_PATH]{};
-    GetModuleFileNameW(self_module, path, MAX_PATH);
-    module_dir = path;
-    if(auto const slash{module_dir.find_last_of(L"\\/")}; slash != std::wstring::npos)
-      module_dir.resize(slash);
+    // a long path too; empty when it cannot be told (edplugin_common's functions do not throw): a bare name in `next`
+    // is then taken as it is
+    module_dir = edplugin_common::directory_of(edplugin_common::module_path(self_module));
     wchar_t sys[MAX_PATH]{};
     GetSystemDirectoryW(sys, MAX_PATH);
     std::wstring const system_path{stralgo::stl::merge(std::wstring_view{sys}, L"\\d3d11.dll"sv)};
@@ -88,7 +86,7 @@ namespace
     {
     std::wstring path{edworld::settings().next};
     // under edloader the way on is always edloader's list; a player has nothing to set for it
-    if(path.empty() and GetEnvironmentVariableW(L"EDLOADER_CONFIG_DIR", nullptr, 0) != 0)
+    if(path.empty() and GetEnvironmentVariableW(edplugin_common::edloader_config_dir_variable, nullptr, 0) != 0)
       path = L"d3d11.dll";
     if(path.empty())
       {
@@ -139,13 +137,12 @@ namespace
 
   INIT_ONCE init_once = INIT_ONCE_STATIC_INIT;
 
-  ///\brief a directory edloader hands its plugins (EDLOADER_CONFIG_DIR, EDLOADER_LOG_DIR); without edloader,
-  /// the dll's own
+  ///\brief a directory edloader hands its plugins (edplugin_common's names of EDLOADER_CONFIG_DIR, EDLOADER_LOG_DIR,
+  /// a value of any length); without edloader, the dll's own
   auto directory_from(wchar_t const * variable) -> std::wstring
     {
-    wchar_t value[MAX_PATH]{};
-    DWORD const n{GetEnvironmentVariableW(variable, value, MAX_PATH)};
-    return n != 0 and n < MAX_PATH ? std::wstring{value, n} : module_dir;
+    std::wstring dir{edplugin_common::environment(variable)};
+    return dir.empty() ? module_dir : dir;
     }
 
   BOOL CALLBACK init_callback(PINIT_ONCE, PVOID, PVOID *)
@@ -153,14 +150,14 @@ namespace
     // the strings here may throw (out of memory): caught, so the game goes on, with the defaults and the next d3d11
     try
       {
-      std::wstring const log_dir{directory_from(L"EDLOADER_LOG_DIR")};
-      edworld::load_settings(directory_from(L"EDLOADER_CONFIG_DIR"), log_dir);
+      std::wstring const log_dir{directory_from(edplugin_common::edloader_log_dir_variable)};
+      edworld::load_settings(directory_from(edplugin_common::edloader_config_dir_variable), log_dir);
       edworld::log_open(log_dir, edworld::plugin_name);
       edworld::log_ini_notes();  // what reading the ini at the start found wrong
       edworld::log_line("{} {}, read-only d3d11 observer", wide(edworld::plugin_name), EDWORLD_VERSION);
       edworld::log_line("edplugin_common {}", EDPLUGIN_COMMON_COMMIT);
       edworld::log_machine();
-      edworld::complete_settings(directory_from(L"EDLOADER_CONFIG_DIR"));
+      edworld::complete_settings(directory_from(edplugin_common::edloader_config_dir_variable));
       edworld::write_settings_doc();
       }
     catch(std::exception const & e)
@@ -314,10 +311,8 @@ namespace
     std::size_t said_count{};
     for(USHORT i{}; i != n and said_count != std::size(said); ++i)
       {
-      HMODULE m{};
-      if(not GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                                static_cast<LPCWSTR>(frames[i]), &m)
-         or not m or m == self_module or m == system_module or not GetProcAddress(m, "D3D11CreateDevice")
+      HMODULE const m{edplugin_common::module_of(frames[i])};
+      if(not m or m == self_module or m == system_module or not GetProcAddress(m, "D3D11CreateDevice")
          or std::find(said, said + said_count, m) != said + said_count)
         continue;
       said[said_count++] = m;
@@ -385,10 +380,8 @@ namespace
     USHORT const n{RtlCaptureStackBackTrace(1, static_cast<DWORD>(std::size(frames)), frames, nullptr)};
     for(USHORT i{}; i != n; ++i)
       {
-      HMODULE m{};
-      if(not GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                                static_cast<LPCWSTR>(frames[i]), &m)
-         or not m)
+      HMODULE const m{edplugin_common::module_of(frames[i])};
+      if(not m)
         continue;
       if(m == self_module or GetProcAddress(m, "D3D11CreateDevice"))
         continue;

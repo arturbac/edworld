@@ -17,7 +17,10 @@ foreach(variant edworld edworld_eht)
   add_executable(${variant}_test_app test_app.cc)
   target_compile_definitions(${variant}_test_app PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS
                              $<$<STREQUAL:${variant},edworld_eht>:EDWORLD_EHT>)
-  target_include_directories(${variant}_test_app PRIVATE "${test_gen}")
+  # src/fits.h and src/panel_math.h take their rules and hashes from edplugin_common's headers (header-only, nothing
+  # linked, so the test's own definitions stay as they are)
+  target_include_directories(${variant}_test_app PRIVATE "${test_gen}"
+                                                         $<TARGET_PROPERTY:edplugin_common,INTERFACE_INCLUDE_DIRECTORIES>)
   edplugin_common_warnings(${variant}_test_app)
   target_link_libraries(${variant}_test_app PRIVATE d3d11 dxguid)
   set_target_properties(${variant}_test_app PROPERTIES

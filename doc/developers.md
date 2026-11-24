@@ -229,7 +229,8 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   - The models' registry (PoC, 2026-10-22, `src/holo_models.h`): within one build of the game a model keeps its index
     count, so the count names the model; the registry lists the known ones, each a ship or a station, measured (from
     flights and logs) or confirmed (Artur saw a picture of the hologram and named it), with the game's build its count
-    was read on (`holo_build`: the exe's size and last write, logged once as `hologram: the game's build ...`). Each count
+    was read on (`holo_build` over edplugin_common's `game_build_key`: the exe's size and last write, logged once as
+    `hologram: the game's build ...`). Each count
     is resolved by the count at its first draw of a session (`hologram: <n> indices on the own/target's surface: ...`)
     and sampled once: the draw's indices and the vertices from its base vertex (VB1, stride 40, the position packed in
     its first 12 bytes as the panels' - `decode_local`; at most 8 MB) are copied and read back a few frames later, one
@@ -605,8 +606,8 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   atmosphere and shader catalog threads start again a second later, eight times at most; the census, machine and
   EDSM threads, one-off work, end there. A writer that stops says so and nothing more is queued; an atmosphere
   thread that stops, or keeps a read over 10 s, is given up and the reads are worked out on the render thread. Files are written
-  and the log appended with Windows' own calls (`write_whole_file`, `append_to_file`; a file not written whole is
-  removed), never CRT streams: a thread killed at the game's exit must leave nothing for the CRT's closing of all
+  and the log appended with Windows' own calls (edplugin_common's `write_whole_file`, `append_to_file`; a file not
+  written whole is removed), never CRT streams: a thread killed at the game's exit must leave nothing for the CRT's closing of all
   streams at edworld's unload (0xC0000409, 2026-11-17). `EDWORLD_TEST_FAULT` (`draw-seh`, `draw-cpp`, `thread`)
   makes one such fault for `tools/test.sh`.
 - One device: edworld attaches to the first device of the game it follows; a second (a device made again after a

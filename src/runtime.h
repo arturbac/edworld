@@ -6,7 +6,11 @@
 #include <d3d11.h>
 
 #include <edplugin_common/core/lock.h>
+#include <edplugin_common/core/once_flag.h>
+#include <edplugin_common/file/file.h>
 #include <edplugin_common/log/log.h>
+#include <edplugin_common/memory/memory.h>
+#include <edplugin_common/paths/paths.h>
 #include <edplugin_common/text/format.h>
 
 #include <atomic>
@@ -465,11 +469,12 @@ namespace edworld
     }
 
 
-  ///\brief a whole file written with Windows' own calls (no CRT stream a thread killed at the game's exit could leave
-  /// half done): false, logged, and the partial file removed when not all of it was written
-  auto write_whole_file(wchar_t const * path, void const * data, std::size_t bytes) noexcept -> bool;
-  ///\brief bytes added at a file's end, Windows' own calls; false when not all of them were written
-  auto append_to_file(wchar_t const * path, void const * data, std::size_t bytes) noexcept -> bool;
+  // the files are edplugin_common's, written with Windows' own calls (no CRT stream a thread killed at the game's exit
+  // could leave half done): write_whole_file removes a partial file and logs it; append_to_file adds at the end
+  using edplugin_common::append_to_file;
+  using edplugin_common::read_text;
+  using edplugin_common::write_time;
+  using edplugin_common::write_whole_file;
   ///\brief a thread's body run under a handler for faults and C++ exceptions alike: one is logged with the thread's
   /// name and the body started again a second later, `attempts` times in all, then the thread ends saying so. The body
   /// is not noexcept, so a C++ exception reaches the handler

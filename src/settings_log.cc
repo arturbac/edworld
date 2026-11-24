@@ -36,13 +36,7 @@ namespace edworld
     settings_t & current{slots[0]};
     std::atomic<settings_t const *> live{&slots[0]};
     std::atomic<std::uint32_t> settings_serial{};  ///< one more at each publication of the live settings
-    FILETIME ini_written{};  ///< the ini's last write as last read (load_settings, complete_settings, refresh_live_settings)
-
-    auto ini_write_time(std::wstring const & path) noexcept -> FILETIME
-      {
-      WIN32_FILE_ATTRIBUTE_DATA data{};
-      return GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data) ? data.ftLastWriteTime : FILETIME{};
-      }
+    std::uint64_t ini_written{};  ///< the ini's last write (write_time) as last read (load_settings, complete_settings, refresh_live_settings)
 
     auto trim(std::string_view s) -> std::string_view
       {
@@ -465,19 +459,6 @@ namespace edworld
       return eq == std::string_view::npos ? std::string_view{} : trim(line.substr(0, eq));
       }
 
-    auto read_whole(std::wstring const & path) -> std::string
-      {
-      std::string text;
-      if(std::FILE * const f{_wfopen(path.c_str(), L"rb")})
-        {
-        char block[4096];
-        while(std::size_t const n{std::fread(block, 1, sizeof block, f)})
-          text.append(block, n);
-        std::fclose(f);
-        }
-      return text;
-      }
-
     ///\brief the lines for the settings `ini` names nowhere, with the values of `s`
     auto missing_lines(std::string_view ini, settings_t const & s, std::size_t & count) -> std::string
       {
@@ -644,7 +625,7 @@ namespace edworld
     current.dir = output_dir;
     ini_path = stralgo::stl::merge(config_dir, L'\\', std::wstring_view{plugin_name}, L".ini"sv);
     // the time first: a change made after it, before the first refresh, is read then (and not taken for this read)
-    ini_written = ini_write_time(ini_path);
+    ini_written = write_time(ini_path);
     read_ini(ini_path, current, ini_notes);  // its notes go to the log once it is open (log_ini_notes)
     }
 
@@ -655,12 +636,11 @@ namespace edworld
     if(now - looked < 1000u or ini_path.empty())
       return;
     looked = now;
-    WIN32_FILE_ATTRIBUTE_DATA data{};
-    if(not GetFileAttributesExW(ini_path.c_str(), GetFileExInfoStandard, &data))
+    // 0: no ini now (removed while the game runs) - nothing read again, as for an unchanged one
+    std::uint64_t const written{write_time(ini_path)};
+    if(written == 0 or written == ini_written)
       return;
-    if(CompareFileTime(&data.ftLastWriteTime, &ini_written) == 0)
-      return;
-    ini_written = data.ftLastWriteTime;
+    ini_written = written;
     try
       {
       settings_t const & in_use{*live.load(std::memory_order_relaxed)};
@@ -699,7 +679,14 @@ namespace edworld
     try
       {
       std::wstring const path{stralgo::stl::merge(config_dir, L'\\', std::wstring_view{plugin_name}, L".ini"sv)};
-      std::string const ini{read_whole(path)};
+      std::optional<std::string> const read{read_text(path)};
+      if(not read)
+        {
+        // an ini that is there but cannot be read is not an empty one: nothing added to it
+        log_line("settings: {} could not be read; nothing added to it", wide(path));
+        return;
+        }
+      std::string const & ini{*read};
       // status_file stays empty (Saved Games): the folder's full path holds the player's Windows user name, and players
       // share their ini
       settings_t const & running{current};
@@ -724,7 +711,7 @@ namespace edworld
       bool const written{std::fwrite(text.data(), 1, text.size(), f) == text.size()};
       bool const closed{std::fclose(f) == 0};
       if(path == ini_path)
-        ini_written = ini_write_time(ini_path);  // edworld's own addition is no change to read again
+        ini_written = write_time(ini_path);  // edworld's own addition is no change to read again
       if(written and closed)
         log_line("settings: {} added to {}", count, wide(path));
       else
@@ -773,46 +760,6 @@ namespace edworld
     }
 
   auto log_ini_notes() noexcept -> void { log_notes(ini_notes); }
-
-  auto write_whole_file(wchar_t const * path, void const * data, std::size_t bytes) noexcept -> bool
-    {
-    HANDLE const f{CreateFileW(path, GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr)};
-    if(f == INVALID_HANDLE_VALUE)
-      {
-      log_line("file: {} could not be made (error {})", wide(path), GetLastError());
-      return false;
-      }
-    auto const * at{static_cast<char const *>(data)};
-    bool ok{true};
-    for(std::size_t left{bytes}; ok and left != 0;)
-      {
-      DWORD const chunk{static_cast<DWORD>(std::min<std::size_t>(left, 1u << 30))};
-      DWORD written{};
-      ok = WriteFile(f, at, chunk, &written, nullptr) and written == chunk;
-      at += written;
-      left -= written;
-      }
-    DWORD const error{ok ? 0u : GetLastError()};
-    ok = CloseHandle(f) and ok;
-    if(not ok)
-      {
-      DeleteFileW(path);
-      log_line("file: {} not written whole (error {}); removed", wide(path), error ? error : GetLastError());
-      }
-    return ok;
-    }
-
-  auto append_to_file(wchar_t const * path, void const * data, std::size_t bytes) noexcept -> bool
-    {
-    HANDLE const f{CreateFileW(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
-                               FILE_ATTRIBUTE_NORMAL, nullptr)};
-    if(f == INVALID_HANDLE_VALUE)
-      return false;
-    DWORD written{};
-    bool const ok{bytes <= MAXDWORD and WriteFile(f, data, static_cast<DWORD>(bytes), &written, nullptr) and written == bytes};
-    CloseHandle(f);
-    return ok;
-    }
 
   auto test_fault(char const * where) -> void
     {

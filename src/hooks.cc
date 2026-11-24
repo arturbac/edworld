@@ -407,8 +407,9 @@ namespace edworld
     std::atomic<ID3D11Multithread *> multithread{};
     bool multithread_at_start{};
 
+    // whether a context table's entry is there and leads to code: the table's own rules, kept with the hooks that use them
     [[nodiscard]]
-    auto readable(void const * p) noexcept -> bool
+    auto table_readable(void const * p) noexcept -> bool
       {
       MEMORY_BASIC_INFORMATION m{};
       return VirtualQuery(p, &m, sizeof m) == sizeof m and m.State == MEM_COMMIT
@@ -416,7 +417,7 @@ namespace edworld
       }
 
     [[nodiscard]]
-    auto executable(void const * p) noexcept -> bool
+    auto table_executable(void const * p) noexcept -> bool
       {
       MEMORY_BASIC_INFORMATION m{};
       return VirtualQuery(p, &m, sizeof m) == sizeof m and m.State == MEM_COMMIT
@@ -428,7 +429,7 @@ namespace edworld
     auto table_length(void ** table) noexcept -> std::size_t
       {
       std::size_t n{};
-      while(n != own_table_max and readable(&table[n]) and executable(table[n]))
+      while(n != own_table_max and table_readable(&table[n]) and table_executable(table[n]))
         ++n;
       return n;
       }
@@ -439,10 +440,7 @@ namespace edworld
       std::size_t in{};
       for(std::size_t i{}; i != count; ++i)
         {
-        HMODULE m{};
-        if(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                              static_cast<LPCWSTR>(table[i]), &m)
-           and m == module)
+        if(HMODULE const m{edplugin_common::module_of(table[i])}; m and m == module)
           ++in;
         }
       return in;
@@ -468,7 +466,7 @@ namespace edworld
         return nullptr;
         }
       for(std::size_t h{}; h != own_table_header; ++h)
-        if(void ** const at{runtime - own_table_header + h}; readable(at))
+        if(void ** const at{runtime - own_table_header + h}; table_readable(at))
           words[h] = *at;
       void ** const entries{words + own_table_header};
       for(std::size_t i{}; i != count; ++i)
@@ -564,37 +562,6 @@ namespace edworld
       return true;
       }
 
-    ///\brief the PE section of `module` holding `p` (its name, up to 8 characters), or "-" when none does or its headers
-    /// cannot be read (each part looked at before it is read: the game's process, no fault)
-    auto section_of(HMODULE module, void const * p, char (&name)[9]) noexcept -> void
-      {
-      std::strcpy(name, "-");
-      auto const * const base{reinterpret_cast<std::uint8_t const *>(module)};
-      auto const * const dos{reinterpret_cast<IMAGE_DOS_HEADER const *>(base)};
-      if(not readable(dos) or not readable(base + sizeof *dos - 1) or dos->e_magic != IMAGE_DOS_SIGNATURE or dos->e_lfanew <= 0
-         or dos->e_lfanew > 0x10000)
-        return;
-      auto const * const nt{reinterpret_cast<IMAGE_NT_HEADERS const *>(base + dos->e_lfanew)};
-      if(not readable(nt) or not readable(reinterpret_cast<std::uint8_t const *>(nt) + sizeof *nt - 1) or nt->Signature != IMAGE_NT_SIGNATURE)
-        return;
-      std::uintptr_t const rva{reinterpret_cast<std::uintptr_t>(p) - reinterpret_cast<std::uintptr_t>(base)};
-      IMAGE_SECTION_HEADER const * const sections{IMAGE_FIRST_SECTION(nt)};
-      if(WORD const n{nt->FileHeader.NumberOfSections};
-         n == 0 or not readable(sections) or not readable(reinterpret_cast<std::uint8_t const *>(sections + n) - 1))
-        return;
-      for(WORD i{}; i != nt->FileHeader.NumberOfSections; ++i)
-        {
-        IMAGE_SECTION_HEADER const & s{sections[i]};
-        DWORD const size{std::max(s.Misc.VirtualSize, s.SizeOfRawData)};
-        if(rva >= s.VirtualAddress and rva < std::uintptr_t{s.VirtualAddress} + size)
-          {
-          std::memcpy(name, s.Name, 8);
-          name[8] = '\0';
-          return;
-          }
-        }
-      }
-
     ///\brief a diagnosis of hooks on Windows (2026-11-23), said once at the attach, nothing changed: where the context's
     /// table lies (its memory's type and protection, the module and PE section holding it) and which of the context's
     /// interfaces come at its own pointer, so a rule for a table of edworld's own can be told by where Windows keeps it
@@ -609,16 +576,14 @@ namespace edworld
                               : m.Type == MEM_PRIVATE ? "private"
                               : m.Type == MEM_MAPPED  ? "mapped"
                                                       : "other"};
-      HMODULE module{};
+      HMODULE const module{edplugin_common::module_of(table)};
       wchar_t path[MAX_PATH]{L"-"};
       char section[9]{"-"};
-      if(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                            reinterpret_cast<LPCWSTR>(table), &module)
-         and module)
+      if(module)
         {
         if(GetModuleFileNameW(module, path, MAX_PATH) == 0)
           std::wcscpy(path, L"?");
-        section_of(module, table, section);
+        edplugin_common::section_of(module, table, section);
         }
       log_line("context: its table at {} ({} memory, protection 0x{:X}, {} entries), in {} section {}{}",
                static_cast<void const *>(static_cast<void *>(table)), type, queried ? m.Protect : 0u, table_length(table), wide(path),
@@ -668,34 +633,10 @@ namespace edworld
         return;
       CreateDirectoryW(dir.c_str(), nullptr);
       std::wstring const path{stralgo::stl::merge(dir, L"\\panels"sv)};
-      HANDLE const file{CreateFileW(
-        path.c_str(),
-        GENERIC_READ | GENERIC_WRITE,
-        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-        nullptr,
-        OPEN_ALWAYS,
-        FILE_ATTRIBUTE_NORMAL,
-        nullptr
-      )};
-      if(file == INVALID_HANDLE_VALUE)
-        {
-        log_line("share: cannot open {} (error {}); not publishing", wide(path), GetLastError());
-        return;
-        }
-      HANDLE const mapping{CreateFileMappingW(file, nullptr, PAGE_READWRITE, 0, sizeof(share_t), nullptr)};
-      CloseHandle(file);
-      if(not mapping)
-        {
-        log_line("share: cannot map {} (error {}); not publishing", wide(path), GetLastError());
-        return;
-        }
-      share = static_cast<share_t *>(MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(share_t)));
-      CloseHandle(mapping);
+      // edplugin_common's: opened or made, grown to the record's size, mapped; a failure logged with the tag
+      share = static_cast<share_t *>(edplugin_common::map_file_rw(path, sizeof(share_t), "share"));
       if(not share)
-        {
-        log_line("share: cannot view {} (error {}); not publishing", wide(path), GetLastError());
         return;
-        }
       std::memset(share, 0, sizeof(share_t));
       share->magic = share_magic;
       share->version = share_version;
@@ -975,14 +916,23 @@ namespace edworld
               {
               log_line("dump: {} without its context ({})", wide(item->path), e.what());
               }
-          if(item->context and context.empty())
-            {
-            // logged above: nothing to write
-            }
-          // Windows' own calls: not written whole, the file is removed and logged (write_whole_file), and a `.part`
-          // never replaces the finished file
-          else if(item->context ? write_whole_file(item->path, context.data(), context.size())
-                                : write_whole_file(item->path, item + 1, item->bytes))
+          bool written{};
+          // with context and none made: logged above, nothing to write
+          if(not(item->context and context.empty()))
+            try
+              {
+              // Windows' own calls: not written whole, the file is removed and logged (write_whole_file), and a
+              // `.part` never replaces the finished file. The path's copy may fail (out of memory): the item is still
+              // freed below and the queue goes on
+              std::wstring const path{item->path};
+              written = item->context ? write_whole_file(path, context.data(), context.size())
+                                      : write_whole_file(path, item + 1, item->bytes);
+              }
+            catch(...)
+              {
+              log_line("dump: {} not written (out of memory)", wide(item->path));
+              }
+          if(written)
             {
             if(item->rename_to[0] and not MoveFileExW(item->path, item->rename_to, MOVEFILE_REPLACE_EXISTING))
               log_line("dump: {} could not replace {} (error {})", wide(item->path), wide(item->rename_to), GetLastError());
@@ -1401,27 +1351,10 @@ namespace edworld
         return nullptr;
       CreateDirectoryW(dir.c_str(), nullptr);
       std::wstring const path{stralgo::stl::merge(dir, L"\\atmosphere"sv)};
-      HANDLE const file{CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                                    nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr)};
-      if(file == INVALID_HANDLE_VALUE)
-        {
-        log_line("atmo: cannot open {} (error {}); not publishing", wide(path), GetLastError());
-        return nullptr;
-        }
-      HANDLE const mapping{CreateFileMappingW(file, nullptr, PAGE_READWRITE, 0, sizeof(atmosphere_t), nullptr)};
-      CloseHandle(file);
-      if(not mapping)
-        {
-        log_line("atmo: cannot map {} (error {}); not publishing", wide(path), GetLastError());
-        return nullptr;
-        }
-      auto * const view{static_cast<atmosphere_t *>(MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(atmosphere_t)))};
-      CloseHandle(mapping);
+      // edplugin_common's: opened or made, grown to the record's size, mapped; a failure logged with the tag
+      auto * const view{static_cast<atmosphere_t *>(edplugin_common::map_file_rw(path, sizeof(atmosphere_t), "atmo"))};
       if(not view)
-        {
-        log_line("atmo: cannot view {} (error {}); not publishing", wide(path), GetLastError());
         return nullptr;
-        }
       std::memset(view, 0, sizeof(atmosphere_t));
       view->magic = atmosphere_magic;
       view->version = atmosphere_version;
@@ -3146,27 +3079,10 @@ namespace edworld
         return nullptr;
       CreateDirectoryW(dir.c_str(), nullptr);
       std::wstring const path{stralgo::stl::merge(dir, L"\\galmap"sv)};
-      HANDLE const file{CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                                    nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr)};
-      if(file == INVALID_HANDLE_VALUE)
-        {
-        log_line("galmap: cannot open {} (error {}); not publishing", wide(path), GetLastError());
-        return nullptr;
-        }
-      HANDLE const mapping{CreateFileMappingW(file, nullptr, PAGE_READWRITE, 0, sizeof(galmap_t), nullptr)};
-      CloseHandle(file);
-      if(not mapping)
-        {
-        log_line("galmap: cannot map {} (error {}); not publishing", wide(path), GetLastError());
-        return nullptr;
-        }
-      auto * const view{static_cast<galmap_t *>(MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(galmap_t)))};
-      CloseHandle(mapping);
+      // edplugin_common's: opened or made, grown to the record's size, mapped; a failure logged with the tag
+      auto * const view{static_cast<galmap_t *>(edplugin_common::map_file_rw(path, sizeof(galmap_t), "galmap"))};
       if(not view)
-        {
-        log_line("galmap: cannot view {} (error {}); not publishing", wide(path), GetLastError());
         return nullptr;
-        }
       std::memset(view, 0, sizeof(galmap_t));
       view->magic = galmap_magic;
       view->version = galmap_version;
@@ -3422,13 +3338,12 @@ namespace edworld
       ctx->Unmap(g.ib, 0);
 
       std::uint32_t unknown{};
-      std::uint64_t hash{1469598103934665603ull};
+      std::uint64_t hash{edplugin_common::fnv1a64_basis};
       for(std::string const & name: names)
-        for(char const c: name)
-          {
-          unknown += c == '?' ? 1u : 0u;
-          hash = (hash ^ static_cast<std::uint8_t>(c)) * 1099511628211ull;
-          }
+        {
+        unknown += static_cast<std::uint32_t>(std::count(name.begin(), name.end(), '?'));
+        hash = fnv1a64(name.data(), name.size(), hash);  // going on over every name
+        }
       if(galmap_t * const share{galmap_open()}; share)
         {
         std::atomic_ref<std::uint32_t> sequence{share->sequence};
@@ -3846,21 +3761,20 @@ namespace edworld
       log_line("hologram: VersionInfo.txt beside the exe names version {}", version[0] ? version : "(none read)");
       }
 
+    constinit edplugin_common::once_flag_t holo_build_said;
+
+    ///\brief the game's build (edplugin_common's, told once in the process: the exe's size and last write), "unknown"
+    /// when the exe cannot be read; said in the log once, with the version beside the exe
     auto holo_build() noexcept -> char const *
       {
-      static char key[48]{};
-      if(key[0])
-        return key;
-      wchar_t path[MAX_PATH]{};
-      WIN32_FILE_ATTRIBUTE_DATA a{};
-      if(GetModuleFileNameW(nullptr, path, MAX_PATH) and GetFileAttributesExW(path, GetFileExInfoStandard, &a))
-        format_into(key, "{}-{:08x}{:08x}", a.nFileSizeLow, as_unsigned(a.ftLastWriteTime.dwHighDateTime),
-                      as_unsigned(a.ftLastWriteTime.dwLowDateTime));
-      else
-        format_into(key, "unknown");
-      log_line("hologram: the game's build {} (the exe's size and last write)", key);
-      holo_log_version(path);
-      return key;
+      std::string_view const key{edplugin_common::game_build_key()};  // its text ends with a NUL
+      char const * const text{key.empty() ? "unknown" : key.data()};
+      if(holo_build_said.first())
+        {
+        log_line("hologram: the game's build {} (the exe's size and last write)", text);
+        holo_log_version(edplugin_common::module_path(nullptr).c_str());  // a long path too
+        }
+      return text;
       }
 
     auto holo_how(holo_resolve_e how) noexcept -> char const *

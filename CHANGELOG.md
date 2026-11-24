@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The folders, files, shared files, the game's build, the shaders' hash and the rules on formats are edplugin_common's.
+  For the player: an `edworld.ini` (`edworld_eht.ini`) that is there but cannot be read gets nothing added, with a
+  line in the log (before, it was read as an empty one and every setting was added to it); a folder from edloader, the
+  dll's own folder and the game's exe for its build and version are taken whole over 259 characters; the game's build is told once without a
+  race between threads (its text and the line `hologram: the game's build ...` as before).
 - The log is edplugin_common's: the last session's log is moved to the folder `edworld\` (`edworld_eht\`) beside
   the log as `<plugin>.<UTC>.log`, no more beside it (the sessions set aside before stay where they are; holo_db
   reads both). Its batch of lines no longer loses or repeats another thread's lines while it is written, and the

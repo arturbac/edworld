@@ -10,6 +10,8 @@
 #include <optional>
 #include <string_view>
 
+#include <edplugin_common/shader/shader.h>
+
 namespace edworld
   {
   ///\brief how many rows of RowPitch a mapped texture holds: a block-compressed format's row is a row of 4x4 blocks,
@@ -25,18 +27,8 @@ namespace edworld
   static_assert(mapped_rows(80u, 512u) == 128u, "BC4 is a row of blocks");
   static_assert(mapped_rows(70u, 6u) == 2u, "a part of a block is a block");
 
-  ///\brief the hash EDVR names shaders by: FNV-1a 64 over the whole bytecode
-  [[nodiscard]]
-  constexpr auto fnv1a64(std::uint8_t const * data, std::size_t bytes) noexcept -> std::uint64_t
-    {
-    std::uint64_t h{1469598103934665603ull};
-    for(std::size_t i{}; i != bytes; ++i)
-      {
-      h ^= data[i];
-      h *= 1099511628211ull;
-      }
-    return h;
-    }
+  // the hash shaders are named by: FNV-1a 64 over the whole bytecode, from the plugins' basis (edplugin_common's)
+  using edplugin_common::fnv1a64;
 
   struct ndc_t
     {

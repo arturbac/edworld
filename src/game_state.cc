@@ -253,29 +253,13 @@ namespace edworld
         return;
       next_target_try = now + 2000;
       std::wstring const path{stralgo::stl::merge(settings().shm_dir, L"\\target"sv)};
-      HANDLE const file{CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
-                                    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr)};
-      if(file == INVALID_HANDLE_VALUE)
-        return;
-      LARGE_INTEGER size{};
-      GetFileSizeEx(file, &size);
-      // a writer of the first layout (no factions) is read as far as it goes
-      if(size.QuadPart < static_cast<LONGLONG>(target_size_first))
-        {
-        CloseHandle(file);
-        return;
-        }
-      DWORD const bytes{size.QuadPart < static_cast<LONGLONG>(sizeof(target_t)) ? static_cast<DWORD>(size.QuadPart)
-                                                                                 : static_cast<DWORD>(sizeof(target_t))};
-      HANDLE const mapping{CreateFileMappingW(file, nullptr, PAGE_READONLY, 0, bytes, nullptr)};
-      CloseHandle(file);
-      if(not mapping)
-        return;
-      // the view keeps the mapping alive; neither handle is needed past this point
-      target_view = static_cast<target_t const *>(MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, bytes));
-      CloseHandle(mapping);
+      // a writer of the first layout (no factions) is read as far as it goes (edplugin_common's: none when the file is
+      // missing or shorter than that, silent; at most the whole record)
+      edplugin_common::mapped_t const mapped{edplugin_common::map_file_ro(path, target_size_first, sizeof(target_t))};
+      target_view = static_cast<target_t const *>(mapped.view);
       if(target_view)
         {
+        auto const bytes{static_cast<std::uint32_t>(mapped.bytes)};  // at most the record's size
         target_mapped = bytes;
         log_line("state: reading the data source's target from {} ({} bytes{})", wide(path), bytes,
                  bytes < sizeof(target_t) ? ", without factions" : "");
@@ -334,28 +318,12 @@ namespace edworld
         return;
       next_surface_try = now + 2000;
       std::wstring const path{stralgo::stl::merge(settings().shm_dir, L"\\surface"sv)};
-      HANDLE const file{CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
-                                    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr)};
-      if(file == INVALID_HANDLE_VALUE)
-        return;
-      LARGE_INTEGER size{};
-      GetFileSizeEx(file, &size);
       // a writer of the first layout (no docking grant) is read as far as it goes, as the target
-      if(size.QuadPart < static_cast<LONGLONG>(surface_size_first))
-        {
-        CloseHandle(file);
-        return;
-        }
-      DWORD const bytes{size.QuadPart < static_cast<LONGLONG>(sizeof(surface_t)) ? static_cast<DWORD>(size.QuadPart)
-                                                                                  : static_cast<DWORD>(sizeof(surface_t))};
-      HANDLE const mapping{CreateFileMappingW(file, nullptr, PAGE_READONLY, 0, bytes, nullptr)};
-      CloseHandle(file);
-      if(not mapping)
-        return;
-      surface_view = static_cast<surface_t const *>(MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, bytes));
-      CloseHandle(mapping);
+      edplugin_common::mapped_t const mapped{edplugin_common::map_file_ro(path, surface_size_first, sizeof(surface_t))};
+      surface_view = static_cast<surface_t const *>(mapped.view);
       if(surface_view)
         {
+        auto const bytes{static_cast<std::uint32_t>(mapped.bytes)};  // at most the record's size
         surface_mapped = bytes;
         log_line("state: reading where the destination stands from {} ({} bytes{})", wide(path), bytes,
                  bytes < sizeof(surface_t) ? ", without the docking grant" : "");
