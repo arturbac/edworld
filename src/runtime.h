@@ -387,8 +387,8 @@ namespace edworld
     /// (a model shader drawing 1000 indices or more to a 512x512 target) and named in the log - only then, as the game makes
     /// the hologram's shader only when it first shows a station (a search before took another model's, 2026-10-20)
     std::uint64_t station_vs{hologram_model_vs};
-    ///\brief the spheres' colours, 0xRRGGBB: a muted grey by default (doc/users.md has the 1.1.0-beta.1 blue as an
-    /// example); the fainter shades (the far side, the disc's middle, the outline) are mixed from these
+    ///\brief the spheres' colours, 0xRRGGBB: a muted grey by default; the fainter shades (the far side, the disc's
+    /// middle, the outline) are mixed from these
     ///\brief the disc behind a sphere, at its rim; its middle is a fifth of the way to compass_colour_rim
     std::uint32_t compass_colour_disc{0x101214u};
     ///\brief the rings at 30 and 60 degrees and the meridians

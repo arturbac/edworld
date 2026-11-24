@@ -103,3 +103,9 @@ and instance records. It also uses
 [EDAssets](https://github.com/Venefilyn/EDAssets) (MIT; artwork of Frontier Developments) and the
 [Noto Sans Mono](https://github.com/notofonts/latin-greek-cyrillic) font (SIL OFL 1.1). What comes from where,
 file by file, with the licence texts: `NOTICE`.
+
+Build and test (Linux, clang-cl and wine): edplugin_common cloned into `edplugin_common/` on the commit
+`edplugin_common.commit` pins, `MSVC_ROOT` naming an MSVC SDK as msvc-wine lays it out, the first configure
+fetching its libraries through CPM (or `-DCPM_SOURCE_CACHE=<a filled cache> -DFETCHCONTENT_FULLY_DISCONNECTED=ON`);
+then `cmake --preset edworld-release`, `cmake --build build/edworld-release` and
+`EDWORLD_WINEPREFIX=<a wine prefix> tools/test.sh build/edworld-release <scratch dir>` (the script's head says the rest).

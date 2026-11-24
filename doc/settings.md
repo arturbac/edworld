@@ -199,7 +199,7 @@ None.
 | `shader_catalog` | `1` | 0, 1 | edworld_eht only: `1` keeps each shader the game creates, once per build of the game, in `edworld_shaders` beside the log; `0` none |
 | `atmo_record_s` | `10` | 0 and more | edworld_eht only, (test): the atmosphere's fingerprint to `edworld_atmo` beside the log at most this often, in seconds; `0` = never |
 | `galmap` | `1` | 0, 1 | edworld_eht only: the names the galaxy map shows (systems, the grid's coordinates), read off its text draws and published to `galmap` in shm_dir for EHT, a few times a second while the map is open; `0` = off |
-| `galmap_interval_ms` | `500` | 100 and more | how often, at most, the galaxy map's names are read (milliseconds) |
+| `galmap_interval_ms` | `500` | 100 and more (clamped) | how often, at most, the galaxy map's names are read (milliseconds) |
 | `log_interval_ms` | `0` | 0 and more | a summary line of the frame's panels in the log at most this often, in milliseconds; `0` = never |
 | `frame_gap_us` | `2500` | over 0 | a gap between two panel draws longer than this, in microseconds, starts a new frame |
 | `log_all_vs` | `0` | 0, 1 | `1` = the hash of every vertex shader the game creates in the log (discovery) |
