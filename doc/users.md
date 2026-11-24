@@ -10,7 +10,7 @@ edworld fixes the panel the game shows while the frame shift drive charges for a
 
 Both move with the panel when the cockpit camera swings.
 
-**Navballs (since 1.1.0-beta.2).** Two spheres beside the radar show where the selected target is. The left one is
+**Navballs (since 1.1.0-beta.1).** Two spheres beside the radar show where the selected target is. The left one is
 the sphere seen from the front, as the game's compass shows it, with the angles above it: `UP`/`DN` above or below
 the wings' plane, `LT`/`RT` left or right of the nose, `BEHIND` when the target is behind you, `NO DOT` when no
 target's dot has been read for a second. The dot is told by its colour against the compass's own,
@@ -33,7 +33,8 @@ the target's angle off the nose. In a planet's gravity well it assumes the plane
 >
 > A report of how they work at another resolution (an issue with a screenshot) is welcome.
 
-Apart from the jump panel and the navballs nothing in the game changes.
+Besides these, edworld adds clouds, an aurora and snow to planets with an atmosphere ([Clouds](#clouds)) and its
+name in a corner of the picture; nothing else in the game changes.
 
 ## Which dll
 
@@ -44,7 +45,7 @@ Apart from the jump panel and the navballs nothing in the game changes.
 
 ## Install
 
-Both dlls are in `edworld-<version>.zip` on the [Releases](https://github.com/arturbac/edworld/releases) page.
+`edworld.dll` is in `edworld-<version>.zip` on the [Releases](https://github.com/arturbac/edworld/releases) page.
 
 ### Through edloader
 
@@ -103,14 +104,15 @@ Each time it reads a planet's atmosphere off the render, `edworld_eht.dll` also 
 
 ## Settings
 
-In `edworld.ini` (or `edworld_eht.ini`), beside the dll or in `edloader\config`; whole lines, `;` or `#` starts a
-comment line. Every setting has a default. At its first start edworld makes the file if there is none, with every
+In `edworld.ini` (or `edworld_eht.ini`), beside the dll or in `edloader\config`. `;` or `#` starts a comment: a line
+of its own, or after a value and a space (`clouds = 1 ; on`). Every setting has a default. At its first start edworld makes the file if there is none, with every
 setting as a comment holding the value it runs on (`;clouds = 1`), and at each start it adds the settings
 the file does not name yet, a new version's too, at the end; it never changes a line that is there. To change a
 setting, take the `;` off its line; a line left as a comment follows edworld's default, also when a new version
 changes it. Where the file cannot be written, edworld says so in its log and runs on. A value edworld cannot read (a
-decimal comma, `0,45`; a word where a number goes; a name with a typo) keeps its default, and the log says which line
-(`settings: line ...`); a comment may follow a value after a space (`clouds = 1 ; on`). `status_file` is left empty in
+decimal comma, `0,45`; a word where a number goes; a name with a typo) keeps the value it had, its default unless an earlier line set it, and the log says
+which line (`settings: line ...`). After a path or a dll's name (`next`, `status_file`, `shm_dir`) a `;` or `#` is
+part of the value, not a comment. `status_file` is left empty in
 the file edworld writes: empty means the Saved Games folder, and the file then holds no Windows user name.
 
 | setting | default | what |

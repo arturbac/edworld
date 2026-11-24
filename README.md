@@ -53,7 +53,7 @@ Version 1.1.0-beta.1 added two spheres beside the radar that show where the sele
 read than the game's compass. The left one is the sphere seen from the front, as the game's compass shows it, with
 the angles above it (`UP`/`DN`, `LT`/`RT`). The right one is the same direction seen from behind, from the left and
 from above, with the ship's nose marked and how far the target is off it (`OFF`); in a planet's gravity well, with
-the planet targeted, it gives the nose's angle below the horizon, `PUSH DOWN` / `PULL UP` towards a 35° dive, and
+the planet targeted, it gives the nose's angle below the horizon, `PUSH DOWN` / `PULL UP` towards a 45° dive, and
 the altitude. The direction is read off the game's own compass; the spheres are drawn in the HUD's plane, held to
 the compass and to the speed readout, so they move with the cockpit.
 
@@ -84,8 +84,9 @@ Measured at 9000×2160, checked in a window at 2560×1440 and 1920×1080 too; at
 - What it costs: [doc/performance.md](doc/performance.md): the clouds' and the aurora's GPU time a frame in the game
   and in the bench, the render thread's cost of a draw.
 
-Version 1.2.0 ([CHANGELOG.md](CHANGELOG.md)). Observing is read-only: every hook calls the game's call through
-unchanged; the jump panel's emblem and list and the navballs are the only things edworld changes in what the game draws. edworld runs on its own as
+Version 1.2.1 ([CHANGELOG.md](CHANGELOG.md)). Observing is read-only: every hook calls the game's call through
+unchanged; edworld adds to what the game draws the jump panel's emblem and list, the navballs (the game's own
+compass hidden), the clouds, the aurora, the snow and its name in a corner. edworld runs on its own as
 the game's `d3d11.dll`, passing the calls on to one other d3d11 mod (`next`), or through
 [edloader](https://github.com/arturbac/edloader) together with several; the release zip carries edloader in its
 `edloader` folder. Checked in the game: alone in front of EDHM; through edloader with EDHM; through edloader with
