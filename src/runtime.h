@@ -416,23 +416,23 @@ namespace edworld
     std::uint32_t compass_colour_top{0x7ab8e0u};
     };
 
+  ///\brief the settings in use (edplugin_common's live.h): the start-only ones from any thread, the live ones on the
+  /// render thread, which publishes them (refresh_live_settings)
   auto settings() noexcept -> settings_t const &;
   ///\brief one more at each change of the live settings (refresh_live_settings): a key of what was drawn from them
-  /// (the two copies take turns, so their address comes back)
+  /// (the two copies take turns, so their address comes back). On the render thread, as the live settings
   auto settings_generation() noexcept -> std::uint32_t;
-  auto load_settings(std::wstring const & config_dir, std::wstring const & output_dir) -> void;
-  ///\brief the ini made if there is none, and every setting it does not name yet added as a comment with the value edworld
-  /// runs on; a line already there, comment or not, stays as it is. After log_open: a failure is logged, the game goes on
-  auto complete_settings(std::wstring const & config_dir) noexcept -> void;
+  ///\brief the start's part of the ini, after log_open: made if there is none, every setting it does not name yet
+  /// added as a comment with the value edworld runs on (a line already there, comment or not, stays as it is); then
+  /// read, the notes logged, the settings started with `dir` = output_dir. A failure is logged, the defaults
+  auto start_settings(std::wstring const & config_dir, std::wstring const & output_dir) noexcept -> void;
   ///\brief the settings the table marks live (settings_log.cc keys; doc/settings.md lists them) read again from the ini
   /// when it changed - looked at most once a second, from the render thread while it draws the clouds
   auto refresh_live_settings() noexcept -> void;
-  ///\brief doc/settings.md from the table of settings, to the file `EDWORLD_SETTINGS_DOC` names; nothing without it.
-  /// After log_open: a failure is logged, the game goes on
-  auto write_settings_doc() noexcept -> void;
-
-  ///\brief the notes reading the ini at the start found (load_settings) said in the log; after log_open
-  auto log_ini_notes() noexcept -> void;
+  ///\brief doc/settings.md from the table of settings, to the file `EDWORLD_SETTINGS_DOC` names; nothing without it
+  /// (true). After log_open: a failure is logged (false), the game goes on
+  [[nodiscard]]
+  auto write_settings_doc() noexcept -> bool;
 
   using edplugin_common::as_unsigned;
   using edplugin_common::exclusive_lock_t;

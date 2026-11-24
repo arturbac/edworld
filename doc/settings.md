@@ -1,7 +1,7 @@
 # edworld settings
 
-<!-- Made by edworld from its table of settings (src/settings_log.cc, `EDWORLD_SETTINGS_DOC`); tools/test.sh checks
-     it is up to date. Change the table, not this file. -->
+<!-- Made by edworld from its table of settings (src/settings_log.cc, `EDWORLD_SETTINGS_DOC`); tools/test.sh or tools/doc.sh
+     checks it is up to date. Change the table, not this file. -->
 
 In `edworld.ini` (or `edworld_eht.ini`), beside the dll or in `edloader\config`; how the file is made and kept: [users.md](users.md#settings).
 

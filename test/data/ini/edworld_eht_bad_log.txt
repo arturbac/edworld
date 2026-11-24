@@ -1,0 +1,10 @@
+settings: line 1: 'clouds_alpha = 0,45' cannot be read (0..1); its value stays 0.45
+settings: line 3: 'aurora_gain = nan' cannot be read (0..3 (clamped)); its value stays 1
+settings: line 4: no setting 'cluds' (a typo?): ignored
+settings: line 5: 'log_interval_ms = 99999999999' cannot be read (0 and more); its value stays 0
+settings: line 7: 'watch_vs = 81216C77F90DEDD6, 0x0123, nothing': nothing cannot be read (shader hashes, comma separated); the list is 81216C77F90DEDD6, 0000000000000123
+settings: line 9: 'share' is no longer a setting (now shm_dir); ignored
+settings: line 10: 'clouds_radius' is no longer a setting; ignored
+settings: line 16: 'independent_colour = 1000000' cannot be read (RRGGBB); its value stays F2C14E
+settings: line 17: 'list += 1': += is for lists only; the line is passed over
+settings: line 18 has no '=': ignored

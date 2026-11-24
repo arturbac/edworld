@@ -105,13 +105,15 @@ Each time it reads a planet's atmosphere off the render, `edworld_eht.dll` also 
 ## Settings
 
 In `edworld.ini` (or `edworld_eht.ini`), beside the dll or in `edloader\config`. `;` or `#` starts a comment: a line
-of its own, or after a value and a space (`clouds = 1 ; on`). Every setting has a default. At its first start edworld makes the file if there is none, with every
+of its own, or after a value (`clouds = 1 ; on`, `clouds = 1;on`); after `creator_pass`'s names only after a space.
+Every setting has a default. At its first start edworld makes the file if there is none, with every
 setting as a comment holding the value it runs on (`;clouds = 1`), and at each start it adds the settings
 the file does not name yet, a new version's too, at the end; it never changes a line that is there. To change a
 setting, take the `;` off its line; a line left as a comment follows edworld's default, also when a new version
 changes it. Where the file cannot be written, edworld says so in its log and runs on. A value edworld cannot read (a
 decimal comma, `0,45`; a word where a number goes; a name with a typo) keeps the value it had, its default unless an earlier line set it, and the log says
-which line (`settings: line ...`). After a path or a dll's name (`next`, `status_file`, `shm_dir`) a `;` or `#` is
+which line (`settings: line ...`); in a list of shaders the names it can read are taken and the others said. `name += A,
+B` adds A and B to a list as it stands (its default, unless an earlier line set it). After a path or a dll's name (`next`, `status_file`, `shm_dir`) a `;` or `#` is
 part of the value, not a comment. `status_file` is left empty in
 the file edworld writes: empty means the Saved Games folder, and the file then holds no Windows user name.
 

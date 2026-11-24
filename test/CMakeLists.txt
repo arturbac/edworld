@@ -29,6 +29,12 @@ foreach(variant edworld edworld_eht)
   add_dependencies(${variant}_test_app edworld_test_shaders)
 endforeach()
 
+# tools/doc.sh's program: a build's log, ini and doc/settings.md through its export, with no device
+add_executable(edworld_doc doc_app.cc)
+target_compile_definitions(edworld_doc PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+edplugin_common_warnings(edworld_doc)
+set_target_properties(edworld_doc PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${test_gen}")
+
 # the render test: the clouds' volume shader drawn with the system d3d11 for scenes of several atmospheres, its buffer
 # by src/clouds_values.h, checked by numbers and against test/data/render/*.png
 add_executable(render_test render_test.cc)

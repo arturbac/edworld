@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+- The ini is read, completed and watched by edplugin_common's module `ini` (1669a91), by the same rules as
+  edupscale's and edwide_screen's ini. A value that works today works the same:
+  - `share`, taken out for `shm_dir`, and `clouds_radius` are said once a session as `no longer a setting` (before,
+    `a typo?`);
+  - a list with a word that is no shader's name keeps the names it can read, as before, and the note gives the list
+    taken (before, `its value stays` with that list);
+  - a line taken out of the ini, or made a comment, while the game runs gives a setting read while it runs its
+    default back, as doc/users.md says (before, the value it had); a start-only setting changed while the game runs
+    is said once; the ini taken away while it runs leaves the settings as they are, said once; one that cannot be
+    read is said once and read again at the next look (before, nothing said and not read again);
+  - an ini saved as UTF-16 is neither read nor added to, said once in the log (save it as UTF-8);
+  - a new ini's lines end in `\r\n` (before, `\n`); the lines added to one that is there take its own line ends;
+  - the log opens before the ini is read, so its notes follow the version's line (before, they came first).
+- Lines that now take effect (before, cut, refused or misread): a value with a comment right after it,
+  `clouds = 1;on` (numbers, switches, names, colours, lists); `name += A, B` for the lists of shaders (before, the line
+  was passed over as no setting); a list's names by spaces, and with `0x` (before, refused); a line longer than 1023
+  characters (before, cut in two, so a long list could be taken short); the first line of an ini saved with a UTF-8
+  byte order mark (before, its key was taken for no setting). `k = #x` for a list of dll names is empty, as a
+  comment (before, the text `#x`).
+- doc/settings.md is made by edplugin_common's `settings_doc` (the same rows; its comment names tools/doc.sh too).
+- `tools/doc.sh` checks the ini's rules (made, a second start, completed, wrong lines) and doc/settings.md for both
+  builds with no device, through the export `edworld_write_settings_doc` (test/doc_app.cc); `tools/test.sh` runs it
+  last and keeps the ini made by the game's start.
 - doc/developers.md moved out of the repository, to the developers' notes kept apart from the plugins;
   the README no longer links it.
 - `edworld.ini.example` is gone: edworld writes its ini at its first start, every setting as a comment with

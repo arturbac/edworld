@@ -1,0 +1,3 @@
+# the expected files are the plugin's bytes, CRLF line ends kept
+test/data/ini/*.ini -text
+test/data/ini/*.txt -text

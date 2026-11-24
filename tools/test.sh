@@ -3,6 +3,7 @@
 # d3d11.dll as a native override (next = system d3d11, i.e. wine's own). Needs a CMake build first (the dlls and
 # the test's programs, EDWORLD_TESTS on).
 # Both builds, each copied in as d3d11.dll (its ini and log keep the build's name): edworld, then edworld_eht.
+# Last tools/doc.sh: the ini's rules and doc/settings.md with no device, compared with test/data/ini and doc/.
 # Usage: tools/test.sh <build dir> <scratch dir>   (a new run directory is made under the scratch dir; nothing deleted)
 # Environment: EDWORLD_WINEPREFIX: a wine prefix kept warm between runs (made on first use, reused; a fresh one each
 # run cost minutes in wineboot), WINE_COMMON_TIMEOUT (seconds for one wine run, 600 unless set); with no DISPLAY,
@@ -26,21 +27,16 @@ ini_check() {  # $1 = what, $2 = a condition's result
   echo "--- ini: $1: $([[ $2 -eq 0 ]] && echo ok || echo FAIL)"
   [[ $2 -eq 0 ]] || rc=1
 }
+# the ini made by the game's start (the rules of reading and completing it, with no device: tools/doc.sh)
 ini_cases() {  # $1 = edworld | edworld_eht; in the run directory
-  local ini=$1.ini before
+  local ini=$1.ini
   mv "$ini" "$ini.session"
   set +e
   ini_run
-  grep -q '^;clouds_alpha = 0.45$' "$ini" && grep -q '^;clouds_volume = 1$' "$ini" && grep -qE '^;status_file =$' "$ini" && grep -q '^;dump_vs = ' "$ini" && ! grep -qvE '^(;.*)?\r?$' "$ini"
+  # a new ini's lines end in "\r\n"
+  grep -q $'^;clouds_alpha = 0.45\r$' "$ini" && grep -q $'^;clouds_volume = 1\r$' "$ini" && grep -q $'^;status_file =\r$' "$ini" \
+    && grep -q '^;dump_vs = ' "$ini" && ! grep -qvE $'^(;.*)?\r$' "$ini"
   ini_check "made when there is none, all comments" $?
-  before=$(sha256sum "$ini")
-  ini_run
-  [[ $(sha256sum "$ini") == "$before" ]]
-  ini_check "a second start changes nothing" $?
-  printf 'clouds_alpha = 0.3\n; mine\n;compass = 0\nstatus_file = C:\\x\\Status.json' > "$ini"
-  ini_run
-  [[ $(head -n 3 "$ini" | sed -n 3p) == ';compass = 0' ]] && [[ $(grep -c 'clouds_alpha =' "$ini") -eq 1 ]] && [[ $(grep -c 'compass =' "$ini") -eq 1 ]] && [[ $(grep -c 'status_file =' "$ini") -eq 1 ]] && grep -q '^status_file = C:\\x\\Status.json$' "$ini" && grep -q '^;clouds_cover = 0.55$' "$ini"
-  ini_check "completed, the player's lines stay" $?
   EDLOADER_CONFIG_DIR=. ini_run
   grep -q 'chain: next = d3d11.dll is edworld itself' "$1.log"
   ini_check "under edloader an empty next is d3d11.dll" $?
@@ -88,20 +84,6 @@ fault_case() {  # $1 = edworld | edworld_eht; a fault in a guard and in a thread
   done
   set -e
 }
-bad_values_case() {  # $1 = edworld | edworld_eht; what the ini says wrong is said in the log, the defaults kept
-  local ini=$1.ini
-  set +e
-  printf 'clouds_alpha = 0,45\nclouds = 1 ; on\naurora_gain = nan\ncluds = 1\nlog_interval_ms = 99999999999\n' > "$ini"
-  ini_run
-  grep -q "settings: line 1: 'clouds_alpha = 0,45' cannot be read" "$1.log" \
-    && grep -q "settings: line 3: 'aurora_gain = nan' cannot be read" "$1.log" \
-    && grep -q "settings: line 4: no setting 'cluds' (a typo?)" "$1.log" \
-    && grep -q "settings: line 5: 'log_interval_ms = 99999999999' cannot be read" "$1.log" \
-    && ! grep -q "settings: line 2" "$1.log"
-  ini_check "bad values said in the log, a comment after a value taken off" $?
-  : > "$ini"
-  set -e
-}
 second_device_case() {  # $1 = edworld | edworld_eht; a second device of the game is not followed, and said so
   set +e
   : > "$1.ini"
@@ -127,15 +109,6 @@ chain_case() {  # $1 = edworld | edworld_eht; a 3Dmigoto (by its version resourc
     ! grep -q 'off for this session' "$1.log"
     ini_check "edworld goes on with 3Dmigoto before it" $?
   fi
-  set -e
-}
-doc_case() {  # doc/settings.md is made by edworld_eht from its table of settings (it has every setting); in the run directory
-  set +e
-  EDWORLD_SETTINGS_DOC=settings.md ini_run
-  cmp -s settings.md "$HERE/doc/settings.md"
-  local same=$?
-  ini_check "doc/settings.md up to date with the table" $same
-  [[ $same -eq 0 ]] || echo "    to bring it up to date: cp $PWD/settings.md $HERE/doc/settings.md"
   set -e
 }
 run_variant() {  # $1 = edworld | edworld_eht; sets rc on failure
@@ -176,8 +149,6 @@ run_variant() {  # $1 = edworld | edworld_eht; sets rc on failure
   fault_case "$V"
   second_device_case "$V"
   chain_case "$V"
-  bad_values_case "$V"
-  [[ $V != edworld_eht ]] || doc_case
   popd >/dev/null
 }
 # the clouds' volume shader drawn for scenes of several atmospheres (test/render_test.cc), with the system d3d11 (no
@@ -205,5 +176,7 @@ render_case() {
 run_variant edworld
 run_variant edworld_eht
 render_case
+echo "--- tools/doc.sh: the ini's rules and doc/settings.md with no device"
+"$HERE/tools/doc.sh" "$BUILD" "$SCR" || rc=1
 echo "=== overall: $([[ $rc -eq 0 ]] && echo PASSED || echo FAILED)"
 exit $rc

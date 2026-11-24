@@ -1,26 +1,25 @@
 // edworld — <plugin>.ini and <plugin>.log (edworld or edworld_eht, by build): in the directories edloader hands its
-// plugins, else beside the dll; the names do not follow the dll's file name, which may be d3d11.dll.
+// plugins, else beside the dll; the names do not follow the dll's file name, which may be d3d11.dll. The ini is read,
+// completed and watched by edplugin_common's ini module from the table below.
 #include "game_state.h"
 #include "panel_math.h"
 #include "runtime.h"
 
-#include <algorithm>
+#include <edplugin_common/ini/ini.h>
+#include <edplugin_common/ini/live.h>
+#include <edplugin_common/settings/settings_doc.h>
+
+#include <array>
 #include <atomic>
-#include <cerrno>
-#include <cmath>
-#include <cstdio>
-#include <cstring>
-#include <cwchar>
+#include <cstddef>
 #include <exception>
-#include <iterator>
+#include <format>
 #include <optional>
-#include <cstdlib>
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <variant>
+#include <utility>
 #include <vector>
-
 
 #include <stralgo/stralgo.h>
 
@@ -30,105 +29,38 @@ namespace edworld
 
   namespace
     {
-    // Two copies: the render thread reads the ini again into the one not in use and then publishes it, so the threads
-    // reading settings() never see one being written. `current` is the first, filled before any of them runs
-    settings_t slots[2];
-    settings_t & current{slots[0]};
-    std::atomic<settings_t const *> live{&slots[0]};
-    std::atomic<std::uint32_t> settings_serial{};  ///< one more at each publication of the live settings
-    std::uint64_t ini_written{};  ///< the ini's last write (write_time) as last read (load_settings, complete_settings, refresh_live_settings)
+    using edplugin_common::value_e;
+    using hex_t = edplugin_common::ini_hex_t<settings_t>;
+    using colour_t = edplugin_common::ini_colour_t<settings_t>;
+    using list_t = edplugin_common::ini_list_t<settings_t>;
 
-    auto trim(std::string_view s) -> std::string_view
+    ///\brief WIDTHxHEIGHT, two whole numbers
+    template<auto width, auto height>
+    constexpr auto surface() noexcept -> edplugin_common::ini_custom_t<settings_t>
       {
-      while(not s.empty() and (s.front() == ' ' or s.front() == '\t'))
-        s.remove_prefix(1);
-      while(not s.empty() and (s.back() == ' ' or s.back() == '\t' or s.back() == '\r' or s.back() == '\n'))
-        s.remove_suffix(1);
-      return s;
+      return {[](settings_t & s, std::string_view value) -> bool
+                {
+                auto const x{value.find('x')};
+                if(x == std::string_view::npos)
+                  return false;
+                auto const w{edplugin_common::read_uint32(edplugin_common::ini_trim(value.substr(0, x)))};
+                auto const h{edplugin_common::read_uint32(edplugin_common::ini_trim(value.substr(x + 1)))};
+                if(not w or not h)
+                  return false;
+                s.*width = *w;
+                s.*height = *h;
+                return true;
+                },
+              [](settings_t const & s) -> std::string { return std::format("{}x{}", s.*width, s.*height); },
+              [](settings_t & to, settings_t const & from) -> void
+                {
+                to.*width = from.*width;
+                to.*height = from.*height;
+                }};
       }
 
-    auto widen(std::string_view s) -> std::wstring
-      {
-      if(s.empty())
-        return {};
-      int const n{MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), nullptr, 0)};
-      std::wstring w(static_cast<std::size_t>(n), L'\0');
-      MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), w.data(), n);
-      return w;
-      }
-
-    ///\brief digits only, no more than fit 32 bits; none otherwise
-    auto to_uint(std::string_view s) -> std::optional<std::uint32_t>
-      {
-      std::uint64_t v{};
-      if(s.empty())
-        return std::nullopt;
-      for(char const c: s)
-        {
-        if(c < '0' or c > '9')
-          return std::nullopt;
-        v = v * 10u + static_cast<std::uint64_t>(c - '0');
-        if(v > 0xFFFFFFFFull)
-          return std::nullopt;
-        }
-      return static_cast<std::uint32_t>(v);
-      }
-    ///\brief a whole finite number (a dot for the decimals); none for anything after it (`0,45`), NaN or infinity
-    auto to_float(std::string_view s) -> std::optional<float>
-      {
-      std::string const text{s};
-      char * end{};
-      float const v{std::strtof(text.c_str(), &end)};
-      if(text.empty() or end != text.c_str() + text.size() or not std::isfinite(v))
-        return std::nullopt;
-      return v;
-      }
-
-    auto narrow(std::wstring_view s) -> std::string
-      {
-      if(s.empty())
-        return {};
-      int const n{WideCharToMultiByte(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), nullptr, 0, nullptr, nullptr)};
-      std::string text(static_cast<std::size_t>(n), '\0');
-      WideCharToMultiByte(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), text.data(), n, nullptr, nullptr);
-      return text;
-      }
-
-    struct hash_field_t
-      {
-      std::uint64_t settings_t::* field;
-      };
-
-    ///\brief 0xRRGGBB
-    struct colour_field_t
-      {
-      std::uint32_t settings_t::* field;
-      };
-
-    struct list_field_t
-      {
-      std::vector<std::uint64_t> settings_t::* field;
-      };
-
-    ///\brief WIDTHxHEIGHT
-    struct surface_field_t
-      {
-      std::uint32_t settings_t::* width;
-      std::uint32_t settings_t::* height;
-      };
-
-    using field_t = std::variant<
-      bool settings_t::*,
-      std::uint32_t settings_t::*,
-      float settings_t::*,
-      std::wstring settings_t::*,
-      hash_field_t,
-      colour_field_t,
-      list_field_t,
-      surface_field_t>;
-
-    ///\brief the topic a setting is listed under in doc/settings.md
-    enum struct setting_group_e
+    ///\brief the topic a setting is listed under in doc/settings.md, in its order (groups below)
+    enum struct setting_group_e : std::size_t
       {
       clouds,
       navballs,
@@ -136,37 +68,39 @@ namespace edworld
       other
       };
 
-    ///\brief when a setting is read: at the game's start only, or again while the game runs (refresh_live_settings)
-    enum struct setting_read_e
-      {
-      at_start,
-      live
-      };
+    constexpr std::string_view groups[]{"Clouds"sv, "Navballs"sv, "Jump panel"sv, "Other"sv};
 
+    using setting_read_e = edplugin_common::setting_read_e;
+
+    ///\brief a row as this table writes it, `note` (the comment over the key in the ini; the keys a player looks for
+    /// first have one) after `about` (what the setting does, for doc/settings.md)
     struct key_t
       {
       std::string_view name;
-      field_t field;
+      edplugin_common::ini_field_t<settings_t> field;
       setting_group_e group;
       setting_read_e read;
-      ///\brief the values that make sense, "(clamped)" where edworld holds the value to them; empty = any
+      ///\brief the values that make sense, "(clamped)" where edworld holds the value to them; empty = any. Also in the
+      /// note of a line that cannot be read
       char const * range;
       ///\brief what the setting does, for doc/settings.md
       char const * about;
-      ///\brief the comment over the key in the ini; the keys a player looks for first have one
+      ///\brief the comment over the key in the ini; none for most
       char const * note{};
+      ///\brief raw for a path, a folder or a dll's name: no comment after its value (`D:\Games #2\...`)
+      value_e value{value_e::plain};
       };
 
     using g = setting_group_e;
     using r = setting_read_e;
 
-    // every setting once: read from the ini and written to it by this list, in the order the ini gets them; doc/settings.md
-    // is made from it too (write_settings_doc), tools/test.sh checks the two agree
+    // every setting once: read from the ini and written to it by this list, in the order the ini gets them;
+    // doc/settings.md is made from it too (write_settings_doc), tools/doc.sh checks the two agree
     constexpr key_t keys[]{
-      {"next", &settings_t::next, g::other, r::at_start, "a dll's name or empty", "the next d3d11 mod in the chain (`d3d11_edhm.dll`, a mod's dll renamed); empty = the system's own, under edloader the next on its list", "Where edworld goes on to, the next d3d11 mod. Through edloader leave it empty: edworld goes on down edloader.txt. On its own: a mod's dll you renamed, d3d11_edhm.dll; empty = the system's own"},
+      {"next", &settings_t::next, g::other, r::at_start, "a dll's name or empty", "the next d3d11 mod in the chain (`d3d11_edhm.dll`, a mod's dll renamed); empty = the system's own, under edloader the next on its list", "Where edworld goes on to, the next d3d11 mod. Through edloader leave it empty: edworld goes on down edloader.txt. On its own: a mod's dll you renamed, d3d11_edhm.dll; empty = the system's own", value_e::raw},
       {"creator_pass", &settings_t::creator_pass, g::other, r::at_start, "dll names by commas, or empty", "dlls passed over when edworld tells who asks for a device: a program that puts itself in the game's own call (an antivirus's hooks; `bdhkm64.dll`, seen in a player's log, by default); without it a device asked through such a dll is taken for an overlay's and not followed, and edworld draws nothing. The log's `not followed` line names the dll"},
       {"build_info", &settings_t::build_info, g::other, r::at_start, "0..4", "edworld's name and version, small and grey, in a corner of the picture (the swap chain's back buffer, after the game's own drawing of it): `1` top left, `2` top right, `3` bottom right, `4` bottom left; `0` = none; edupscale's and edwide_screen's lines (version, what they do now) beside it when they are loaded; edworld_eht's says it is off when a 3Dmigoto (EDHM) stands before it in the chain. The log's `build_info:` line says where it went, or that no back buffer was seen", "edworld's version in a corner of the screen: 1 top left, 2 top right, 3 bottom right, 4 bottom left, 0 = none"},
-      {"status_file", &settings_t::status_file, g::other, r::at_start, "a path or empty", "the game's `Status.json`, the journals beside it; empty = in Saved Games; for a game whose Saved Games lie elsewhere", "The game's Status.json, the journals beside it; empty = the Saved Games folder; change it only if edworld looks in the wrong place"},
+      {"status_file", &settings_t::status_file, g::other, r::at_start, "a path or empty", "the game's `Status.json`, the journals beside it; empty = in Saved Games; for a game whose Saved Games lie elsewhere", "The game's Status.json, the journals beside it; empty = the Saved Games folder; change it only if edworld looks in the wrong place", value_e::raw},
       {"clouds", &settings_t::clouds, g::clouds, r::at_start, "0, 1", "clouds over a planet with an atmosphere that the game draws without any; `0` = none, and then nothing of the clouds is read again while the game runs", "Clouds over planets with an atmosphere: 0 = none"},
       {"clouds_height", &settings_t::clouds_height, g::clouds, r::at_start, "0..0.05", "the flat layer's height over the surface, as a part of the planet's radius", "the layer's height over the surface, as a part of the planet's radius"},
       {"clouds_alpha", &settings_t::clouds_alpha, g::clouds, r::at_start, "0..1", "how much the flat layer covers what is under it, `0` nothing to `1` all", "how much they cover what is under them, 0 to 1"},
@@ -220,7 +154,7 @@ namespace edworld
       {"edsm", &settings_t::edsm, g::jump_panel, r::at_start, "0, 1", "`1` = EDSM is asked for the destination's allegiance and factions, once per new destination, with the system's id only; `0` = never (no list then without EHT)", "The destination's factions under the jump panel: 0 = never ask EDSM"},
       {"list_alpha", &settings_t::list_alpha, g::jump_panel, r::at_start, "0..1 (clamped)", "how much the factions list's box covers what is behind it, `0` nothing to `1` all", "how much the list's box covers what is behind it, 0 to 1"},
 #if defined(EDWORLD_EHT)
-      {"shm_dir", &settings_t::shm_dir, g::other, r::at_start, "a folder or empty", "edworld_eht only: the folder shared with EHT as the game sees it (`Z:` is the Linux root under Wine); `panels` published there, `target` read from there; empty = neither", "The folder shared with EHT, as the game sees it"},
+      {"shm_dir", &settings_t::shm_dir, g::other, r::at_start, "a folder or empty", "edworld_eht only: the folder shared with EHT as the game sees it (`Z:` is the Linux root under Wine); `panels` published there, `target` read from there; empty = neither", "The folder shared with EHT, as the game sees it", value_e::raw},
       {"shader_catalog", &settings_t::shader_catalog, g::other, r::at_start, "0, 1", "edworld_eht only: `1` keeps each shader the game creates, once per build of the game, in `edworld_shaders` beside the log; `0` none"},
       {"atmo_record_s", &settings_t::atmo_record_s, g::other, r::at_start, "0 and more", "edworld_eht only, (test): the atmosphere's fingerprint to `edworld_atmo` beside the log at most this often, in seconds; `0` = never", "(test) the atmosphere's fingerprint to edworld_atmo beside the log at most this often, in seconds: 0 = never"},
 #endif
@@ -230,9 +164,9 @@ namespace edworld
       {"patch_width", &settings_t::patch_width, g::jump_panel, r::at_start, "over 0", "the patch's width, in the surface's pixels"},
       {"patch_height", &settings_t::patch_height, g::jump_panel, r::at_start, "over 0", "the patch's height, in the surface's pixels"},
       {"patch_emblem_height", &settings_t::patch_emblem_height, g::jump_panel, r::at_start, "over 0", "the emblem's height, in the surface's pixels"},
-      {"patch_surface", surface_field_t{&settings_t::patch_surface_width, &settings_t::patch_surface_height}, g::jump_panel, r::at_start, "WIDTHxHEIGHT", "the interface surface that carries the jump panel"},
-      {"patch_ground", colour_field_t{&settings_t::patch_ground}, g::jump_panel, r::at_start, "RRGGBB", "the panel's own black under the patch"},
-      {"independent_colour", colour_field_t{&settings_t::independent_colour}, g::jump_panel, r::at_start, "RRGGBB", "the independents' emblem's colour (the game's own is a dull blue); the others keep their superpower's"},
+      {"patch_surface", surface<&settings_t::patch_surface_width, &settings_t::patch_surface_height>(), g::jump_panel, r::at_start, "WIDTHxHEIGHT", "the interface surface that carries the jump panel"},
+      {"patch_ground", colour_t{&settings_t::patch_ground}, g::jump_panel, r::at_start, "RRGGBB", "the panel's own black under the patch"},
+      {"independent_colour", colour_t{&settings_t::independent_colour}, g::jump_panel, r::at_start, "RRGGBB", "the independents' emblem's colour (the game's own is a dull blue); the others keep their superpower's"},
       {"patch_force", &settings_t::patch_force, g::jump_panel, r::at_start, "0..4", "`0` = the destination's own emblem; `1` Federation, `2` Empire, `3` Alliance, `4` Independent = that emblem whatever the destination (to place the patch where the game shows none)"},
       {"list", &settings_t::list, g::jump_panel, r::at_start, "0, 1", "`1` = the destination's factions by influence under the jump panel, from EHT's `target` in edworld_eht when it has them, else from EDSM (marked so); `0` = no list"},
       {"list_x", &settings_t::list_x, g::jump_panel, r::at_start, "", "the list's horizontal centre, in the panel surface's pixels"},
@@ -241,7 +175,7 @@ namespace edworld
       {"list_rows", &settings_t::list_rows, g::jump_panel, r::at_start, "1 and more (clamped)", "factions listed at most (EDSM's source line comes on top of them)"},
       {"list_text", &settings_t::list_text, g::jump_panel, r::at_start, "8..64 (clamped)", "the list's text height, in the panel surface's pixels; the font is made at the first patch"},
       {"list_gain", &settings_t::list_gain, g::jump_panel, r::at_start, "0 and more", "the list's colours times this in the cockpit (its target is HDR: white text there blooms more than the panel's own)"},
-      {"compass_surface", surface_field_t{&settings_t::compass_surface_width, &settings_t::compass_surface_height}, g::navballs, r::at_start, "WIDTHxHEIGHT", "the interface surface that carries the HUD's compass (the HUD's left cluster)"},
+      {"compass_surface", surface<&settings_t::compass_surface_width, &settings_t::compass_surface_height>(), g::navballs, r::at_start, "WIDTHxHEIGHT", "the interface surface that carries the HUD's compass (the HUD's left cluster)"},
       {"compass_x", &settings_t::compass_x, g::navballs, r::at_start, "", "the compass disc's centre on that surface, x, in its pixels"},
       {"compass_y", &settings_t::compass_y, g::navballs, r::at_start, "", "the compass disc's centre, y"},
       {"compass_radius", &settings_t::compass_radius, g::navballs, r::at_start, "over 0", "the compass disc's rim radius, in the surface's pixels"},
@@ -272,18 +206,18 @@ namespace edworld
       {"compass_anchor_c_dy", &settings_t::compass_anchor_c_dy, g::navballs, r::at_start, "", "the right sphere's centre from the speed readout, y up"},
       {"compass_text", &settings_t::compass_text, g::navballs, r::at_start, "0, 1", "`1` = the angles also written above the radar; `0` = the spheres carry them"},
       {"compass_hide_game", &settings_t::compass_hide_game, g::navballs, r::at_start, "0, 1", "`1` = the game's own compass hidden once read, the left sphere stands in for it; it returns whenever edworld is not there"},
-      {"compass_colour_disc", colour_field_t{&settings_t::compass_colour_disc}, g::navballs, r::at_start, "RRGGBB", "the disc behind a sphere, at its rim; its middle is mixed towards `compass_colour_rim`"},
-      {"compass_colour_grid", colour_field_t{&settings_t::compass_colour_grid}, g::navballs, r::at_start, "RRGGBB", "the rings at 30 and 60 degrees and the meridians"},
-      {"compass_colour_rim", colour_field_t{&settings_t::compass_colour_rim}, g::navballs, r::at_start, "RRGGBB", "the left sphere's rim and the wings' plane on the right one"},
-      {"compass_colour_target", colour_field_t{&settings_t::compass_colour_target}, g::navballs, r::at_start, "RRGGBB", "the target's dot"},
-      {"compass_colour_behind", colour_field_t{&settings_t::compass_colour_behind}, g::navballs, r::at_start, "RRGGBB", "the target behind, where it should be, `PUSH DOWN` / `PULL UP`"},
-      {"compass_colour_nose", colour_field_t{&settings_t::compass_colour_nose}, g::navballs, r::at_start, "RRGGBB", "the nose's arrow"},
-      {"compass_colour_text_left", colour_field_t{&settings_t::compass_colour_text_left}, g::navballs, r::at_start, "RRGGBB", "the left sphere's angles"},
-      {"compass_colour_text_right", colour_field_t{&settings_t::compass_colour_text_right}, g::navballs, r::at_start, "RRGGBB", "the right sphere's lines"},
-      {"compass_colour_ok", colour_field_t{&settings_t::compass_colour_ok}, g::navballs, r::at_start, "RRGGBB", "`ON PATH`; the approach view's base while the ship is over it"},
-      {"compass_colour_wrong", colour_field_t{&settings_t::compass_colour_wrong}, g::navballs, r::at_start, "RRGGBB", "the approach view's base while the ship is under it (in space only)"},
-      {"compass_colour_pad_base", colour_field_t{&settings_t::compass_colour_pad_base}, g::navballs, r::at_start, "RRGGBB", "(test) the approach view's base while the pad's plane shows"},
-      {"compass_colour_top", colour_field_t{&settings_t::compass_colour_top}, g::navballs, r::at_start, "RRGGBB", "(test) in the approach view the left sphere's ring: the target seen from above"},
+      {"compass_colour_disc", colour_t{&settings_t::compass_colour_disc}, g::navballs, r::at_start, "RRGGBB", "the disc behind a sphere, at its rim; its middle is mixed towards `compass_colour_rim`"},
+      {"compass_colour_grid", colour_t{&settings_t::compass_colour_grid}, g::navballs, r::at_start, "RRGGBB", "the rings at 30 and 60 degrees and the meridians"},
+      {"compass_colour_rim", colour_t{&settings_t::compass_colour_rim}, g::navballs, r::at_start, "RRGGBB", "the left sphere's rim and the wings' plane on the right one"},
+      {"compass_colour_target", colour_t{&settings_t::compass_colour_target}, g::navballs, r::at_start, "RRGGBB", "the target's dot"},
+      {"compass_colour_behind", colour_t{&settings_t::compass_colour_behind}, g::navballs, r::at_start, "RRGGBB", "the target behind, where it should be, `PUSH DOWN` / `PULL UP`"},
+      {"compass_colour_nose", colour_t{&settings_t::compass_colour_nose}, g::navballs, r::at_start, "RRGGBB", "the nose's arrow"},
+      {"compass_colour_text_left", colour_t{&settings_t::compass_colour_text_left}, g::navballs, r::at_start, "RRGGBB", "the left sphere's angles"},
+      {"compass_colour_text_right", colour_t{&settings_t::compass_colour_text_right}, g::navballs, r::at_start, "RRGGBB", "the right sphere's lines"},
+      {"compass_colour_ok", colour_t{&settings_t::compass_colour_ok}, g::navballs, r::at_start, "RRGGBB", "`ON PATH`; the approach view's base while the ship is over it"},
+      {"compass_colour_wrong", colour_t{&settings_t::compass_colour_wrong}, g::navballs, r::at_start, "RRGGBB", "the approach view's base while the ship is under it (in space only)"},
+      {"compass_colour_pad_base", colour_t{&settings_t::compass_colour_pad_base}, g::navballs, r::at_start, "RRGGBB", "(test) the approach view's base while the pad's plane shows"},
+      {"compass_colour_top", colour_t{&settings_t::compass_colour_top}, g::navballs, r::at_start, "RRGGBB", "(test) in the approach view the left sphere's ring: the target seen from above"},
       {"compass_approach_below", &settings_t::compass_approach_below, g::navballs, r::at_start, "0..90", "in normal flight with the target this many degrees or more below the wings, the approach view: the left sphere shows the target from above, the right one a dome standing on the target with the ship a point on it; `0` = never"},
       {"compass_approach_smooth_s", &settings_t::compass_approach_smooth_s, g::navballs, r::at_start, "0 and more", "in the approach view the dot's place is averaged with this time constant, in seconds, so the spheres do not shake near a pad; `0` = no averaging"},
       {"compass_approach_km", &settings_t::compass_approach_km, g::navballs, r::at_start, "0 and more", "the approach view also needs the target near: a place on a body within this many km, or a station or carrier in this system while mass locked; `0` = by the angle alone"},
@@ -311,357 +245,191 @@ namespace edworld
       {"pad_text_samples", &settings_t::pad_text_samples, g::navballs, r::at_start, "0, 1", "(test) `1` = each time the HUD's notice box shows or changes its text, its area is written to `edworld_padtext` beside the log as a sample for learning the pad's digits; `0` = off"},
       {"pad_text_read", &settings_t::pad_text_read, g::navballs, r::at_start, "0, 1", "`1` = the pad's number and the grant's time read from the tower's notice on the HUD: edworld takes them as the pad given, edworld_eht logs whether they agree with EHT's; `0` = off"},
       {"pad_text_unsure_sample", &settings_t::pad_text_unsure_sample, g::navballs, r::at_start, "0, 1", "a notice whose pad number cannot be read sure gives no pad and a log line; `1` also keeps its picture once in `edworld_padtext` beside the log for learning the digits; `0` = the log line only"},
-      {"station_vs", hash_field_t{&settings_t::station_vs}, g::navballs, r::at_start, "a shader hash or 0", "(test) the game's shader for the hologram's model; after a game update that changes it, `0`: edworld finds it by its draws and names it in the log"},
+      {"station_vs", hex_t{&settings_t::station_vs}, g::navballs, r::at_start, "a shader hash or 0", "(test) the game's shader for the hologram's model; after a game update that changes it, `0`: edworld finds it by its draws and names it in the log"},
       {"log_interval_ms", &settings_t::log_interval_ms, g::other, r::at_start, "0 and more", "a summary line of the frame's panels in the log at most this often, in milliseconds; `0` = never"},
       {"frame_gap_us", &settings_t::frame_gap_us, g::other, r::at_start, "over 0", "a gap between two panel draws longer than this, in microseconds, starts a new frame"},
       {"log_all_vs", &settings_t::log_all_vs, g::other, r::at_start, "0, 1", "`1` = the hash of every vertex shader the game creates in the log (discovery)"},
       {"context_hook", &settings_t::context_hook, g::other, r::at_start, "0, 1, 2", "how the game's context is watched: `0` auto (a table of edworld's own when the context's methods are the system d3d11's, else in place), `1` in place, `2` a table of edworld's own whatever the context is"},
-      {"watch_vs", list_field_t{&settings_t::watch_vs}, g::other, r::at_start, "shader hashes, comma separated", "the vertex shaders whose draws are panels: the cockpit holo panels, their GUI-effects-off twin and the one near a war settlement"},
-      {"dump_vs", list_field_t{&settings_t::dump_vs}, g::other, r::at_start, "shader hashes, comma separated", "the vertex shaders a whole-frame dump looks into: their bytecode, buffers and what their pixel shader reads; the target's hologram"},
+      {"watch_vs", list_t{&settings_t::watch_vs}, g::other, r::at_start, "shader hashes, comma separated", "the vertex shaders whose draws are panels: the cockpit holo panels, their GUI-effects-off twin and the one near a war settlement"},
+      {"dump_vs", list_t{&settings_t::dump_vs}, g::other, r::at_start, "shader hashes, comma separated", "the vertex shaders a whole-frame dump looks into: their bytecode, buffers and what their pixel shader reads; the target's hologram"},
+    };
+    using setting_t = edplugin_common::ini_setting_t<settings_t, setting_group_e>;
+
+    constexpr auto row_of(key_t const & k) -> setting_t
+      {
+      return {k.name, k.field, k.group, k.read, k.range, k.about, {}, k.note ? std::string_view{k.note} : std::string_view{}, k.value};
+      }
+
+    template<std::size_t... i>
+    constexpr auto rows_of(std::index_sequence<i...>) -> std::array<setting_t, sizeof...(i)>
+      {
+      return {{row_of(keys[i])...}};
+      }
+
+    constexpr std::array<setting_t, std::size(keys)> rows{rows_of(std::make_index_sequence<std::size(keys)>{})};
+
+    ///\brief the comment rule of the row of this name; none for a name this build does not have
+    constexpr auto comment_rule_of(std::string_view name) -> std::optional<edplugin_common::comment_e>
+      {
+      for(setting_t const & row: rows)
+        if(row.name == name)
+          return edplugin_common::ini_comment_rule(row);
+      return std::nullopt;
+      }
+
+    // a path, a folder or a dll's name keeps a ';' or '#' (doc/users.md says so); the dll names of creator_pass lose a
+    // comment after a space, a number one right after it
+    static_assert(comment_rule_of("next") == edplugin_common::comment_e::none);
+    static_assert(comment_rule_of("status_file") == edplugin_common::comment_e::none);
+#if defined(EDWORLD_EHT)
+    static_assert(comment_rule_of("shm_dir") == edplugin_common::comment_e::none);
+#endif
+    static_assert(comment_rule_of("creator_pass") == edplugin_common::comment_e::after_space);
+    static_assert(comment_rule_of("clouds") == edplugin_common::comment_e::anywhere);
+    static_assert(comment_rule_of("watch_vs") == edplugin_common::comment_e::anywhere);
+
+    // the keys taken out: their lines passed over with a note of their own, once a session
+    constexpr edplugin_common::ini_withdrawn_t withdrawn[]{
+      {"share"sv, "shm_dir"sv},
+      {"clouds_radius"sv, ""sv},
     };
 
-    template<typename... functions_t>
-    struct overloaded_t : functions_t...
-      {
-      using functions_t::operator()...;
-      };
+    // a shader's name of 0 asks edworld to find the shader; a list keeps its good names and says the others
+    constexpr edplugin_common::ini_table_t<settings_t, setting_group_e> table{rows, withdrawn, edplugin_common::ini_notes_e::own,
+                                                                              edplugin_common::bad_item_e::skip_item,
+                                                                              edplugin_common::hex_zero_e::taken};
 
-    ///\brief the value read into its field; false when it cannot be read, the field kept as it was
-    auto read_value(settings_t & s, field_t const & field, std::string_view value) -> bool
-      {
-      bool ok{true};
-      std::visit(
-        overloaded_t{
-          [&](bool settings_t::* f)
-          {
-            if(value == "1" or value == "true")
-              s.*f = true;
-            else if(value == "0" or value == "false")
-              s.*f = false;
-            else
-              ok = false;
-          },
-          [&](std::uint32_t settings_t::* f)
-          {
-            if(auto const v{to_uint(value)})
-              s.*f = *v;
-            else
-              ok = false;
-          },
-          [&](float settings_t::* f)
-          {
-            if(auto const v{to_float(value)})
-              s.*f = *v;
-            else
-              ok = false;
-          },
-          [&](std::wstring settings_t::* f) { s.*f = widen(value); },
-          [&](hash_field_t f)
-          {
-            if(auto const v{parse_hash(value)})
-              s.*f.field = *v;
-            else
-              ok = false;
-          },
-          [&](colour_field_t f)
-          {
-            if(auto const v{parse_hash(value)}; v and *v <= 0xffffffu)
-              s.*f.field = static_cast<std::uint32_t>(*v);
-            else
-              ok = false;
-          },
-          [&](list_field_t f)
-          {
-            std::vector<std::uint64_t> & list{s.*f.field};
-            list.clear();
-            std::string_view rest{value};
-            while(not rest.empty())
-              {
-              auto const comma{rest.find(',')};
-              if(auto const h{parse_hash(trim(rest.substr(0, comma)))}; h)
-                list.push_back(*h);
-              else if(not trim(rest.substr(0, comma)).empty())
-                ok = false;  // the other hashes are kept
-              if(comma == std::string_view::npos)
-                break;
-              rest.remove_prefix(comma + 1);
-              }
-          },
-          [&](surface_field_t f)
-          {
-            auto const x{value.find('x')};
-            auto const w{x == std::string_view::npos ? std::nullopt : to_uint(trim(value.substr(0, x)))};
-            auto const h{x == std::string_view::npos ? std::nullopt : to_uint(trim(value.substr(x + 1)))};
-            if(w and h)
-              {
-              s.*f.width = *w;
-              s.*f.height = *h;
-              }
-            else
-              ok = false;
-          }
-        },
-        field
-      );
-      return ok;
-      }
+    constexpr edplugin_common::ini_texts_t ini_texts{
+      "; edworld's settings, written at its first start. Take the ';' off the start of a line to change it;\n"
+      "; a change takes a new start of the game, but for those doc/settings.md lists as read while it runs.\n"
+      "; A line left as a comment follows edworld's default.\n"sv,
+      "; Settings this file did not name yet, added by edworld.\n"sv};
 
-    auto value_text(settings_t const & s, field_t const & field) -> std::string
-      {
-      char text[32];
-      return std::visit(
-        overloaded_t{
-          [&](bool settings_t::* f) -> std::string { return s.*f ? "1" : "0"; },
-          [&](std::uint32_t settings_t::* f) -> std::string { return std::to_string(s.*f); },
-          [&](float settings_t::* f) -> std::string
-          {
-            format_into(text, "{:g}", static_cast<double>(s.*f));
-            return text;
-          },
-          [&](std::wstring settings_t::* f) -> std::string { return narrow(s.*f); },
-          [&](hash_field_t f) -> std::string
-          {
-            format_into(text, "{:016X}", static_cast<unsigned long long>(s.*f.field));
-            return text;
-          },
-          [&](colour_field_t f) -> std::string
-          {
-            format_into(text, "{:06X}", as_unsigned(s.*f.field));
-            return text;
-          },
-          [&](list_field_t f) -> std::string
-          {
-            std::string list;
-            for(std::uint64_t const h: s.*f.field)
-              {
-              format_into(text, "{}{:016X}", list.empty() ? "" : ", ", static_cast<unsigned long long>(h));
-              list += text;
-              }
-            return list;
-          },
-          [&](surface_field_t f) -> std::string
-          {
-            format_into(text, "{}x{}", s.*f.width, s.*f.height);
-            return text;
-          }
-        },
-        field
-      );
-      }
+    // the settings as the game's threads see them: the start-only ones from any thread, the live ones (and the
+    // generation) on the render thread, which reads the ini again while it draws the clouds (refresh_live_settings)
+    edplugin_common::live_settings_t<settings_t> live;
+    edplugin_common::ini_watch_t ini_watch;
+    edplugin_common::ini_told_t told;
 
-    ///\brief the setting a line names, as a comment too: ";clouds = 1" -> clouds; empty for a line of words
-    auto named_key(std::string_view line) -> std::string_view
+    auto log_completion(edplugin_common::ini_complete_t const & done) -> void
       {
-      line = trim(line);
-      while(not line.empty() and (line.front() == ';' or line.front() == '#' or line.front() == ' '))
-        line.remove_prefix(1);
-      auto const eq{line.find('=')};
-      return eq == std::string_view::npos ? std::string_view{} : trim(line.substr(0, eq));
-      }
-
-    ///\brief the lines for the settings `ini` names nowhere, with the values of `s`
-    auto missing_lines(std::string_view ini, settings_t const & s, std::size_t & count) -> std::string
-      {
-      std::vector<std::string_view> named;
-      for(std::string_view rest{ini}; not rest.empty();)
+      using edplugin_common::ini_complete_e;
+      switch(done.status)
         {
-        auto const end{rest.find('\n')};
-        named.push_back(named_key(rest.substr(0, end)));
-        rest.remove_prefix(end == std::string_view::npos ? rest.size() : end + 1);
+        case ini_complete_e::made:
+          log_line("settings: {} made, all its lines comments", wide(ini_watch.path()));
+          break;
+        case ini_complete_e::added:
+          log_line("settings: {} added to {}", done.count, wide(ini_watch.path()));
+          break;
+        case ini_complete_e::write_failed:
+          log_line("settings: {} not written whole (error {}); {}", wide(ini_watch.path()), done.error,
+                   done.undone ? "nothing of it left" : "a part of it left");
+          break;
+        case ini_complete_e::no_memory:
+          log_line("settings: the lines {} lacks could not be made (no memory); nothing added", wide(ini_watch.path()));
+          break;
+        case ini_complete_e::nothing:
+        case ini_complete_e::unreadable:  // said by the read after it
+        case ini_complete_e::utf16:
+          break;
         }
-      std::string lines;
-      for(key_t const & key: keys)
-        {
-        if(std::find(named.begin(), named.end(), key.name) != named.end())
-          continue;
-        if(key.note)
-          (lines += "\n; ") += key.note, lines += '\n';
-        std::string const value{value_text(s, key.field)};
-        ((lines += ';') += key.name) += value.empty() ? " =" : " = ";
-        lines += value;
-        lines += '\n';
-        ++count;
-        }
-      return lines;
       }
 
-    ///\brief one setting's value from `from` into `to`
-    auto copy_value(settings_t & to, settings_t const & from, field_t const & field) -> void
+    ///\brief the ini read into `s` (the defaults, `dir` set); false when nothing was read: no file, one that cannot be
+    /// read (said once until it is read) or UTF-16 (said once)
+    auto read_into(settings_t & s, edplugin_common::ini_read_t & read) -> bool
       {
-      std::visit(
-        overloaded_t{
-          [&]<typename value_t>(value_t settings_t::* f) { to.*f = from.*f; },
-          [&](hash_field_t f) { to.*f.field = from.*f.field; },
-          [&](colour_field_t f) { to.*f.field = from.*f.field; },
-          [&](list_field_t f) { to.*f.field = from.*f.field; },
-          [&](surface_field_t f)
-          {
-            to.*f.width = from.*f.width;
-            to.*f.height = from.*f.height;
-          }
-        },
-        field
-      );
-      }
-
-    ///\brief doc/settings.md: every setting of this build by its topic, those read while the game runs first, with the
-    /// default, the range and what it does
-    auto settings_doc() -> std::string
-      {
-      struct group_title_t
+      using edplugin_common::ini_file_e;
+      switch(edplugin_common::read_ini_file(ini_watch.path(), table, s, read, told))
         {
-        setting_group_e group;
-        char const * title;
-        };
-      constexpr group_title_t groups[]{
-        {g::clouds, "Clouds"}, {g::navballs, "Navballs"}, {g::jump_panel, "Jump panel"}, {g::other, "Other"}
-      };
-      settings_t const defaults{};
-      std::string doc{
-        "# edworld settings\n\n"
-        "<!-- Made by edworld from its table of settings (src/settings_log.cc, `EDWORLD_SETTINGS_DOC`); tools/test.sh checks\n"
-        "     it is up to date. Change the table, not this file. -->\n\n"
-        "In `edworld.ini` (or `edworld_eht.ini`), beside the dll or in `edloader\\config`; how the file is made and kept: "
-        "[users.md](users.md#settings).\n\n"
-        "- **Read while the game runs**: edworld looks at the ini at most once a second while it draws clouds (a planet "
-        "with an atmosphere on the screen, `clouds = 1`); a change shows within a second or two and the log has "
-        "`settings: read again: ...`.\n"
-        "- **Read at the game's start**: a change takes a new start of the game.\n"
-        "- **Range**: the values that make sense; *(clamped)* = edworld holds the value to it, elsewhere it does not check.\n"
-      };
-      for(group_title_t const & group: groups)
-        {
-        ((doc += "\n## ") += group.title) += '\n';
-        for(setting_read_e const read: {r::live, r::at_start})
-          {
-          doc += read == r::live ? "\n### Read while the game runs\n\n" : "\n### Read at the game's start (a change needs a restart)\n\n";
-          std::string rows;
-          for(key_t const & key: keys)
-            {
-            if(key.group != group.group or key.read != read)
-              continue;
-            std::string const value{value_text(defaults, key.field)};
-            ((rows += "| `") += key.name) += "` | ";
-            if(value.empty())
-              rows += "empty";
-            else
-              rows.append(1, '`').append(value).append(1, '`');
-            ((rows += " | ") += key.range) += " | ";
-            (rows += key.about) += " |\n";
-            }
-          if(rows.empty())
-            doc += "None.\n";
-          else
-            (doc += "| setting | default | range | what |\n|---|---|---|---|\n") += rows;
-          }
+        case ini_file_e::read:
+          ini_watch.readable();
+          return true;
+        case ini_file_e::none:
+          return false;
+        case ini_file_e::unreadable:
+          if(ini_watch.unreadable())
+            log_line("settings: {} could not be read; the settings stay as they were", wide(ini_watch.path()));
+          return false;
+        case ini_file_e::utf16:
+          if(told.first("utf16"))
+            log_line("settings: {} is UTF-16: neither read nor added to (save it as UTF-8); the settings stay as they were",
+                     wide(ini_watch.path()));
+          return false;
         }
-      return doc;
-      }
-    }  // namespace
-
-  auto settings() noexcept -> settings_t const & { return *live.load(std::memory_order_acquire); }
-  auto settings_generation() noexcept -> std::uint32_t { return settings_serial.load(std::memory_order_acquire); }
-
-  namespace
-    {
-    std::wstring ini_path;
-
-    ///\brief what reading the ini found wrong, said in the log: at the start once the log is open (log_ini_notes), later at once
-    std::vector<std::string> ini_notes;
-
-    auto read_ini(std::wstring const & path, settings_t & s, std::vector<std::string> & notes) -> bool
-      {
-      std::FILE * f{_wfopen(path.c_str(), L"rb")};
-      if(not f)
-        return false;
-      char line[1024];
-      int number{};
-      while(std::fgets(line, sizeof line, f))
-        {
-        ++number;
-        std::string_view const text{trim(line)};
-        if(text.empty() or text.front() == ';' or text.front() == '#' or text.front() == '[')
-          continue;
-        auto const eq{text.find('=')};
-        if(eq == std::string_view::npos)
-          {
-          notes.push_back(stralgo::stl::merge("line "sv, std::to_string(number), " has no '=': ignored"sv));
-          continue;
-          }
-        std::string_view const key{trim(text.substr(0, eq))};
-        std::string_view value{trim(text.substr(eq + 1))};
-        auto const found{std::find_if(std::begin(keys), std::end(keys), [&](key_t const & k) { return k.name == key; })};
-        // a comment after the value, `clouds = 1 ; on`: the value stops before it (a ';' or '#' after a space); not in
-        // a path, a folder or a dll's name, which may hold them (`D:\Games #2\...`; the second audit, 2026-11-18)
-        std::string_view const range{found != std::end(keys) and found->range ? found->range : ""};
-        bool const names_a_file{range.starts_with("a path") or range.starts_with("a folder") or range.starts_with("a dll")};
-        for(std::size_t i{1}; not names_a_file and i < value.size(); ++i)
-          if((value[i] == ';' or value[i] == '#') and (value[i - 1] == ' ' or value[i - 1] == '\t'))
-            {
-            value = trim(value.substr(0, i));
-            break;
-            }
-        if(found == std::end(keys))
-          notes.push_back(stralgo::stl::merge("line "sv, std::to_string(number), ": no setting '"sv, key, "' (a typo?): ignored"sv));
-        else if(not read_value(s, found->field, value))
-          notes.push_back(stralgo::stl::merge("line "sv, std::to_string(number), ": '"sv, key, " = "sv, value, "' cannot be read ("sv,
-                                              found->range and *found->range ? std::string_view{found->range} : "any"sv, "); its value stays "sv,
-                                              value_text(s, found->field)));
-        }
-      std::fclose(f);
-      return true;
+      return false;
       }
 
-    auto log_notes(std::vector<std::string> & notes) noexcept -> void
+    auto log_notes(std::vector<std::string> const & notes) -> void
       {
       for(std::string const & n: notes)
         log_line("settings: {}", n);
-      notes.clear();
       }
     }  // namespace
 
-  auto load_settings(std::wstring const & config_dir, std::wstring const & output_dir) -> void
+  auto settings() noexcept -> settings_t const & { return live.get(); }
+
+  auto settings_generation() noexcept -> std::uint32_t { return live.slot().generation; }
+
+  auto start_settings(std::wstring const & config_dir, std::wstring const & output_dir) noexcept -> void
     {
-    current.dir = output_dir;
-    ini_path = stralgo::stl::merge(config_dir, L'\\', std::wstring_view{plugin_name}, L".ini"sv);
-    // the time first: a change made after it, before the first refresh, is read then (and not taken for this read)
-    ini_written = write_time(ini_path);
-    read_ini(ini_path, current, ini_notes);  // its notes go to the log once it is open (log_ini_notes)
+    try
+      {
+      ini_watch.set_path(stralgo::stl::merge(config_dir, L'\\', std::wstring_view{plugin_name}, L".ini"sv));
+      // the values written are the defaults edworld runs on without the file; status_file stays empty (Saved Games):
+      // the folder's full path holds the player's Windows user name, and players share their ini
+      settings_t s{};
+      s.dir = output_dir;
+      log_completion(edplugin_common::complete_ini(ini_watch.path(), table, s, ini_texts));
+      // a change made after this, before the first refresh, is read then (and edworld's own addition is none)
+      ini_watch.mark_seen();
+      edplugin_common::ini_read_t read;
+      if(read_into(s, read))
+        log_notes(read.notes);
+      live.start(s);
+      }
+    catch(std::exception const & e)
+      {
+      log_line("settings: the ini not read: {}; the defaults", e.what());
+      }
+    catch(...)
+      {
+      log_line("settings: the ini not read; the defaults");
+      }
     }
 
   auto refresh_live_settings() noexcept -> void
     {
-    static ULONGLONG looked{};
-    ULONGLONG const now{GetTickCount64()};
-    if(now - looked < 1000u or ini_path.empty())
-      return;
-    looked = now;
-    // 0: no ini now (removed while the game runs) - nothing read again, as for an unchanged one
-    std::uint64_t const written{write_time(ini_path)};
-    if(written == 0 or written == ini_written)
-      return;
-    ini_written = written;
     try
       {
-      settings_t const & in_use{*live.load(std::memory_order_relaxed)};
-      settings_t read{in_use};
-      std::vector<std::string> notes;
-      if(not read_ini(ini_path, read, notes))
-        return;
-      log_notes(notes);
-      settings_t & next{&in_use == &slots[0] ? slots[1] : slots[0]};
-      next = in_use;
-      std::string values;
-      for(key_t const & key: keys)
+      switch(ini_watch.look(GetTickCount64()))
         {
-        if(key.read != r::live)
-          continue;
-        copy_value(next, read, key.field);
-        ((values += values.empty() ? "" : ", ") += key.name) += ' ';
-        values += value_text(next, key.field);
+        case edplugin_common::ini_look_e::changed:
+          break;
+        case edplugin_common::ini_look_e::gone:
+          log_line("settings: {} taken away; the settings stay as they are until it is back", wide(ini_watch.path()));
+          return;
+        case edplugin_common::ini_look_e::not_due:
+        case edplugin_common::ini_look_e::same:
+          return;
         }
-      live.store(&next, std::memory_order_release);
-      settings_serial.fetch_add(1u, std::memory_order_release);
+      settings_t s{};
+      s.dir = settings().dir;
+      edplugin_common::ini_read_t read;
+      if(not read_into(s, read))
+        return;
+      edplugin_common::at_start_changes(table, s, read, settings(), told, read.notes);
+      log_notes(read.notes);
+      live.publish(s, table);
+      std::string values;
+      for(setting_t const & row: rows)
+        {
+        if(row.read != r::live)
+          continue;
+        ((values += values.empty() ? "" : ", ") += row.name) += ' ';
+        values += edplugin_common::ini_value_text(settings(), row.field);
+        }
       log_line("settings: read again: {}", values);
       }
     catch(std::exception const & e)
@@ -674,80 +442,45 @@ namespace edworld
       }
     }
 
-  auto complete_settings(std::wstring const & config_dir) noexcept -> void
+  auto write_settings_doc() noexcept -> bool
     {
     try
       {
-      std::wstring const path{stralgo::stl::merge(config_dir, L'\\', std::wstring_view{plugin_name}, L".ini"sv)};
-      std::optional<std::string> const read{read_text(path)};
-      if(not read)
+      settings_t const defaults{};
+      edplugin_common::ini_doc_rows_t<settings_t, setting_group_e> const doc_rows{table, defaults};
+      constexpr edplugin_common::settings_doc_t doc{
+        "edworld settings"sv,
+        "edworld from its table of settings (src/settings_log.cc, `EDWORLD_SETTINGS_DOC`)"sv,
+        "In `edworld.ini` (or `edworld_eht.ini`), beside the dll or in `edloader\\config`; how the file is made and kept: "
+        "[users.md](users.md#settings).\n"
+        "\n"
+        "- **Read while the game runs**: edworld looks at the ini at most once a second while it draws clouds (a planet "
+        "with an atmosphere on the screen, `clouds = 1`); a change shows within a second or two and the log has "
+        "`settings: read again: ...`.\n"
+        "- **Read at the game's start**: a change takes a new start of the game.\n"
+        "- **Range**: the values that make sense; *(clamped)* = edworld holds the value to it, elsewhere it does not check.\n"sv,
+        groups};
+      edplugin_common::settings_doc_result_t const r{edplugin_common::write_settings_doc(L"EDWORLD_SETTINGS_DOC", doc, doc_rows.rows())};
+      switch(r.status)
         {
-        // an ini that is there but cannot be read is not an empty one: nothing added to it
-        log_line("settings: {} could not be read; nothing added to it", wide(path));
-        return;
+        case edplugin_common::settings_doc_status_e::not_asked:
+          return true;
+        case edplugin_common::settings_doc_status_e::written:
+          log_line("settings: the settings' doc written to {}", wide(r.path));
+          return true;
+        case edplugin_common::settings_doc_status_e::path_too_long:
+          log_line("settings: the settings' doc not written: its path is 260 characters or longer ({}...)", wide(r.path));
+          break;
+        case edplugin_common::settings_doc_status_e::invalid:
+          log_line("settings: the settings' doc not written: {}", edplugin_common::settings_doc_error_name(r.error));
+          break;
+        case edplugin_common::settings_doc_status_e::cannot_open:
+          log_line("settings: the settings' doc {} cannot be made (error {})", wide(r.path), r.system_error);
+          break;
+        case edplugin_common::settings_doc_status_e::write_failed:
+          log_line("settings: writing the settings' doc {} failed (error {})", wide(r.path), r.system_error);
+          break;
         }
-      std::string const & ini{*read};
-      // status_file stays empty (Saved Games): the folder's full path holds the player's Windows user name, and players
-      // share their ini
-      settings_t const & running{current};
-      std::size_t count{};
-      std::string const lines{missing_lines(ini, running, count)};
-      if(count == 0)
-        return;
-      std::FILE * const f{_wfopen(path.c_str(), L"ab")};
-      if(not f)
-        {
-        log_line("settings: {} cannot be written (error {}); edworld runs on as it is", wide(path), errno);
-        return;
-        }
-      std::string text;
-      if(ini.empty())
-        text = "; edworld's settings, written at its first start. Take the ';' off the start of a line to change it;\n"
-               "; a change takes a new start of the game, but for those doc/settings.md lists as read while it runs.\n"
-               "; A line left as a comment follows edworld's default.\n";
-      else
-        text = stralgo::stl::merge(ini.back() == '\n' ? "\n"sv : "\n\n"sv, "; Settings this file did not name yet, added by edworld.\n"sv);
-      text += lines;
-      bool const written{std::fwrite(text.data(), 1, text.size(), f) == text.size()};
-      bool const closed{std::fclose(f) == 0};
-      if(path == ini_path)
-        ini_written = write_time(ini_path);  // edworld's own addition is no change to read again
-      if(written and closed)
-        log_line("settings: {} added to {}", count, wide(path));
-      else
-        log_line("settings: writing {} failed; edworld runs on as it is", wide(path));
-      }
-    catch(std::exception const & e)
-      {
-      log_line("settings: the ini not completed: {}", e.what());
-      }
-    catch(...)
-      {
-      log_line("settings: the ini not completed");
-      }
-    }
-
-  auto write_settings_doc() noexcept -> void
-    {
-    wchar_t path[MAX_PATH]{};
-    DWORD const n{GetEnvironmentVariableW(L"EDWORLD_SETTINGS_DOC", path, MAX_PATH)};
-    if(n == 0u or n >= MAX_PATH)
-      return;
-    try
-      {
-      std::string const doc{settings_doc()};
-      std::FILE * const f{_wfopen(path, L"wb")};
-      if(not f)
-        {
-        log_line("settings: the settings' doc {} cannot be written (error {})", wide(path), errno);
-        return;
-        }
-      bool const written{std::fwrite(doc.data(), 1, doc.size(), f) == doc.size()};
-      bool const closed{std::fclose(f) == 0};
-      if(written and closed)
-        log_line("settings: the settings' doc written to {}", wide(path));
-      else
-        log_line("settings: writing the settings' doc {} failed", wide(path));
       }
     catch(std::exception const & e)
       {
@@ -757,9 +490,8 @@ namespace edworld
       {
       log_line("settings: the settings' doc not written");
       }
+    return false;
     }
-
-  auto log_ini_notes() noexcept -> void { log_notes(ini_notes); }
 
   auto test_fault(char const * where) -> void
     {

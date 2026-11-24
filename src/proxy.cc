@@ -145,20 +145,34 @@ namespace
     return dir.empty() ? module_dir : dir;
     }
 
+  SRWLOCK open_lock = SRWLOCK_INIT;
+  bool opened{};                     ///< open_log_and_ini done, under open_lock
+  std::atomic<bool> game_started{};  ///< the game's start begun: the export edworld_write_settings_doc does nothing after it
+
+  ///\brief the log and the ini (the log's folder does not hang on the ini, so the ini's notes go straight to it): the
+  /// part of the start the export edworld_write_settings_doc shares, once in the process whichever comes first
+  auto open_log_and_ini_once() -> void
+    {
+    edworld::exclusive_lock_t const lock{open_lock};
+    if(opened)
+      return;
+    opened = true;
+    std::wstring const log_dir{directory_from(edplugin_common::edloader_log_dir_variable)};
+    edworld::log_open(log_dir, edworld::plugin_name);
+    edworld::log_line("{} {}, read-only d3d11 observer", wide(edworld::plugin_name), EDWORLD_VERSION);
+    edworld::log_line("edplugin_common {}", EDPLUGIN_COMMON_COMMIT);
+    edworld::start_settings(directory_from(edplugin_common::edloader_config_dir_variable), log_dir);
+    }
+
   BOOL CALLBACK init_callback(PINIT_ONCE, PVOID, PVOID *)
     {
+    game_started.store(true, std::memory_order_release);
     // the strings here may throw (out of memory): caught, so the game goes on, with the defaults and the next d3d11
     try
       {
-      std::wstring const log_dir{directory_from(edplugin_common::edloader_log_dir_variable)};
-      edworld::load_settings(directory_from(edplugin_common::edloader_config_dir_variable), log_dir);
-      edworld::log_open(log_dir, edworld::plugin_name);
-      edworld::log_ini_notes();  // what reading the ini at the start found wrong
-      edworld::log_line("{} {}, read-only d3d11 observer", wide(edworld::plugin_name), EDWORLD_VERSION);
-      edworld::log_line("edplugin_common {}", EDPLUGIN_COMMON_COMMIT);
+      open_log_and_ini_once();
       edworld::log_machine();
-      edworld::complete_settings(directory_from(edplugin_common::edloader_config_dir_variable));
-      edworld::write_settings_doc();
+      (void)edworld::write_settings_doc();
       }
     catch(std::exception const & e)
       {
@@ -503,6 +517,32 @@ extern "C" HRESULT WINAPI d3d11_proxy_impl_D3D11CreateDeviceAndSwapChain(
   if(made and not depth.reentrant() and by.kind != creator_e::foreign)
     edworld::attach_to_device(*device);
   return hr;
+  }
+
+///\brief for tools/doc.sh, not for the game: the log and the ini as at the game's start, then doc/settings.md to the
+/// file EDWORLD_SETTINGS_DOC names; no device, no hook and no next d3d11. 0 when done; 1 after a fault or a C++
+/// exception (in the log, with the open lock let go by the guard); 2, doing nothing, once the game's start has begun (a
+/// call in the game); 3 when the doc was asked and not written (in the log)
+extern "C" __declspec(dllexport) auto WINAPI edworld_write_settings_doc() noexcept -> int
+  {
+  if(game_started.load(std::memory_order_acquire))
+    {
+    edworld::log_line("settings: edworld_write_settings_doc after the game's start: nothing done (it is for tools/doc.sh)");
+    return 2;
+    }
+  int result{1};
+  edplugin_common::fault_t fault;
+  if(edplugin_common::run_guarded(
+       [&result]
+         {
+         open_log_and_ini_once();
+         result = edworld::write_settings_doc() ? 0 : 3;
+         },
+       fault))
+    return result;
+  char text[320];
+  edworld::log_line("settings: edworld_write_settings_doc: {}", edplugin_common::fault_line(fault, text));
+  return 1;
   }
 
 BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID)
