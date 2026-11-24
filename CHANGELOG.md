@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `edworld.ini.example` is gone: edworld writes its ini at its first start, every setting as a comment with
+  its default, and adds the settings a new version brings at later starts; one place for the settings, the code.
 - edworld's work in the game's calls and its threads run under edplugin_common's guard: a fault or a C++ exception is
   logged as before with its kind and, for a hardware fault, its place (`hooks: an access violation reading 0x... at <module>+0x... (n of 8)`,
   `thread <name>: ...`), the eighth still switches the observer off; now a stack overflow or a fault in another
