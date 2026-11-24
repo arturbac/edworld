@@ -4,9 +4,10 @@ What edworld takes from the game's frame, measured in the game and without it.
 
 `tools/bench.sh <build dir> <scratch> [<width> <height>]` measures edworld without the game: the clouds' volume pass
 under DXVK (its `d3d11.dll` and `dxgi.dll` from a game prefix, `EDWORLD_DXVK_DIR`) for the scenes of two planets,
-and the render thread's cost of a draw through edworld (`test_app.exe`, `EDWORLD_TEST_BENCH`). Each scene's median
-is compared with `test/data/bench/<card>-<width>x<height>.txt` (more than 15% slower: FAIL); `EDWORLD_BENCH_UPDATE=1`
-writes it again.
+and the render thread's cost of a draw through edworld (`test_app.exe`, `EDWORLD_TEST_BENCH`; one run varies by tens
+of percent, so it runs `EDWORLD_BENCH_CPU_RUNS` times, 5 unless set, 1 to 2 s each, and gives each number's median).
+Each scene's median is compared with `test/data/bench/<card>-<width>x<height>.txt` (more than 15% slower: FAIL);
+`EDWORLD_BENCH_UPDATE=1` writes it again.
 
 The bench against the game (2026-11-18, RX 7900 XTX, DXVK, 9000x2160 at a 60 fps limit, Bleia Eohn IY-B c16-6 1,
 CarbonDioxide, radius 3687 km, `aurora_activity = 7`; the game's numbers are the `clouds gpu 5s` medians):

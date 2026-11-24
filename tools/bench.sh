@@ -4,7 +4,9 @@
 #   two planets (by day and by night with the aurora at K 7, inside the layer, each also without the aurora) at the
 #   game's picture size, under DXVK as the game is (its d3d11.dll and dxgi.dll copied from a game's prefix);
 # - the render thread: a draw (VSSetShader + DrawIndexed) through edworld against one past it (test_app.exe with
-#   EDWORLD_TEST_BENCH), under wine's own d3d11.
+#   EDWORLD_TEST_BENCH), under wine's own d3d11; one run varies by tens of percent, so it runs
+#   EDWORLD_BENCH_CPU_RUNS times (5 unless set, 1 to 2 s each) and each number is the runs' median (each on its own:
+#   the median "edworld" need not be the median "through" less the median "without").
 # The numbers are written to <scratch>/bench-<UTC>.txt; compared with test/data/bench/<card>.txt when it is there
 # (more than 15% slower: FAIL), made again with EDWORLD_BENCH_UPDATE=1.
 # Usage: tools/bench.sh <build dir> <scratch dir> [<width> <height>]   (default 1920 1080)
@@ -32,7 +34,29 @@ cp "$BUILD/test/render_test.exe" "$EDWORLD_DXVK_DIR/d3d11.dll" "$EDWORLD_DXVK_DI
 cp "$BUILD/test/edworld_eht/test_app.exe" "$RUN/cpu/"
 cp "$BUILD/edworld_eht/edworld_eht.dll" "$RUN/cpu/d3d11.dll"
 (cd "$RUN/gpu" && WINEDEBUG=-all DXVK_LOG_LEVEL=none WINEDLLOVERRIDES="d3d11,dxgi=n" wine render_test.exe pictures --bench "$WIDTH" "$HEIGHT" > out.txt 2>&1)
-(cd "$RUN/cpu" && EDWORLD_TEST_BENCH=1 WINEDEBUG=-all WINEDLLOVERRIDES="d3d11=n,b" wine test_app.exe > out.txt 2>&1)
+CPU_RUNS=${EDWORLD_BENCH_CPU_RUNS:-5}
+[[ $CPU_RUNS =~ ^[1-9][0-9]*$ ]] || { echo "$0: EDWORLD_BENCH_CPU_RUNS must be a whole number from 1" >&2; exit 1; }
+for i in $(seq 1 "$CPU_RUNS"); do
+  (cd "$RUN/cpu" && EDWORLD_TEST_BENCH=1 WINEDEBUG=-all WINEDLLOVERRIDES="d3d11=n,b" wine test_app.exe > "out-$i.txt" 2>&1) ||
+    { echo "$0: the CPU run $i of $CPU_RUNS failed (exit $?), its output: $RUN/cpu/out-$i.txt" >&2; exit 1; }
+done
+# the median of each number over the runs, in the line's own form
+grep -h '^bench cpu:' "$RUN"/cpu/out-*.txt | awk -v runs="$CPU_RUNS" '
+  function median(a, n,    i, j, t) {
+    for(i = 2; i <= n; ++i) for(j = i; j > 1 && a[j - 1] > a[j]; --j) { t = a[j]; a[j] = a[j - 1]; a[j - 1] = t }
+    return n % 2 ? a[(n + 1) / 2] : (a[n / 2] + a[n / 2 + 1]) / 2 }
+  # the line test_app.cc prints: "bench cpu: a draw (VSSetShader + DrawIndexed) <t> us through edworld, <w> us
+  # without it, edworld <e> us" (wine writes it with CR LF); any other shape stops the bench instead of giving a median
+  # of other words
+  { sub(/\r$/, "") }
+  NF != 18 || $9 != "us" || $13 != "us" || $18 != "us" || $8 !~ /^[0-9.]+$/ || $12 !~ /^[0-9.]+$/ || $17 !~ /^-?[0-9.]+$/ {
+    print "bench cpu: a line not of the known shape: " $0 > "/dev/stderr"; bad = 1; exit 1 }
+  { ++n; through[n] = $8; without[n] = $12; own[n] = $17 }
+  END {
+    if(bad) exit 1
+    if(n != runs) { print "bench cpu: " n " lines from " runs " runs" > "/dev/stderr"; exit 1 }
+    printf "bench cpu: a draw (VSSetShader + DrawIndexed) %.3f us through edworld, %.3f us without it, edworld %.3f us (median of %d runs)\n",
+      median(through, n), median(without, n), median(own, n), n }' > "$RUN/cpu/out.txt"
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 OUT="$SCR/bench-$STAMP.txt"
 {

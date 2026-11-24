@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- tools/bench.sh: the render thread's cost of a draw is the median of `EDWORLD_BENCH_CPU_RUNS` runs (5 unless set,
+  1 to 2 s each); one run varied by tens of percent. A line of another shape, or a failed run, stops the bench.
 - The folders, files, shared files, the game's build, the shaders' hash and the rules on formats are edplugin_common's.
   For the player: an `edworld.ini` (`edworld_eht.ini`) that is there but cannot be read gets nothing added, with a
   line in the log (before, it was read as an empty one and every setting was added to it); a folder from edloader, the
