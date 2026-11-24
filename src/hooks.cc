@@ -2155,7 +2155,7 @@ namespace edworld
     // 12000: at a carrier (2026-10-22) the frame held more than 4000 draws before the holograms' (drawn near its end)
     constexpr std::uint32_t full_max_draws{12000};
     constexpr std::uint32_t full_cb_bytes{1024};
-    bool full_armed{};
+    std::atomic<bool> full_armed{};  // read by every context's draw hook (another one only counts itself)
     std::uint64_t full_frame{};
     std::uint32_t full_draws{};
     LONGLONG last_full_check{};
@@ -2277,11 +2277,11 @@ namespace edworld
 
     auto check_full(LONGLONG now, bool panels) -> void
       {
-      if(full_armed)
+      if(full_armed.load(std::memory_order_relaxed))
         {
         if(frame > full_frame)
           {
-          full_armed = false;
+          full_armed.store(false, std::memory_order_relaxed);
           full_done_waiting = true;
           full_done_draws = full_draws;
           if(full_last_rt)
@@ -2332,7 +2332,7 @@ namespace edworld
       for(std::atomic<ID3D11DeviceContext *> & slot: full_other)
         slot.store(nullptr);
       full_armed_qpc = now;
-      full_armed = true;
+      full_armed.store(true, std::memory_order_relaxed);
       full_frame = frame;
       full_draws = 0;
       full_text_used = 0;
@@ -2378,7 +2378,7 @@ namespace edworld
       if(panels)
         check_trigger(now);
       check_full(now, panels);
-      if(full_done_waiting and not full_armed and pending_count == 0 and pending_buffer_count == 0)
+      if(full_done_waiting and not full_armed.load(std::memory_order_relaxed) and pending_count == 0 and pending_buffer_count == 0)
         finish_full();
       if constexpr(not with_eht)
         return;
@@ -2776,7 +2776,7 @@ namespace edworld
 
     auto full_dump_wanted(LONGLONG now) -> bool
       {
-      if(full_armed or full_done_waiting or pending_count or pending_buffer_count or full_dump_request.load(std::memory_order_relaxed))
+      if(full_armed.load(std::memory_order_relaxed) or full_done_waiting or pending_count or pending_buffer_count or full_dump_request.load(std::memory_order_relaxed))
         return true;
       if((now - last_panel_less_check) * 1000 / qpc_frequency < 500)
         return false;
@@ -2875,8 +2875,7 @@ namespace edworld
 
     auto watched_draw(ID3D11DeviceContext * ctx) noexcept -> bool
       {
-      return current_watched >= 0 and ctx == immediate.load(std::memory_order_relaxed)
-             and not hooks_off();
+      return ctx == immediate.load(std::memory_order_relaxed) and current_watched >= 0 and not hooks_off();
       }
 
     ///\brief a shader into the watched list; `found` = not listed in watch_vs (any thread)
@@ -5076,7 +5075,7 @@ namespace edworld
         },
         [&]() noexcept
         {
-          full_armed = false;
+          full_armed.store(false, std::memory_order_relaxed);
         });
       --own_depth;
       // the dump's own work (copies of whole targets, milliseconds) is no gap of the game's: it must not end the frame
@@ -5821,7 +5820,7 @@ namespace edworld
       census_note(self);
       if(not hooks_off())
         guarded_frame_without_panels(self);
-      if(full_armed)
+      if(full_armed.load(std::memory_order_relaxed))
         {
         if(self == immediate.load(std::memory_order_relaxed))
           guarded_full(self, 'i', index_count, 1, start_index, base_vertex, 0);
@@ -5829,26 +5828,26 @@ namespace edworld
           note_full_other(self);
         }
       bool const watched{watched_draw(self)};
-      if(index_count == 6u and holo_rt_count and not hooks_off() and
-         self == immediate.load(std::memory_order_relaxed))
+      if(index_count == 6u and self == immediate.load(std::memory_order_relaxed) and holo_rt_count
+         and not hooks_off())
         guarded_laying_over(self);
-      if(current_holo < max_vs_seen and not hooks_off() and self == immediate.load(std::memory_order_relaxed))
+      if(self == immediate.load(std::memory_order_relaxed) and current_holo < max_vs_seen and not hooks_off())
         guarded_hologram(self, index_count, start_index, base_vertex, 0);
       if(watched)
         guarded_observe(self, index_count, 1, start_index, base_vertex, 0);
       else
         {
-        if(current_pending < max_vs_seen and self == immediate.load(std::memory_order_relaxed))
+        if(self == immediate.load(std::memory_order_relaxed) and current_pending < max_vs_seen)
           guarded_classify(self);
         if(probe_request.load(std::memory_order_relaxed))
           guarded_probe(self, index_count, 1);
         }
 #if defined(EDWORLD_EHT)
-      if(current_galmap and settings().galmap and self == immediate.load(std::memory_order_relaxed) and not hooks_off())
+      if(self == immediate.load(std::memory_order_relaxed) and current_galmap and settings().galmap and not hooks_off())
         guarded_galmap(self, index_count, start_index, base_vertex);
 #endif
       orig_draw_indexed(self, index_count, start_index, base_vertex);
-      if(full_after_draw and self == immediate.load(std::memory_order_relaxed))
+      if(self == immediate.load(std::memory_order_relaxed) and full_after_draw)
         guarded_full_after(self);
       if(watched)
         guarded_after(self, index_count, start_index, base_vertex, 0);
@@ -5862,7 +5861,7 @@ namespace edworld
       census_note(self);
       if(not hooks_off())
         guarded_frame_without_panels(self);
-      if(full_armed)
+      if(full_armed.load(std::memory_order_relaxed))
         {
         if(self == immediate.load(std::memory_order_relaxed))
           guarded_full(self, 'd', vertex_count, 1, start_vertex, 0, 0);
@@ -5873,13 +5872,13 @@ namespace edworld
         guarded_observe(self, vertex_count, 1, start_vertex, 0, 0);
       else
         {
-        if(current_pending < max_vs_seen and self == immediate.load(std::memory_order_relaxed))
+        if(self == immediate.load(std::memory_order_relaxed) and current_pending < max_vs_seen)
           guarded_classify(self);
         if(probe_request.load(std::memory_order_relaxed))
           guarded_probe(self, vertex_count, 1);
         }
       orig_draw(self, vertex_count, start_vertex);
-      if(full_after_draw and self == immediate.load(std::memory_order_relaxed))
+      if(self == immediate.load(std::memory_order_relaxed) and full_after_draw)
         guarded_full_after(self);
       guarded_build_info(self);
       note_draw_end(self);
@@ -5899,9 +5898,9 @@ namespace edworld
       census_note(self);
       if(not hooks_off())
         guarded_frame_without_panels(self);
-      if(current_shell and census_on.load(std::memory_order_relaxed))
+      if(census_on.load(std::memory_order_relaxed) and self == immediate.load(std::memory_order_relaxed) and current_shell)
         census_add(census_shell);
-      if(full_armed)
+      if(full_armed.load(std::memory_order_relaxed))
         {
         if(self == immediate.load(std::memory_order_relaxed))
           guarded_full(self, 'I', index_count, instance_count, start_index, base_vertex, start_instance);
@@ -5909,22 +5908,22 @@ namespace edworld
           note_full_other(self);
         }
       bool const watched{watched_draw(self)};
-      if(index_count == 6u and holo_rt_count and not hooks_off() and
-         self == immediate.load(std::memory_order_relaxed))
+      if(index_count == 6u and self == immediate.load(std::memory_order_relaxed) and holo_rt_count
+         and not hooks_off())
         guarded_laying_over(self);
-      if(current_holo < max_vs_seen and not hooks_off() and self == immediate.load(std::memory_order_relaxed))
+      if(self == immediate.load(std::memory_order_relaxed) and current_holo < max_vs_seen and not hooks_off())
         guarded_hologram(self, index_count, start_index, base_vertex, start_instance);
       if(watched)
         guarded_observe(self, index_count, instance_count, start_index, base_vertex, start_instance);
       else
         {
-        if(current_pending < max_vs_seen and self == immediate.load(std::memory_order_relaxed))
+        if(self == immediate.load(std::memory_order_relaxed) and current_pending < max_vs_seen)
           guarded_classify(self);
         if(probe_request.load(std::memory_order_relaxed))
           guarded_probe(self, index_count, instance_count);
         }
 #if defined(EDWORLD_EHT)
-      if(current_galmap and settings().galmap and self == immediate.load(std::memory_order_relaxed) and not hooks_off())
+      if(self == immediate.load(std::memory_order_relaxed) and current_galmap and settings().galmap and not hooks_off())
         guarded_galmap(self, index_count, start_index, base_vertex);
 #endif
       orig_draw_indexed_instanced(self, index_count, instance_count, start_index, base_vertex, start_instance);
@@ -5936,7 +5935,7 @@ namespace edworld
       if(self == immediate.load(std::memory_order_relaxed) and current_shell and settings().clouds
          and not hooks_off())
         guarded_clouds(self, index_count, instance_count, start_index, base_vertex, start_instance);
-      if(full_after_draw and self == immediate.load(std::memory_order_relaxed))
+      if(self == immediate.load(std::memory_order_relaxed) and full_after_draw)
         guarded_full_after(self);
       if(watched)
         guarded_after(self, index_count, start_index, base_vertex, start_instance);
@@ -5956,7 +5955,7 @@ namespace edworld
       census_note(self);
       if(not hooks_off())
         guarded_frame_without_panels(self);
-      if(full_armed)
+      if(full_armed.load(std::memory_order_relaxed))
         {
         if(self == immediate.load(std::memory_order_relaxed))
           guarded_full(self, 'D', vertex_count, instance_count, start_vertex, 0, start_instance);
@@ -5967,13 +5966,13 @@ namespace edworld
         guarded_observe(self, vertex_count, instance_count, start_vertex, 0, start_instance);
       else
         {
-        if(current_pending < max_vs_seen and self == immediate.load(std::memory_order_relaxed))
+        if(self == immediate.load(std::memory_order_relaxed) and current_pending < max_vs_seen)
           guarded_classify(self);
         if(probe_request.load(std::memory_order_relaxed))
           guarded_probe(self, vertex_count, instance_count);
         }
       orig_draw_instanced(self, vertex_count, instance_count, start_vertex, start_instance);
-      if(full_after_draw and self == immediate.load(std::memory_order_relaxed))
+      if(self == immediate.load(std::memory_order_relaxed) and full_after_draw)
         guarded_full_after(self);
       guarded_build_info(self);
       note_draw_end(self);
