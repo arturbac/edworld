@@ -312,8 +312,8 @@ The ini and log names are fixed by the build, not taken from the dll's file name
     The planetary construction site (13083 indices) is flat along Y, most of its faces facing +Y, and the ship's up on
     its pad was +Y: one plane, the ground's, without the nose. The table is `pad_planes` (carriers and the site). Players' fleet carriers (one plane of
     pads) and the colonisation carrier (mirrored pads on two sides) come once their models are sampled.
-  - The pads learned (2026-10-23): `holo_db.py scan` also reads edworld_eht's logs beside `<edworld_models dir>` and the
-    journal. At each Docked after a grant the log told (`state: pad <n> given`, so a docking of the other commander,
+  - The pads learned (2026-10-23): `holo_db.py scan` also reads edworld_eht's logs beside `<edworld_models dir>` (with
+    the sessions set aside in its `edworld_eht/`) and the journal. At each Docked after a grant the log told (`state: pad <n> given`, so a docking of the other commander,
     whose grant is in another log, counts nowhere), the first model of `pad_planes` the hologram shows in the minute
     after Docked, until another shows (a target chosen next), gives the ship's up and nose in the model's axes - docked,
     the hologram holds the ship's frame (PRNH pads 5, 18, 21: the wing's 22.5 degrees each side). One row per model,
@@ -593,7 +593,8 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   destination's allegiance and factions (how many, from which source), and, when `log_interval_ms` is set (`0`, off,
   by default; `1000` once a second), a summary: in edworld_eht the frame's panel draws
   with surface size and anchor in NDC, in edworld the draw and fault totals. A line is written at once (one queued for
-  later would be lost in a crash of the game); the summary's lines go out in one write (`log_batch_begin`/`_end`). A fault in edworld's own work is caught; eight of them switch the observer off, never the game call.
+  later would be lost in a crash of the game); the summary's lines go out in one write (`log_batch_begin`/`_end`,
+  edplugin_common's). A fault in edworld's own work is caught; eight of them switch the observer off, never the game call.
   Each guard (`guarded_*` in `src/hooks.cc`) catches hardware faults and C++ exceptions alike, and its filter
   (`fault_filter`) logs each of the first 16 with its code and place (`hooks: a fault caught (exception ... at
   <module>+<offset>)`). The functions a guard calls are not `noexcept`: a C++ exception (out of memory) thrown below
@@ -629,8 +630,10 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   and copies are made again when the surface's format changes. Loops in the shaders end at constants: the clouds'
   march at 256 steps (the settings held to 1..256), the storms at 8; the pixels read by `Load` are held inside
   their textures.
-  One file per game session: at start, the last session's `<plugin>.log` is renamed `<plugin>.<UTC>.log` (the time it
-  was last written); EHT's backup compresses those into its own directory and removes them from the game's folder.
+  One file per game session (edplugin_common's `log_open`): at start, the last session's `<plugin>.log` is moved to
+  `<plugin>\<plugin>.<UTC>.log` beside it (the time it was last written; the sessions edworld set aside before, as
+  `<plugin>.<UTC>.log` beside the log, stay there). Installed alone in the game's folder, EHT's backup compresses
+  those in the game's folder into its own directory and removes them; edloader's `logs` folder it leaves alone.
 
 ## Build
 
@@ -674,7 +677,8 @@ smoke test's programs. stralgo (strings put together with its `merge`) and small
 (`edplugin_common/cmake/get_cpm.cmake`) from GitHub; with `-DCPM_SOURCE_CACHE=<a filled cache>
 -DFETCHCONTENT_FULLY_DISCONNECTED=ON` the configure needs no network. The log: `log_line` takes a `std::format` format
 checked against its arguments when compiled and hands it to `log_vline` (`std::vformat_to` into 2 KB on the stack, the
-line cut there, never thrown; a batch gathers lines as before); a wide string goes in as `wide(...)` (UTF-8). SRW
+line cut there, never thrown; a batch gathers one thread's lines); `log_open`, the lines and batches are edplugin_common's
+`log` module, brought into `edworld` by using-declarations in `runtime.h`; a wide string goes in as `wide(...)` (UTF-8). SRW
 locks are held by `exclusive_lock_t` / `shared_lock_t` for a scope (both from edplugin_common). An enumeration in a
 log line comes out by its name through simple_enum (`simple_enum/std_format.hpp` in `runtime.h`); D3D11's own get
 their bounds in `src/d3d11_enum_names.h`.
@@ -715,9 +719,9 @@ their bounds in `src/d3d11_enum_names.h`.
 
 ## Settings (`<plugin>.ini`)
 
-Loaded through edloader, `<plugin>.ini` is in edloader's `config\` and `<plugin>.log` in its `logs\` (the
-folders edloader hands its plugins in `EDLOADER_CONFIG_DIR` and `EDLOADER_LOG_DIR`). Installed alone as the
-game's `d3d11.dll`, both are beside the dll.
+Loaded through edloader, `<plugin>.ini` is in edloader's `config\` and `<plugin>.log` in its `logs\`, the past
+sessions in `logs\<plugin>\` (the folders edloader hands its plugins in `EDLOADER_CONFIG_DIR` and
+`EDLOADER_LOG_DIR`). Installed alone as the game's `d3d11.dll`, all are beside the dll.
 
 Comments are whole lines starting with `;` or `#`, or follow a value after a space (`clouds = 1 ; on`); in a path, a folder or a dll's name (`status_file`, `shm_dir`, `next`) the whole rest of the line is the value.
 

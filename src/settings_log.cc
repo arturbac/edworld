@@ -43,15 +43,6 @@ namespace edworld
       WIN32_FILE_ATTRIBUTE_DATA data{};
       return GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data) ? data.ftLastWriteTime : FILETIME{};
       }
-    // Windows' own file, not a CRT stream: a thread killed at the game's exit in the middle of a write leaves no stream
-    // half done for the CRT's closing of all streams at edworld's unload (the 0xC0000409 of 2026-11-17)
-    HANDLE log_file{INVALID_HANDLE_VALUE};
-    SRWLOCK log_lock = SRWLOCK_INIT;  ///< no std::mutex: its lock may throw, and log_line runs where nothing may
-    // the lines of a batch (log_batch_begin): one thread's at a time (the render thread's summary), the others write
-    // theirs at once; no thread_local, which would give each of the game's threads a buffer
-    std::atomic<DWORD> log_batch_thread{};
-    char log_batch[16384];
-    std::size_t log_batch_used{};
 
     auto trim(std::string_view s) -> std::string_view
       {
@@ -594,7 +585,7 @@ namespace edworld
     {
     std::wstring ini_path;
 
-    ///\brief what reading the ini found wrong, said in the log: at the start once the log is open (log_open), later at once
+    ///\brief what reading the ini found wrong, said in the log: at the start once the log is open (log_ini_notes), later at once
     std::vector<std::string> ini_notes;
 
     auto read_ini(std::wstring const & path, settings_t & s, std::vector<std::string> & notes) -> bool
@@ -654,7 +645,7 @@ namespace edworld
     ini_path = stralgo::stl::merge(config_dir, L'\\', std::wstring_view{plugin_name}, L".ini"sv);
     // the time first: a change made after it, before the first refresh, is read then (and not taken for this read)
     ini_written = ini_write_time(ini_path);
-    read_ini(ini_path, current, ini_notes);  // its notes go to the log once it is open (log_open)
+    read_ini(ini_path, current, ini_notes);  // its notes go to the log once it is open (log_ini_notes)
     }
 
   auto refresh_live_settings() noexcept -> void
@@ -781,27 +772,7 @@ namespace edworld
       }
     }
 
-  // One file per game session: the last session's log is set aside under the time it was last written,
-  // <plugin>.<UTC>.log, before this one starts - the tool beside the game takes those away (EHT's backup).
-  auto log_open(std::wstring const & dir) -> void
-    {
-    std::wstring const path{stralgo::stl::merge(dir, L'\\', std::wstring_view{plugin_name}, L".log"sv)};
-    bool set_aside_failed{};
-    WIN32_FILE_ATTRIBUTE_DATA a{};
-    if(GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &a) and (a.nFileSizeHigh != 0 or a.nFileSizeLow != 0))
-      {
-      SYSTEMTIME t{};
-      FileTimeToSystemTime(&a.ftLastWriteTime, &t);
-      wchar_t aside[64];
-      format_into(aside, 64, L"\\{}.{:04}{:02}{:02}T{:02}{:02}{:02}Z.log", plugin_name, t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
-      set_aside_failed = not MoveFileExW(path.c_str(), stralgo::stl::merge(dir, std::wstring_view{aside}).c_str(), 0);
-      }
-    log_file = CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
-                           OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if(set_aside_failed)
-      log_line("log: the last session's log could not be set aside (error {}); appending to it", GetLastError());
-    log_notes(ini_notes);  // what reading the ini at the start found wrong
-    }
+  auto log_ini_notes() noexcept -> void { log_notes(ini_notes); }
 
   auto write_whole_file(wchar_t const * path, void const * data, std::size_t bytes) noexcept -> bool
     {
@@ -878,94 +849,5 @@ namespace edworld
       }
     log_line("thread {}: stopped after {} fault(s)", name, attempts);
     return 0;
-    }
-
-  namespace
-    {
-    ///\brief the room a log line is made in, and an output iterator that stops at its end
-    struct cut_buffer_t
-      {
-      char * at;
-      char * end;
-      };
-
-    struct cut_out_t
-      {
-      using difference_type = std::ptrdiff_t;
-      cut_buffer_t * b;
-
-      auto operator*() noexcept -> cut_out_t & { return *this; }
-
-      auto operator=(char c) noexcept -> cut_out_t &
-        {
-        if(b->at != b->end)
-          *b->at++ = c;
-        return *this;
-        }
-
-      auto operator++() noexcept -> cut_out_t & { return *this; }
-
-      auto operator++(int) noexcept -> cut_out_t { return *this; }
-      };
-    }  // namespace
-
-  auto log_vline(std::string_view fmt, std::format_args args) noexcept -> void
-    {
-    if(log_file == INVALID_HANDLE_VALUE)
-      return;
-    SYSTEMTIME t;
-    GetSystemTime(&t);
-    char buf[2048];
-    cut_buffer_t room{buf, buf + sizeof buf - 1};  // one byte kept for the line's end
-    try
-      {
-      std::format_to(cut_out_t{&room}, "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z ", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond,
-                     t.wMilliseconds);
-      std::vformat_to(cut_out_t{&room}, fmt, args);
-      }
-    catch(...)
-      {
-      constexpr std::string_view failed{" (log: the rest of this line could not be formatted)"};
-      for(char const c: failed)
-        if(room.at != room.end)
-          *room.at++ = c;
-      }
-    *room.at++ = '\n';
-    std::size_t const n{static_cast<std::size_t>(room.at - buf)};
-    if(log_batch_thread.load(std::memory_order_relaxed) == GetCurrentThreadId())
-      {
-      if(log_batch_used + n > sizeof log_batch)
-        {
-        log_batch_end();  // full: what is gathered goes out, the batch goes on
-        log_batch_begin();
-        }
-      std::memcpy(log_batch + log_batch_used, buf, n);
-      log_batch_used += n;
-      return;
-      }
-    DWORD written{};
-    exclusive_lock_t const hold{log_lock};
-    WriteFile(log_file, buf, static_cast<DWORD>(n), &written, nullptr);
-    }
-
-  auto log_batch_begin() noexcept -> void
-    {
-    DWORD expected{};
-    log_batch_thread.compare_exchange_strong(expected, GetCurrentThreadId());  // another thread's batch: this one's at once
-    }
-
-  auto log_batch_end() noexcept -> void
-    {
-    if(log_batch_thread.load(std::memory_order_relaxed) != GetCurrentThreadId())
-      return;
-    log_batch_thread.store(0, std::memory_order_relaxed);
-    if(log_batch_used == 0)
-      return;
-    DWORD written{};
-      {
-      exclusive_lock_t const hold{log_lock};
-      WriteFile(log_file, log_batch, static_cast<DWORD>(log_batch_used), &written, nullptr);
-      }
-    log_batch_used = 0;
     }
   }  // namespace edworld

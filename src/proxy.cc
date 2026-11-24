@@ -155,7 +155,8 @@ namespace
       {
       std::wstring const log_dir{directory_from(L"EDLOADER_LOG_DIR")};
       edworld::load_settings(directory_from(L"EDLOADER_CONFIG_DIR"), log_dir);
-      edworld::log_open(log_dir);
+      edworld::log_open(log_dir, edworld::plugin_name);
+      edworld::log_ini_notes();  // what reading the ini at the start found wrong
       edworld::log_line("{} {}, read-only d3d11 observer", wide(edworld::plugin_name), EDWORLD_VERSION);
       edworld::log_line("edplugin_common {}", EDPLUGIN_COMMON_COMMIT);
       edworld::log_machine();

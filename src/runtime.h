@@ -6,6 +6,7 @@
 #include <d3d11.h>
 
 #include <edplugin_common/core/lock.h>
+#include <edplugin_common/log/log.h>
 #include <edplugin_common/text/format.h>
 
 #include <atomic>
@@ -425,7 +426,9 @@ namespace edworld
   /// After log_open: a failure is logged, the game goes on
   auto write_settings_doc() noexcept -> void;
 
-  auto log_open(std::wstring const & dir) -> void;
+  ///\brief the notes reading the ini at the start found (load_settings) said in the log; after log_open
+  auto log_ini_notes() noexcept -> void;
+
   using edplugin_common::as_unsigned;
   using edplugin_common::exclusive_lock_t;
   using edplugin_common::shared_lock_t;
@@ -433,8 +436,14 @@ namespace edworld
   using edplugin_common::utf8_t;
   using edplugin_common::wide;
   using edplugin_common::wide_t;
-
-  auto log_vline(std::string_view fmt, std::format_args args) noexcept -> void;
+  // the log is edplugin_common's: <plugin_name>.log, the last session's set aside in the folder <plugin_name>
+  // beside it
+  using edplugin_common::log_batch_begin;
+  using edplugin_common::log_batch_end;
+  using edplugin_common::log_is_open;
+  using edplugin_common::log_line;
+  using edplugin_common::log_open;
+  using edplugin_common::log_vline;
 
   ///\brief std::format into `size` characters at `buf`, as snprintf did: cut at the end, NUL-terminated; the characters
   /// written (without the NUL). Never thrown: a text that cannot be made is empty, and logged
@@ -455,18 +464,6 @@ namespace edworld
     return format_into(&buf[0], size, fmt, std::forward<args_t>(args)...);
     }
 
-  ///\brief one line, time-stamped (UTC), cut to 2 KB, written at once under the log's lock (or gathered in a batch, log_batch_begin); a line that cannot be made
-  /// is logged as such (never thrown)
-  auto log_vline(std::string_view fmt, std::format_args args) noexcept -> void;
-
-  ///\brief log_vline with the format checked against its arguments when compiled
-  template<typename... args_t>
-  auto log_line(std::format_string<args_t...> fmt, args_t &&... args) noexcept -> void
-    {
-    log_vline(fmt.get(), std::make_format_args(args...));
-    }
-  auto log_batch_begin() noexcept -> void;
-  auto log_batch_end() noexcept -> void;
 
   ///\brief a whole file written with Windows' own calls (no CRT stream a thread killed at the game's exit could leave
   /// half done): false, logged, and the partial file removed when not all of it was written

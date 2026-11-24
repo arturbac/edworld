@@ -160,11 +160,13 @@ run_variant() {  # $1 = edworld | edworld_eht; sets rc on failure
   wine_common_exec EDWORLD_TEST_NEXT=fake_next.dll WINEDLLOVERRIDES="d3d11=n,b" -- test_app.exe
   r=$?; [[ $r -eq 0 ]] || rc=1
   set -e
-  # sessions in one directory: all but the last set aside as <plugin>.<UTC>.log when the next began
-  local aside
-  aside=$(ls | grep -cE "^$V\.[0-9]{8}T[0-9]{6}Z\.log\$" || true)
-  echo "--- sessions set aside: $aside (expected $((sessions - 1)))"
-  [[ $aside -eq $((sessions - 1)) ]] || rc=1
+  # sessions in one directory: all but the last set aside as <plugin>\<plugin>.<UTC>.log when the next began
+  # (edplugin_common's log), none beside the log
+  local aside beside
+  aside=$({ ls "$V" 2> /dev/null || true; } | grep -cE "^$V\.[0-9]{8}T[0-9]{6}Z\.log\$" || true)
+  beside=$(ls | grep -cE "^$V\.[0-9]{8}T[0-9]{6}Z\.log\$" || true)
+  echo "--- sessions set aside in $V/: $aside (expected $((sessions - 1))), beside the log: $beside (expected 0)"
+  [[ $aside -eq $((sessions - 1)) && $beside -eq 0 ]] || rc=1
   [[ -e $V.log && ! -e d3d11.ini && ! -e d3d11.log ]] || { echo "FAIL: log not named after the build, or files named after the dll"; rc=1; }
   echo "--- $V.log"
   head -40 $V.log 2>/dev/null

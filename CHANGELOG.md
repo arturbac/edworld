@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The log is edplugin_common's: the last session's log is moved to the folder `edworld\` (`edworld_eht\`) beside
+  the log as `<plugin>.<UTC>.log`, no more beside it (the sessions set aside before stay where they are; holo_db
+  reads both). Its batch of lines no longer loses or repeats another thread's lines while it is written, and the
+  line about a log that could not be set aside gives the code of the move's failure (before, of the opening).
 - Built with edplugin_common 1.0.0, the library the plugins share: a clone in the plugin's directory on the commit
   `edplugin_common.commit` pins. Without the clone the build stops with the commands that make it; another commit or
   changes in it are a warning, and an error in a release build. The log says the library's commit in a line of its

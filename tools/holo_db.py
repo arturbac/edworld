@@ -14,14 +14,15 @@
 #                                         builds it was seen on, with its fingerprint (the owner's script that builds them in)
 #   holo_db.py header <db dir>            the pads of the confirmed models into src/holo_pads_generated.h (the same script)
 #   holo_db.py --self-test
-# The pads (2026-10-23): scan also reads edworld_eht's logs beside <edworld_models dir> and the journal: at each Docked
-# after a grant the log told (`state: pad <n> given`), the hologram's axes in the minute after it give the ship's up and
-# nose in the model's axes - docked, the ship holds still on its pad. One row a model, a station and a pad, its looks
-# put together. A pad is no one's to confirm (2026-10-24): it stands on the model the hologram showed, so it goes to
-# edworld_eht once that model is confirmed in the form with a role of a place to dock at (DOCK_ROLES), and is left out when
-# the model is confirmed as anything else (a ship, a planet); a docking off the model's planes is left out on its own,
-# and of noses that differ the most dockings' is taken. scan also keeps each sample's fingerprint from the log
-# ("hologram model fingerprint"), so `models-header` gives edworld_eht the confirmed models on their builds (2026-10-24).
+# The pads (2026-10-23): scan also reads edworld_eht's logs beside <edworld_models dir> (with the sessions set aside in
+# its edworld_eht/) and the journal: at each Docked after a grant the log told (`state: pad <n> given`), the hologram's
+# axes in the minute after it give the ship's up and nose in the model's axes - docked, the ship holds still on its pad.
+# One row a model, a station and a pad, its looks put together. A pad is no one's to confirm (2026-10-24): it stands on
+# the model the hologram showed, so it goes to edworld_eht once that model is confirmed in the form with a role of a
+# place to dock at (DOCK_ROLES), and is left out when the model is confirmed as anything else (a ship, a planet); a
+# docking off the model's planes is left out on its own, and of noses that differ the most dockings' is taken. scan also
+# keeps each sample's fingerprint from the log ("hologram model fingerprint"), so `models-header` gives edworld_eht the
+# confirmed models on their builds (2026-10-24).
 # One row is one model: the samples of the same mesh (vertices, triangles, the box's proportions) on any build of the
 # game, so a model an update renumbered stays one row. A row with no picture waits for one: it cannot be confirmed
 # and gives no header row. Reads the samples and the journals, writes only into <db dir>.
@@ -535,12 +536,21 @@ def read_log(path, models):
     return grants, axes
 
 
+def edworld_logs(logs_dir):
+    """edworld_eht's logs in logs_dir in time order: the sessions set aside in its directory edworld_eht/ (and beside
+    it, as edworld set them aside before edplugin_common's log) by name - the name is the UTC of a session's last
+    write - then this session's edworld_eht.log"""
+    d = Path(logs_dir)
+    found = [f for where in (d, d / "edworld_eht") if where.is_dir() for f in where.iterdir() if LOG.match(f.name)]
+    return sorted(found, key=lambda f: (f.name == "edworld_eht.log", f.name))
+
+
 def log_samples(logs_dir):
     """from edworld_eht's logs: {(build, count): the fingerprint as holo_models.h writes it} - each "hologram model
     fingerprint" line right after the sample's line that names the build - and [(build, count, time, surface)] of each
     sample's line, the surface "target", "own" or "other" (2026-10-24: the parts of a station's hologram)"""
     out, surfaces = {}, []
-    logs = sorted(f for f in Path(logs_dir).iterdir() if LOG.match(f.name)) if Path(logs_dir).is_dir() else []
+    logs = edworld_logs(logs_dir)
     for f in logs:
         sample = None
         with open(f, encoding="utf-8", errors="replace") as fh:
@@ -566,7 +576,7 @@ def log_samples(logs_dir):
 def pad_looks(logs_dir, journal_dir, models):
     """the looks at docked pads in edworld_eht's logs: {(model, station, pad): [look]}; a docking counts only where the
     log told the same pad given at the grant - the log is this account's - and the hologram showed a model of `models`"""
-    logs = sorted(f for f in Path(logs_dir).iterdir() if LOG.match(f.name)) if Path(logs_dir).is_dir() else []
+    logs = edworld_logs(logs_dir)
     if not logs or not journal_dir:
         return {}
     spans = []
@@ -1480,6 +1490,13 @@ def self_test():
         {"timestamp": "2026-10-23T18:20:01Z", "event": "DockingGranted", "LandingPad": 1, "MarketID": 2, "StationName": site},
         {"timestamp": "2026-10-23T18:21:01Z", "event": "Docked", "MarketID": 2, "StationName": site, "StationType": "PlanetaryConstructionDepot"})),
         encoding="utf-8")
+    order = work / "logs_order"
+    (order / "edworld_eht").mkdir(parents=True)
+    for name in ("edworld_eht/edworld_eht.20261102T000000Z.log", "edworld_eht.20261101T000000Z.log", "edworld_eht.log",
+                 "edworld_eht/other.txt"):
+        (order / name).write_text("", encoding="utf-8")
+    assert [f.name for f in edworld_logs(order)] == ["edworld_eht.20261101T000000Z.log", "edworld_eht.20261102T000000Z.log",
+                                                     "edworld_eht.log"], edworld_logs(order)
     data = scan(models, db, journals, fake)
     pads = data["pads"]
     assert sorted(pads) == ["13083|" + site + "|3", "84969|PRNH|18"], sorted(pads)

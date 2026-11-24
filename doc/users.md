@@ -81,6 +81,12 @@ For edworld as the only d3d11 mod, or for a player who does not want edloader.
    `next = d3d11_edhm.dll` (the name you gave it).
 5. Start the game; `edworld.log` (or `edworld_eht.log`) appears beside the dll.
 
+The log holds one game session. At the next start the last session's log is moved to the folder `edworld` (or
+`edworld_eht`) beside it, named after the time of its last write (UTC): `edworld\edworld.20261124T013956Z.log`. Two
+sessions whose logs end in the same second share that name; the second one then stays in `edworld.log` and the new
+session goes on after it. Loaded through edloader, the log and that folder are in edloader's `logs` folder; installed
+alone they are in the game's folder, and Steam's or the launcher's check of the game's files removes them.
+
 ### With Elite Help Tool
 
 `edworld_eht.dll` comes with Elite Help Tool. It reads what EHT knows of your destination from a shared folder, `shm_dir` in its ini. It must be
