@@ -228,52 +228,43 @@ namespace edworld
     ///\brief edworld's own work under a guard on this thread: its own draws and shader binds (ImGui's, the state put
     /// back) pass the hooks straight to the context, unobserved
     thread_local int own_depth{};
-    std::atomic<std::uint32_t> faults{};  ///< from every context's thread
+    ///\brief edworld's work in the hooks under edplugin_common's guard: each fault or C++ exception logged with its place
+    /// (the first 16 of a session); the eighth, a stack overflow or a fault in another module turns every guarded path
+    /// off for the session, said once
+    constinit edplugin_common::guard_t hooks_guard{"hooks", 8};
+    ///\brief the name and version in a corner of the picture under a guard of its own, off after its first fault: with
+    /// edworld_eht off (chain_refusal) the corner's line is all that is drawn
+    constinit edplugin_common::guard_t build_info_guard{"build_info", 1};
 
-    ///\brief a fault caught in a hook; the eighth stops everything but the game, and says so
-    auto note_fault() noexcept -> void
+    ///\brief the faults of a session in the summaries: the hooks' and the corner line's
+    [[nodiscard]]
+    auto faults_seen() noexcept -> int
       {
-      if(faults.fetch_add(1) + 1u == 8u)
-        {
-        disabled.store(true);
-        log_line("hooks: 8 faults caught, the panels are left alone until the game starts again");
-        }
+      return hooks_guard.faults() + build_info_guard.faults();
       }
 
-    ///\brief the guards' filter: each fault or C++ exception caught is logged (its code, where: module and offset),
-    /// the first 16 of a session; then the guard's handler counts it (note_fault)
-    auto fault_filter(EXCEPTION_POINTERS const * e) noexcept -> int
+    ///\brief whether the hooks leave the game alone: edworld_eht refused (proxy.cc) or the guard off
+    [[nodiscard]]
+    auto hooks_off() noexcept -> bool
       {
-      creating_own = false;  // a fault while edworld made its own shaders must not mark the game's as edworld's for good
-      // the stack used up: nothing more on it here (a log line and a module's name take kilobytes), the guard's handler
-      // runs on the stack unwound (2026-11-18, the second audit)
-      if(e and e->ExceptionRecord and e->ExceptionRecord->ExceptionCode == EXCEPTION_STACK_OVERFLOW)
-        return EXCEPTION_EXECUTE_HANDLER;
-      log_batch_end();  // a fault inside the summary's batch (log_batch_begin) must not leave the thread's lines held
-      static std::atomic<std::uint32_t> told{};
-      if(told.fetch_add(1) < 16u and e and e->ExceptionRecord)
-        {
-        EXCEPTION_RECORD const & r{*e->ExceptionRecord};
-        HMODULE m{};
-        wchar_t name[MAX_PATH]{L"?"};
-        if(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                              static_cast<LPCWSTR>(r.ExceptionAddress), &m))
-          GetModuleFileNameW(m, name, MAX_PATH);
-        wchar_t const * const file{[&]() noexcept
-                                     {
-                                       wchar_t const * f{name};
-                                       for(wchar_t const * c{name}; *c; ++c)
-                                         if(*c == L'\\' or *c == L'/')
-                                           f = c + 1;
-                                       return f;
-                                     }()};
-        log_line("hooks: a fault caught (exception 0x{:08X}{} at {}+0x{:x}); fault {} of 8 before the hooks stop",
-                 static_cast<unsigned long>(r.ExceptionCode), r.ExceptionCode == 0xE06D7363u ? ", a C++ exception" : "", wide(file),
-                 static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(r.ExceptionAddress) - reinterpret_cast<std::uintptr_t>(m)),
-                 faults.load() + 1u);
-        }
-      return EXCEPTION_EXECUTE_HANDLER;
+      return disabled.load(std::memory_order_relaxed) or hooks_guard.broken();
       }
+
+    ///\brief `work()` under hooks_guard; after a fault `handler()` sets the place's own state right (the library's locks
+    /// and the thread's log batch are the guard's)
+    template<typename work_t, typename handler_t>
+    auto hook_work(work_t && work, handler_t && handler) noexcept -> void
+      {
+      (void)hooks_guard.run(work,
+                            [&](edplugin_common::fault_t const &) noexcept
+                            {
+                              // a fault while edworld made its own shaders must not mark the game's as edworld's for good
+                              creating_own = false;
+                              handler();
+                            });
+      }
+
+    auto no_handler() noexcept -> void {}
 
     constexpr std::uint32_t record_bytes{cb0_rows * 16u};
     constexpr std::uint32_t ring_slots{6};
@@ -767,7 +758,7 @@ namespace edworld
         static_cast<unsigned long long>(stat_published),
         static_cast<unsigned long long>(stat_dropped),
         static_cast<unsigned long long>(stat_full),
-        faults.load(),
+        faults_seen(),
         static_cast<unsigned long long>(vs_created.load()),
         m.pool ? slot.pool_bytes : 0u
       );
@@ -2136,28 +2127,24 @@ namespace edworld
     auto guarded_atmo(ID3D11DeviceContext * ctx) noexcept -> void
       {
       ++own_depth;
-      __try
+      hook_work(
+        [&]
         {
-        atmo_queue(ctx);
-        }
-      __except(fault_filter(GetExceptionInformation()))
-        {
-        note_fault();
-        }
+          atmo_queue(ctx);
+        },
+        no_handler);
       --own_depth;
       }
 
     auto guarded_atmo_drain(LONGLONG now) noexcept -> void
       {
       ++own_depth;
-      __try
+      hook_work(
+        [&]
         {
-        atmo_drain(now);
-        }
-      __except(fault_filter(GetExceptionInformation()))
-        {
-        note_fault();
-        }
+          atmo_drain(now);
+        },
+        no_handler);
       --own_depth;
       }
 
@@ -2379,7 +2366,7 @@ namespace edworld
           {
           last_log_qpc = now;
           log_line("frame {}: totals draws {} faults {} vs {}", static_cast<unsigned long long>(frame),
-                   static_cast<unsigned long long>(stat_draws), faults.load(), static_cast<unsigned long long>(vs_created.load()));
+                   static_cast<unsigned long long>(stat_draws), faults_seen(), static_cast<unsigned long long>(vs_created.load()));
           }
         }
       drain(now);
@@ -2763,14 +2750,12 @@ namespace edworld
     ) noexcept -> void
       {
       ++own_depth;
-      __try
+      hook_work(
+        [&]
         {
-        observe_panel(ctx, index_count, instance_count, start_index, base_vertex, start_instance);
-        }
-      __except(fault_filter(GetExceptionInformation()))
-        {
-        note_fault();
-        }
+          observe_panel(ctx, index_count, instance_count, start_index, base_vertex, start_instance);
+        },
+        no_handler);
       --own_depth;
       }
 
@@ -2813,26 +2798,34 @@ namespace edworld
         }
       }
 
-    // tools/test.sh: a fault on the first draw (EDWORLD_TEST_FAULT draw-seh or draw-cpp)
+    // tools/test.sh: a fault on the first draw (EDWORLD_TEST_FAULT draw-seh or draw-cpp in a function called under the
+    // guard, draw-inline in the guarded body itself)
     char const * const draw_test_fault{[]() noexcept
                                          {
                                            char value[16]{};
                                            GetEnvironmentVariableA("EDWORLD_TEST_FAULT", value, sizeof value);
                                            return std::strcmp(value, "draw-cpp") == 0 ? "draw-cpp" : "draw-seh";
                                          }()};
+    std::atomic<bool> inline_test_fault{[]() noexcept
+                                          {
+                                            char value[16]{};
+                                            GetEnvironmentVariableA("EDWORLD_TEST_FAULT", value, sizeof value);
+                                            return std::strcmp(value, "draw-inline") == 0;
+                                          }()};
 
     auto guarded_frame_without_panels(ID3D11DeviceContext * ctx) noexcept -> void
       {
       ++own_depth;
-      __try
+      hook_work(
+        [&]
         {
-        test_fault(draw_test_fault);
-        frame_without_panels(ctx);
-        }
-      __except(fault_filter(GetExceptionInformation()))
-        {
-        note_fault();
-        }
+          // a load first: no locked exchange on every draw outside the test
+          if(inline_test_fault.load(std::memory_order_relaxed) and inline_test_fault.exchange(false, std::memory_order_relaxed))
+            *static_cast<int volatile *>(nullptr) = 1;
+          test_fault(draw_test_fault);
+          frame_without_panels(ctx);
+        },
+        no_handler);
       --own_depth;
       }
 
@@ -2854,17 +2847,15 @@ namespace edworld
       if(not list and not spheres)
         return;
       ++own_depth;
-      __try
+      hook_work(
+        [&]
         {
-        if(list)
-          panel_list_after(ctx, frame, index_count, start_index, base_vertex, start_instance);
-        if(spheres)
-          panel_compass_after(ctx, frame, index_count, start_index, base_vertex, start_instance);
-        }
-      __except(fault_filter(GetExceptionInformation()))
-        {
-        note_fault();
-        }
+          if(list)
+            panel_list_after(ctx, frame, index_count, start_index, base_vertex, start_instance);
+          if(spheres)
+            panel_compass_after(ctx, frame, index_count, start_index, base_vertex, start_instance);
+        },
+        no_handler);
       --own_depth;
       }
 
@@ -2872,30 +2863,20 @@ namespace edworld
     // composite to the back buffer is one); SEH as around the observation
     auto guarded_build_info(ID3D11DeviceContext * ctx) noexcept -> void
       {
-      // edworld_eht off (chain_refusal): the corner's line alone, until its first fault
-      static std::atomic<bool> refused_line_faulted{};
       bool const refused{chain_refusal()[0] != '\0'};
-      if(settings().build_info == 0 or ctx != immediate.load(std::memory_order_relaxed)
-         or (disabled.load(std::memory_order_relaxed) and not refused) or refused_line_faulted.load(std::memory_order_relaxed))
+      if(settings().build_info == 0 or ctx != immediate.load(std::memory_order_relaxed) or (hooks_off() and not refused)
+         or build_info_guard.broken())
         return;
       ++own_depth;
-      __try
-        {
-        build_info_after(ctx, device);
-        }
-      __except(fault_filter(GetExceptionInformation()))
-        {
-        note_fault();
-        if(refused and not refused_line_faulted.exchange(true))
-          log_line("build_info: a fault while edworld_eht is off; its corner's line left off too");
-        }
+      (void)build_info_guard.run([&] { build_info_after(ctx, device); },
+                                 [](edplugin_common::fault_t const &) noexcept { creating_own = false; });
       --own_depth;
       }
 
     auto watched_draw(ID3D11DeviceContext * ctx) noexcept -> bool
       {
       return current_watched >= 0 and ctx == immediate.load(std::memory_order_relaxed)
-             and not disabled.load(std::memory_order_relaxed);
+             and not hooks_off();
       }
 
     ///\brief a shader into the watched list; `found` = not listed in watch_vs (any thread)
@@ -2947,24 +2928,24 @@ namespace edworld
 
     auto guarded_classify(ID3D11DeviceContext * ctx) noexcept -> void
       {
-      if(disabled.load(std::memory_order_relaxed))
+      if(hooks_off())
         return;
       ++own_depth;
-      __try
+      hook_work(
+        [&]
         {
-        ID3D11VertexShader * vs{};
-        ctx->VSGetShader(&vs, nullptr, nullptr);
-        if(vs)
-          {
-          classify(ctx, vs, current_pending);
-          vs->Release();
-          }
-        }
-      __except(fault_filter(GetExceptionInformation()))
+          ID3D11VertexShader * vs{};
+          ctx->VSGetShader(&vs, nullptr, nullptr);
+          if(vs)
+            {
+            classify(ctx, vs, current_pending);
+            vs->Release();
+            }
+        },
+        [&]() noexcept
         {
-        current_pending = max_vs_seen;
-        note_fault();
-        }
+          current_pending = max_vs_seen;
+        });
       --own_depth;
       }
 
@@ -3425,14 +3406,12 @@ namespace edworld
     auto guarded_galmap(ID3D11DeviceContext * ctx, std::uint32_t count, std::uint32_t start, std::int32_t base) noexcept -> void
       {
       ++own_depth;
-      __try
+      hook_work(
+        [&]
         {
-        galmap_draw(ctx, count, start, base);
-        }
-      __except(fault_filter(GetExceptionInformation()))
-        {
-        note_fault();
-        }
+          galmap_draw(ctx, count, start, base);
+        },
+        no_handler);
       --own_depth;
       }
 #endif
@@ -3536,18 +3515,18 @@ namespace edworld
 
     auto guarded_probe(ID3D11DeviceContext * ctx, std::uint32_t count, std::uint32_t instances) noexcept -> void
       {
-      if(disabled.load(std::memory_order_relaxed))
+      if(hooks_off())
         return;
       ++own_depth;
-      __try
+      hook_work(
+        [&]
         {
-        probe_draw(ctx, count, instances);
-        }
-      __except(fault_filter(GetExceptionInformation()))
+          probe_draw(ctx, count, instances);
+        },
+        [&]() noexcept
         {
-        probe_request.store(false);
-        note_fault();
-        }
+          probe_request.store(false);
+        });
       --own_depth;
       }
 
@@ -4219,14 +4198,12 @@ namespace edworld
     auto guarded_laying_over(ID3D11DeviceContext * ctx) noexcept -> void
       {
       ++own_depth;
-      __try
+      hook_work(
+        [&]
         {
-        holo_laying_over(ctx);
-        }
-      __except(fault_filter(GetExceptionInformation()))
-        {
-        note_fault();
-        }
+          holo_laying_over(ctx);
+        },
+        no_handler);
       --own_depth;
       }
 
@@ -4563,14 +4540,12 @@ namespace edworld
                           std::uint32_t start_instance) noexcept -> void
       {
       ++own_depth;
-      __try
+      hook_work(
+        [&]
         {
-        hologram_draw(ctx, index_count, start_index, base_vertex, start_instance);
-        }
-      __except(fault_filter(GetExceptionInformation()))
-        {
-        note_fault();
-        }
+          hologram_draw(ctx, index_count, start_index, base_vertex, start_instance);
+        },
+        no_handler);
       --own_depth;
       }
 
@@ -5067,19 +5042,19 @@ namespace edworld
 
     auto guarded_full_after(ID3D11DeviceContext * ctx) noexcept -> void
       {
-      if(disabled.load(std::memory_order_relaxed))  // after 8 faults every guarded path stays off
+      if(hooks_off())  // after 8 faults every guarded path stays off
         return;
       LONGLONG const began{qpc_now()};
       ++own_depth;
-      __try
+      hook_work(
+        [&]
         {
-        full_after(ctx);
-        }
-      __except(fault_filter(GetExceptionInformation()))
+          full_after(ctx);
+        },
+        [&]() noexcept
         {
-        full_after_draw = 0;
-        note_fault();
-        }
+          full_after_draw = 0;
+        });
       --own_depth;
       // the copy of the game's main target after a dump_vs draw takes milliseconds: no gap of the game's either (it ended
       // each whole frame of 2026-10-22 right after the hologram's draws, at 18 draws)
@@ -5090,19 +5065,19 @@ namespace edworld
     auto guarded_full(ID3D11DeviceContext * ctx, char kind, std::uint32_t count, std::uint32_t instances, std::uint32_t start,
                       std::int32_t base, std::uint32_t start_instance) noexcept -> void
       {
-      if(disabled.load(std::memory_order_relaxed))
+      if(hooks_off())
         return;
       LONGLONG const began{qpc_now()};
       ++own_depth;
-      __try
+      hook_work(
+        [&]
         {
-        full_draw(ctx, kind, count, instances, start, base, start_instance);
-        }
-      __except(fault_filter(GetExceptionInformation()))
+          full_draw(ctx, kind, count, instances, start, base, start_instance);
+        },
+        [&]() noexcept
         {
-        full_armed = false;
-        note_fault();
-        }
+          full_armed = false;
+        });
       --own_depth;
       // the dump's own work (copies of whole targets, milliseconds) is no gap of the game's: it must not end the frame
       if(last_draw_qpc)
@@ -5830,14 +5805,12 @@ namespace edworld
     ) noexcept -> void
       {
       ++own_depth;
-      __try
+      hook_work(
+        [&]
         {
-        draw_clouds(ctx, index_count, instance_count, start_index, base_vertex, start_instance);
-        }
-      __except(fault_filter(GetExceptionInformation()))
-        {
-        note_fault();
-        }
+          draw_clouds(ctx, index_count, instance_count, start_index, base_vertex, start_instance);
+        },
+        no_handler);
       --own_depth;
       }
 
@@ -5846,7 +5819,7 @@ namespace edworld
       if(own_depth != 0)
         return orig_draw_indexed(self, index_count, start_index, base_vertex);
       census_note(self);
-      if(not disabled.load(std::memory_order_relaxed))
+      if(not hooks_off())
         guarded_frame_without_panels(self);
       if(full_armed)
         {
@@ -5856,10 +5829,10 @@ namespace edworld
           note_full_other(self);
         }
       bool const watched{watched_draw(self)};
-      if(index_count == 6u and holo_rt_count and not disabled.load(std::memory_order_relaxed) and
+      if(index_count == 6u and holo_rt_count and not hooks_off() and
          self == immediate.load(std::memory_order_relaxed))
         guarded_laying_over(self);
-      if(current_holo < max_vs_seen and not disabled.load(std::memory_order_relaxed) and self == immediate.load(std::memory_order_relaxed))
+      if(current_holo < max_vs_seen and not hooks_off() and self == immediate.load(std::memory_order_relaxed))
         guarded_hologram(self, index_count, start_index, base_vertex, 0);
       if(watched)
         guarded_observe(self, index_count, 1, start_index, base_vertex, 0);
@@ -5871,7 +5844,7 @@ namespace edworld
           guarded_probe(self, index_count, 1);
         }
 #if defined(EDWORLD_EHT)
-      if(current_galmap and settings().galmap and self == immediate.load(std::memory_order_relaxed) and not disabled.load(std::memory_order_relaxed))
+      if(current_galmap and settings().galmap and self == immediate.load(std::memory_order_relaxed) and not hooks_off())
         guarded_galmap(self, index_count, start_index, base_vertex);
 #endif
       orig_draw_indexed(self, index_count, start_index, base_vertex);
@@ -5887,7 +5860,7 @@ namespace edworld
       if(own_depth != 0)
         return orig_draw(self, vertex_count, start_vertex);
       census_note(self);
-      if(not disabled.load(std::memory_order_relaxed))
+      if(not hooks_off())
         guarded_frame_without_panels(self);
       if(full_armed)
         {
@@ -5924,7 +5897,7 @@ namespace edworld
       if(own_depth != 0)
         return orig_draw_indexed_instanced(self, index_count, instance_count, start_index, base_vertex, start_instance);
       census_note(self);
-      if(not disabled.load(std::memory_order_relaxed))
+      if(not hooks_off())
         guarded_frame_without_panels(self);
       if(current_shell and census_on.load(std::memory_order_relaxed))
         census_add(census_shell);
@@ -5936,10 +5909,10 @@ namespace edworld
           note_full_other(self);
         }
       bool const watched{watched_draw(self)};
-      if(index_count == 6u and holo_rt_count and not disabled.load(std::memory_order_relaxed) and
+      if(index_count == 6u and holo_rt_count and not hooks_off() and
          self == immediate.load(std::memory_order_relaxed))
         guarded_laying_over(self);
-      if(current_holo < max_vs_seen and not disabled.load(std::memory_order_relaxed) and self == immediate.load(std::memory_order_relaxed))
+      if(current_holo < max_vs_seen and not hooks_off() and self == immediate.load(std::memory_order_relaxed))
         guarded_hologram(self, index_count, start_index, base_vertex, start_instance);
       if(watched)
         guarded_observe(self, index_count, instance_count, start_index, base_vertex, start_instance);
@@ -5951,14 +5924,14 @@ namespace edworld
           guarded_probe(self, index_count, instance_count);
         }
 #if defined(EDWORLD_EHT)
-      if(current_galmap and settings().galmap and self == immediate.load(std::memory_order_relaxed) and not disabled.load(std::memory_order_relaxed))
+      if(current_galmap and settings().galmap and self == immediate.load(std::memory_order_relaxed) and not hooks_off())
         guarded_galmap(self, index_count, start_index, base_vertex);
 #endif
       orig_draw_indexed_instanced(self, index_count, instance_count, start_index, base_vertex, start_instance);
-      if(current_shell and atmo_period_s() and not disabled.load(std::memory_order_relaxed)
+      if(current_shell and atmo_period_s() and not hooks_off()
          and self == immediate.load(std::memory_order_relaxed))
         guarded_atmo(self);
-      if(current_shell and settings().clouds and not disabled.load(std::memory_order_relaxed)
+      if(current_shell and settings().clouds and not hooks_off()
          and self == immediate.load(std::memory_order_relaxed))
         guarded_clouds(self, index_count, instance_count, start_index, base_vertex, start_instance);
       if(full_after_draw and self == immediate.load(std::memory_order_relaxed))
@@ -5979,7 +5952,7 @@ namespace edworld
       if(own_depth != 0)
         return orig_draw_instanced(self, vertex_count, instance_count, start_vertex, start_instance);
       census_note(self);
-      if(not disabled.load(std::memory_order_relaxed))
+      if(not hooks_off())
         guarded_frame_without_panels(self);
       if(full_armed)
         {

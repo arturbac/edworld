@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- edworld's work in the game's calls and its threads run under edplugin_common's guard: a fault or a C++ exception is
+  logged as before with its kind and, for a hardware fault, its place (`hooks: an access violation reading 0x... at <module>+0x... (n of 8)`,
+  `thread <name>: ...`), the eighth still switches the observer off; now a stack overflow or a fault in another
+  module (d3d11, a driver), which may leave that module's locks held, switches it off at once, and the library's locks
+  the faulted code held are let go. The corner's line (`build_info`) is off after its own first fault.
 - tools/bench.sh: the render thread's cost of a draw is the median of `EDWORLD_BENCH_CPU_RUNS` runs (5 unless set,
   1 to 2 s each); one run varied by tens of percent. A line of another shape, or a failed run, stops the bench.
 - The folders, files, shared files, the game's build, the shaders' hash and the rules on formats are edplugin_common's.

@@ -8,6 +8,7 @@
 #include <edplugin_common/core/lock.h>
 #include <edplugin_common/core/once_flag.h>
 #include <edplugin_common/file/file.h>
+#include <edplugin_common/guard/guard.h>
 #include <edplugin_common/log/log.h>
 #include <edplugin_common/memory/memory.h>
 #include <edplugin_common/paths/paths.h>
@@ -475,10 +476,9 @@ namespace edworld
   using edplugin_common::read_text;
   using edplugin_common::write_time;
   using edplugin_common::write_whole_file;
-  ///\brief a thread's body run under a handler for faults and C++ exceptions alike: one is logged with the thread's
-  /// name and the body started again a second later, `attempts` times in all, then the thread ends saying so. The body
-  /// is not noexcept, so a C++ exception reaches the handler
-  auto run_guarded_thread(char const * name, DWORD (*body)(void *), void * arg, int attempts = 8) noexcept -> DWORD;
+  // a thread's body under edplugin_common's guard: a fault or C++ exception logged with the thread's name and its
+  // place, the body started again a second later, 8 times in all unless given, then the thread ends saying so
+  using edplugin_common::run_guarded_thread;
   ///\brief tools/test.sh only: with EDWORLD_TEST_FAULT naming `where` (draw-seh, draw-cpp, thread) the first call faults
   /// once (a write to address 0, or a C++ exception), to show the guard catches it and the game goes on; nothing without
   auto test_fault(char const * where) -> void;

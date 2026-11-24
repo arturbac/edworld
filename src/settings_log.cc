@@ -776,25 +776,4 @@ namespace edworld
       throw std::runtime_error{"EDWORLD_TEST_FAULT"};
     *static_cast<int volatile *>(nullptr) = 1;
     }
-
-  auto run_guarded_thread(char const * name, DWORD (*body)(void *), void * arg, int attempts) noexcept -> DWORD
-    {
-    for(int faults{}; faults < attempts; ++faults)
-      {
-      DWORD code{};
-      __try
-        {
-        return body(arg);
-        }
-      __except(code = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER)
-        {
-        log_line("thread {}: a fault (exception 0x{:08X}{}), {} of {}", name, as_unsigned(code), code == 0xE06D7363u ? ", a C++ exception" : "",
-                 faults + 1, attempts);
-        }
-      if(faults + 1 < attempts)
-        Sleep(1000);
-      }
-    log_line("thread {}: stopped after {} fault(s)", name, attempts);
-    return 0;
-    }
   }  // namespace edworld

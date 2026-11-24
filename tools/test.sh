@@ -69,11 +69,12 @@ creator_case() {  # $1 = edworld | edworld_eht; a device asked through a dll fro
 fault_case() {  # $1 = edworld | edworld_eht; a fault in a guard and in a thread is caught, logged, and the game goes on
   local what want
   set +e
-  for what in draw-seh draw-cpp thread; do
+  for what in draw-seh draw-inline draw-cpp thread; do
     case $what in
-      draw-seh) want='hooks: a fault caught \(exception 0xC0000005' ;;
-      draw-cpp) want='hooks: a fault caught \(exception 0xE06D7363, a C\+\+ exception' ;;
-      thread) want='thread state: a fault \(exception 0xE06D7363, a C\+\+ exception\), 1 of 8' ;;
+      # the plugin is d3d11.dll here (the module's file name, not $1.dll)
+      draw-seh | draw-inline) want='hooks: an access violation writing 0x0 at d3d11\.dll\+0x[0-9A-F]+ \(1 of 8\)' ;;
+      draw-cpp) want='hooks: a C\+\+ exception \(EDWORLD_TEST_FAULT\) \(1 of 8\)' ;;
+      thread) want='thread state: a C\+\+ exception \(EDWORLD_TEST_FAULT\) \(1 of 8\)' ;;
     esac
     wine_common_exec EDWORLD_TEST_FAULT=$what WINEDLLOVERRIDES="d3d11=n,b" -- test_app.exe > "fault-$what.out"
     local r=$?

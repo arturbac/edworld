@@ -596,20 +596,24 @@ The ini and log names are fixed by the build, not taken from the dll's file name
   with surface size and anchor in NDC, in edworld the draw and fault totals. A line is written at once (one queued for
   later would be lost in a crash of the game); the summary's lines go out in one write (`log_batch_begin`/`_end`,
   edplugin_common's). A fault in edworld's own work is caught; eight of them switch the observer off, never the game call.
-  Each guard (`guarded_*` in `src/hooks.cc`) catches hardware faults and C++ exceptions alike, and its filter
-  (`fault_filter`) logs each of the first 16 with its code and place (`hooks: a fault caught (exception ... at
-  <module>+<offset>)`). The functions a guard calls are not `noexcept`: a C++ exception (out of memory) thrown below
-  one would end the process before reaching the guard (a 2026-11-18 test under clang-cl /EHsc: hardware faults below
-  `noexcept` frames are caught, a C++ exception through one is not). While a guard runs (`own_depth`, per thread),
+  Each guard (`guarded_*` in `src/hooks.cc`, through `hook_work`) runs its work under edplugin_common's `guard_t`
+  `hooks` (limit 8): hardware faults and C++ exceptions alike, each of the first 16 logged with its kind and, for a hardware fault, its place
+  (`hooks: an access violation writing 0x0 at edworld_eht.dll+0x... (1 of 8)`), then the place's own handler (its
+  state set back); a stack overflow or a fault in another module (d3d11, a driver: its locks may be held) switches
+  the observer off at once, and `hooks: off for this session (...)` says why. The corner's line (`build_info`) has a
+  guard of its own, off after its first fault. The functions a guard calls are not `noexcept`: a C++ exception (out of
+  memory) thrown below one would end the process before reaching the guard (a 2026-11-18 test under clang-cl /EHsc:
+  hardware faults below `noexcept` frames are caught, a C++ exception through one is not). While a guard runs (`own_depth`, per thread),
   edworld's own draws and shader binds (ImGui's, the state put back) pass the hooks straight to the context.
-  edworld's own threads run under `run_guarded_thread`: a fault or exception is logged, and the state, writer, probe,
-  atmosphere and shader catalog threads start again a second later, eight times at most; the census, machine and
+  edworld's own threads run under edplugin_common's `run_guarded_thread`: a fault or exception is logged (a fault with its
+  place), and the state, writer, probe,
+  atmosphere and shader catalog threads start again a second later, eight times at most (a stack overflow ends a thread at once); the census, machine and
   EDSM threads, one-off work, end there. A writer that stops says so and nothing more is queued; an atmosphere
   thread that stops, or keeps a read over 10 s, is given up and the reads are worked out on the render thread. Files are written
   and the log appended with Windows' own calls (edplugin_common's `write_whole_file`, `append_to_file`; a file not
   written whole is removed), never CRT streams: a thread killed at the game's exit must leave nothing for the CRT's closing of all
-  streams at edworld's unload (0xC0000409, 2026-11-17). `EDWORLD_TEST_FAULT` (`draw-seh`, `draw-cpp`, `thread`)
-  makes one such fault for `tools/test.sh`.
+  streams at edworld's unload (0xC0000409, 2026-11-17). `EDWORLD_TEST_FAULT` (`draw-seh`, `draw-cpp`, `thread`, and
+  `draw-inline`, a write to address 0 in the guarded body itself) makes one such fault for `tools/test.sh`.
 - One device: edworld attaches to the first device of the game it follows; a second (a device made again after a
   driver reset, another of the game's) is not followed, and the log says so (`attach: device ... is a second device of
   the game`), so no object of one device ever reaches the other's context. `EDWORLD_TEST_SECOND_DEVICE` makes one in
