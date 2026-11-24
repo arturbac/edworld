@@ -13,19 +13,19 @@ Both move with the panel when the cockpit camera swings.
 **Navballs (since 1.1.0-beta.2).** Two spheres beside the radar show where the selected target is. The left one is
 the sphere seen from the front, as the game's compass shows it, with the angles above it: `UP`/`DN` above or below
 the wings' plane, `LT`/`RT` left or right of the nose, `BEHIND` when the target is behind you, `NO DOT` when no
-target's dot has been read for `compass_stale_s` seconds. The dot is told by its colour against the compass's own,
+target's dot has been read for a second. The dot is told by its colour against the compass's own,
 not by a colour of its own, so it is read in the game's HUD colours and in any EDHM theme; a moment when the compass
 flashes in the dot's colour is skipped. The right one is the same direction seen from behind, the left and above, with the nose marked and `OFF`,
 the target's angle off the nose. In a planet's gravity well it assumes the planet is the target and gives instead
-`NOSE` (the nose's angle below or above the horizon), `PUSH DOWN` / `PULL UP` towards a dive of `compass_should_dive`
-degrees (`ON PATH` within 2°) and `ALT`, the altitude with the vertical speed.
+`NOSE` (the nose's angle below or above the horizon), `PUSH DOWN` / `PULL UP` towards a dive of 45°
+(`ON PATH` within 2°) and `ALT`, the altitude with the vertical speed.
 
 > **Warning: screen resolution.** The navballs are measured at 9000×2160 over three screens, the cockpit on the
 > middle 3840×2160, and checked in a window at 2560×1440 and 1920×1080 too. At a lower resolution, expect less:
 > - edworld reads the game's compass off the HUD surface the game draws it into. The game sizes that surface by the
 >   picture's height: 2200×1800 at 2160 rows, 1466×1200 at 1440, 1100×900 at 1080. edworld finds it at any of
->   these and reads the compass in its pixels; the settings (`compass_surface_width`, `compass_surface_height`,
->   `compass_radius` and the rest) stay in the pixels of the 2160-row size. A smaller compass reads coarser: at
+>   these and reads the compass in its pixels; the settings that place the reading stay in the pixels of the
+>   2160-row size. A smaller compass reads coarser: at
 >   2160 rows about 0.2° near the nose and about 2° near the rim, at 1080 about twice that.
 > - The spheres and their lines are drawn into textures of a fixed size laid on the cockpit, so on screen they
 >   shrink with the resolution. Here the lines in the two columns near a planet are about 10 px tall; at
@@ -105,7 +105,7 @@ Each time it reads a planet's atmosphere off the render, `edworld_eht.dll` also 
 
 In `edworld.ini` (or `edworld_eht.ini`), beside the dll or in `edloader\config`; whole lines, `;` or `#` starts a
 comment line. Every setting has a default. At its first start edworld makes the file if there is none, with every
-setting as a comment holding the value it runs on (`;clouds_alpha = 0.45`), and at each start it adds the settings
+setting as a comment holding the value it runs on (`;clouds = 1`), and at each start it adds the settings
 the file does not name yet, a new version's too, at the end; it never changes a line that is there. To change a
 setting, take the `;` off its line; a line left as a comment follows edworld's default, also when a new version
 changes it. Where the file cannot be written, edworld says so in its log and runs on. A value edworld cannot read (a
@@ -113,132 +113,32 @@ decimal comma, `0,45`; a word where a number goes; a name with a typo) keeps its
 (`settings: line ...`); a comment may follow a value after a space (`clouds = 1 ; on`). `status_file` is left empty in
 the file edworld writes: empty means the Saved Games folder, and the file then holds no Windows user name.
 
-[settings.md](settings.md) lists every setting by its topic (clouds, navballs, jump panel, other) with its default,
-the values that make sense, and whether a change shows while the game runs or needs a new start of the game.
-
 | setting | default | what |
 |---|---|---|
-| `next` | empty | the next d3d11 mod (`d3d11_edhm.dll`); empty = the system's own, under edloader the next on its list |
-| `status_file` | in Saved Games | the game's `Status.json`, the journals beside it; for a game whose Saved Games lie elsewhere |
-| `patch` | `1` | `0` off, `1` the emblem and the list, `2` a test frame showing where they go |
-| `independent_colour` | `F2C14E` | the independents' emblem's colour, `RRGGBB` |
+| `patch` | `1` | the jump panel: `0` off, `1` the emblem and the list, `2` a test frame showing where they go |
 | `list` | `1` | `0` = no factions list |
-| `list_text` | `50` | the list's text height (pixels of the panel's surface) |
-| `list_gain` | `0.8` | the list's brightness |
-| `list_alpha` | `0.65` | how much the list's box covers what is behind it, `0` nothing to `1` all |
-| `clouds` | `1` | clouds over a planet with an atmosphere that the game draws without any, `0` = none: see [Clouds](#clouds) |
-| `clouds_height` | `0.005` | the height of the layer over the surface, as a part of the planet's radius |
-| `clouds_alpha` | `0.45` | how much the clouds cover what is under them, `0` nothing to `1` all |
-| `clouds_cover` | `0.55` | how much of the sky they take, `0` clear to `1` overcast |
-| `clouds_light` | `0.4` | how much of the sun they give back |
-| `clouds_volume` | `1` | clouds with depth you fly through; `0` = the flat layer, lighter for a weaker graphics card |
-| `clouds_bottom`, `clouds_top` | `0.003`, `0.012` | where the clouds with depth begin and end over the surface, as parts of the planet's radius |
-| `clouds_min_light` | `400` | the star's light the clouds with depth get at least, so a faint star does not lose them; `0` = as the game gives it |
-| `clouds_under_gain` | `2` | how much lighter the clouds with depth are seen from under them, against a day's sky; `1` = as they are |
-| `clouds_detail` | `1` | how much the fine shape near you cuts the clouds with depth; `0` = none, a smooth fog from the ground |
-| `clouds_detail_size`, `clouds_detail_range`, `clouds_detail_edge` | `3000`, `500000`, `8` | that shape's largest lumps and how far it reaches, in metres, and how sharp a cloud's edge is near you |
-| `clouds_detail_gap` | `0.14` | how much clear sky there is among the clouds with depth near you; more = thinner, the view from orbit stays |
-| `clouds_wind_low`, `clouds_wind_high` | `100`, `600` | the wind in km/h at the floor of the clouds with depth and at their top; both `0` = still clouds |
-| `clouds_top_gain` | `2` | how much lighter the clouds with depth are seen from above, over a light ground; `1` = as from under them |
-| `clouds_density`, `clouds_opacity`, `clouds_steps` | `1.2`, `0.75`, `32` | how thick they are, how much they cover at most, and the steps through them (at most 256): fewer are lighter and coarser |
-| `clouds_mode` | `0` | (test) the clouds with depth from afar in fewer steps, the same shape: `0` = by your height, `1` = always near, `2` = always far |
-| `clouds_far_steps` | `6` | the steps through the clouds with depth from afar (at most 256) |
-| `clouds_near_from`, `clouds_near_to` | `0.25`, `0.5` | near steps under the first height over the surface, far ones over the second, a blend between; parts of the planet's radius |
-| `clouds_noise_time` | `1` | the grain of the clouds with depth, the aurora and the snow moved each frame: `1` = while edupscale's temporal anti-aliasing jitters the camera, so it averages the grain instead of flickering, `0` = never, `2` = always; read again while the game runs |
-| `clouds_debug` | `0` | (test) `1` = every pixel the clouds with depth are worked out for painted magenta, `2` = the game's fade of its atmosphere painted, green at 1, red at 0 |
-| `clouds_game_fade` | `1` | (test) `1` = the clouds with depth fade with the game's own atmosphere, `0` = never |
-| `clouds_hide_below_px`, `clouds_full_from_px` | `20`, `80` | no clouds with depth while the planet is narrower on the screen than the first many pixels, all of them from the second, a blend between; pixels of the picture the game draws, before its upscaling |
-| `clouds_max_steps` | `64` | (test) the most steps through the clouds with depth: the steps follow the way's length through them, many at the planet's edge; at most 256 |
-| `clouds_edge_hide_px`, `clouds_edge_full_px`, `clouds_edge_band_px` | `2`, `8`, `16` | no clouds with depth out of the planet's edge while their layer is thinner on the screen than the first many pixels, all from the second; on the disc the same within the third many pixels of the edge |
-| `clouds_kind_read_s` | `10` | how often the game's atmosphere is read for its kind and the planet's day, in seconds; `0` = never, the same clouds on every planet, by the ini; read again while the game runs |
-| `clouds_by_kind` | `1` | `1` = the clouds with depth by the atmosphere's kind (needs `clouds_kind_read_s`), `0` = the same on every planet; read again while the game runs |
-| `clouds_physics_intensity` | `1` | how strongly the kinds' clouds show, `1` = as the physics gives, `2` = twice as strong (at most `clouds_opacity`) and a haze's cover up to clouds', `0` = none; read again while the game runs |
-| `clouds_tint` | `1` | how strongly the kinds' clouds take their colour, `1` = a little off white as [clouds.md](clouds.md) gives, `0` = white on every planet, `2` = twice as far from white; read again while the game runs |
-| `clouds_size_var` | `0.25` | the lumps' size noised by region: their scale times 1 ± this from a slow noise over the planet, so some regions have larger lumps and others smaller; `0` = one size everywhere, at most `0.9`; read again while the game runs |
-| `clouds_cyclones` | `1` | `1` = storms in the kinds' clouds by the planet's size, day and kind, `0` = none; read again while the game runs |
-| `clouds_lumps_by_layer` | `1` | `1` = the kinds' lumps by the layer's thickness (larger on small planets, smaller on large ones, the fine shape near you too) and each as high as it is strong, `0` = as before; read again while the game runs |
-| `clouds_weather` | `1` | the weather in the kinds' clouds: overcast and clear regions by how fast the planet turns for its size, `1` = as [clouds.md](clouds.md) gives, `0` = none, `2` = twice as strong; read again while the game runs |
-| `aurora` | `1` | `1` = an aurora over the night side of a planet whose atmosphere's kind is known, as [clouds.md](clouds.md#aurora) gives, `0` = none; this and the four below read again while the game runs |
-| `aurora_gain` | `1` | how bright the aurora is, `0`..`3` |
-| `snow` | `1` | `1` = on foot outdoors or in a ship or an SRV in the air, crystals of the air's own gas falling near you under the clouds of an ammonia or methane planet (doc/clouds.md, "Snow"); read again while the game runs |
-| `snow_gain` | `1` | how many of them |
-| `aurora_activity` | `-1` | (test) how stormy: `-1` = by the time, each 3 hours its own and the same for everyone; `0`..`9` = always this, as the Kp index (`7` for a picture of a strong one) |
-| `aurora_dance` | `1` | how much the aurora moves in seconds in a substorm (waves, folds, wiggles, curls): `1` = as designed, `0` = none of these (its rays still grow and fade), `2` = twice as much |
-| `aurora_flicker` | `1` | `1` = small patches of the aurora flicker a few times a second in a substorm, `0` = none |
-| `aurora_field` | `-1` | (test) whether the planet has a magnetic field of its own: `-1` = as guessed from its size and turn, `1` = always (the whole aurora on any planet whose kind is known), `0` = never (a faint glow only) |
-| `clouds_haze` | `0.05` | from under the clouds with depth and in them, a cloud this far away covers e times less, so they fade into the haze at the horizon instead of ending in a sharp line; a part of the planet's radius, `0` = never less; from orbit they stay as they are |
-| `list_top`, `list_x` | `500`, `1540` | where the list starts under the panel (pixels of the panel's surface) |
-| `list_rows` | `7` | factions listed at most |
 | `edsm` | `1` | `0` = never ask EDSM (no list then without EHT) |
-| `shm_dir` | `Z:\dev\shm\eht` | `edworld_eht.dll` only: the folder EHT writes to |
-| `galmap` | `1` | `edworld_eht.dll` only: the names the galaxy map shows, read while it is open and put in `galmap` there for EHT; `0` = off |
-| `galmap_interval_ms` | `500` | how often, at most, those names are read (milliseconds) |
-| `shader_catalog` | `1` | `edworld_eht.dll` only: `1` keeps each shader the game creates, once per build of the game, in `edworld_shaders` beside the log (a few seconds after loading; costs nothing while flying); `0` none |
 | `compass` | `1` | `0` = no navballs; the game's compass is then not read at all |
 | `compass_spheres` | `1` | `0` = no spheres |
-| `compass_anchor` | `1` | `1` the spheres held to the compass and the speed readout; `0` on the two side panels left and right of the radar |
-| `compass_anchor_scale` | `1.9` | a sphere's diameter, in the game compass's diameters |
-| `compass_anchor_a_dx`, `compass_anchor_a_dy` | `-0.41`, `0.45` | the left sphere's centre from the compass, in compass diameters (x right, y up) |
-| `compass_anchor_c_dx`, `compass_anchor_c_dy` | `1.22`, `0.83` | the right sphere's centre from the speed readout, in compass diameters |
-| `compass_sphere_text_above` | `1` | `1` the spheres' lines over them, `0` under them. Over them at a planet, the right sphere's lines go to the left sphere's band, one line under the angles: the right band is the game's (its latitude, longitude and gravity in the middle, its altitude ladder by the edge). Docked or landed, the right sphere has no lines |
 | `compass_text` | `0` | `1` = the angles also written above the radar |
 | `compass_hide_game` | `1` | `1` = the game's own compass hidden once read (the left sphere stands in for it) |
-| `compass_should_dive` | `45` | the dive, in degrees below the horizon, the right sphere steers towards near a planet |
-| `compass_approach_below` | `20` | in normal flight with the target this many degrees or more below the wings, the approach view: the left sphere shows the target from above (straight down in its middle, `FWD`/`AFT` and `LT`/`RT` off the vertical), the right one a dome standing on the target with the ship a point on it (straight over the target at its top; in space the whole sphere, the base a plane with a grid); `0` = never |
-| `compass_approach_radius` | `54.8` | the dot's distance from the compass's centre with the target on its rim (pixels of the HUD surface); the angle ahead or behind near a pad comes from how far short of it the dot is |
-| `compass_approach_km` | `5` | the approach view also needs the target near: a place on a body within this many km, or a station or carrier in this system while the ship is mass locked - by a station or carrier that alone turns it on, whatever the angle, as its pad stands ahead until the last metres; with edworld_eht, also a pad the tower has given (within ten minutes; no destination needs choosing for it); both spheres change together; `0` = by the angle alone |
-| `compass_stale_s` | `1` | a dot read holds this many seconds without a new one, then `NO DOT` and the approach view goes off; `0` = held until the next one |
-| `compass_max_rate_dps` | `0` | a dot further from the last one than the ship can turn in the time between (degrees a second, plus 5) is not taken; `0` = no such check |
-| `compass_filled_min`, `compass_filled_max` | `120`, `320` | a filled dot's pixels on the HUD surface; fewer or more is not the dot |
-| `compass_hollow_min`, `compass_hollow_max` | `20`, `180` | the same for a hollow one (the target behind) |
-| `compass_approach_smooth_s` | `0.4` | in the approach view the dot's place is averaged with this time constant (seconds), so the spheres do not shake near a pad; `0` = no averaging |
-| `station_axes` | `1` | (test) the target's axes in the right sphere: the X, Y and Z of the model the game shows as the target's hologram, as its hologram turns them (Y the brightest); only while the hologram is drawn; `0` = off |
-| `pad_tilt_green_deg`, `pad_tilt_red_deg` | `15`, `35` | (test, with `station_axes`) after the tower gives a pad at an outpost, a port on a body or a settlement (not a Coriolis, Orbis, Ocellus or asteroid base, whose hologram has no pads), a translucent disc of the pads' plane in the right sphere, beside the ship's own plane (the sphere's thick rim): green while the ship is tilted to the pads by at most the first number of degrees, then turning through yellow to red, red from the second; on a planet the plane is flat (the hologram model's thinnest axis), at a squadron carrier and a players' fleet carrier each pad by its number; the pads' up comes from a table at the six kinds of outpost in space (their pads measured, 2026-10-21), where the disc also carries the pad's own mark `< |||` with its head towards the ship's nose on the pad (the angle it is seen at tells when to turn onto the pad's axis), drawn half opaque on the left sphere too, elsewhere it is the side the ship is on (voted from several looks at the target ahead, from changing angles), so a ship upside down over the pads (its top towards them, over 90 degrees) shows the disc as a red wire grid instead of a fill, with `UPSIDE DOWN` over the sphere; it stays on the pad while the hologram shows the same model; in the approach view the disc stands in the dome, through the target, over the base (light blue then, `compass_colour_pad_base`): level with the pads, disc and base coincide |
-| `pad_text_samples` | `0` | (test) `1`: each time the HUD's notice box (which carries the tower's pad text) shows or changes its text, and once a second for ten seconds after that (a countdown's digits), its area is written to `edworld_padtext` next to the log as a sample for learning the pad's digits, with a log line |
-| `pad_text_read` | `1` | the pad's number and the grant's time read from the tower's notice on the HUD ("PROCEED TO LANDING PAD n -" over its countdown; the structure is the English text's, other languages of the game not checked): edworld takes them as the pad given (`state: pad n given ... (from the HUD's notice)` in the log); edworld_eht logs whether they agree with EHT's; `0` = off |
-| `pad_text_unsure_sample` | `1` | when the tower's notice is on the HUD but its pad's number cannot be read sure (a case the digits' templates have not met), edworld takes no pad from it, writes a log line, and with `1` keeps the notice's picture once in `edworld_padtext` next to the log (about 130 KB) for learning the digits; `0` = the log line only |
-| `station_vs` | `5B0068AF5630F96B` | (test) the game's shader for the hologram's model; after a game update that changes it, `0`: edworld finds it by its draws and names it in the log |
-| `gate_dive` | `17` | the gates down to a place (not drawn yet): the dive, in degrees below the planet's visible edge |
-| `gate_dive_height` | `0.3` | the gates: the height of the point the dive starts from, in planet radii |
-| `gate_arc` | `30` | the gates: the largest turn, in degrees, onto the flat line (the nose on the planet's edge) before the dive |
-| `gate_dive_steepest` | `73` | the gates: the steepest dive, in degrees below the local horizontal; from high over the place, where the straight line at it would be steeper, the gates set up the approach instead |
-| `compass_colour_disc` | `101214` | the spheres' colours, `RRGGBB` (see "Navball colours"): the disc behind a sphere |
-| `compass_colour_grid` | `5A6068` | the rings at 30° and 60° and the meridians |
-| `compass_colour_rim` | `A8AEB5` | the left sphere's rim and the wings' plane on the right one |
-| `compass_colour_target` | `FFFFFF` | the target's dot |
-| `compass_colour_behind` | `D9A15A` | the target behind, where it should be, `PUSH DOWN` / `PULL UP` |
-| `compass_colour_nose` | `8CC9A0` | the nose's arrow |
-| `compass_colour_text_left` | `C9CED4` | the left sphere's angles |
-| `compass_colour_text_right` | `D6CFB4` | the right sphere's lines |
-| `compass_colour_ok` | `9AD3A8` | `ON PATH`; the approach view's base while the ship is over it |
-| `compass_colour_wrong` | `C0504D` | the approach view's base while the ship is under it (in space only: near a planet the pad is on the ground and the base stays `compass_colour_ok`) |
-| `compass_colour_pad_base` | `7AB8E0` | (test) the approach view's base while the pad's plane shows (see `pad_tilt_green_deg`): light blue, so that green and red there mean the tilt to the pads alone |
-| `compass_colour_top` | `7AB8E0` | (test) in the approach view the left sphere's ring: the target seen from above, light blue as the game's own compass; the white dot stays where the view ahead has it |
+| `pad_text_read` | `1` | the pad's number read from the tower's notice on the HUD; `0` = off |
+| `clouds` | `1` | clouds over a planet with an atmosphere that the game draws without any, `0` = none: see [Clouds](#clouds) |
+| `clouds_volume` | `1` | clouds with depth you fly through; `0` = the flat layer, lighter for a weaker graphics card |
+| `aurora` | `1` | `1` = an aurora over the night side of a planet whose atmosphere's kind is known, `0` = none |
+| `snow` | `1` | `1` = snow of the air's own gas near you under the clouds of an ammonia or methane planet, `0` = none |
+| `build_info` | `3` | edworld's name and version in a corner: `1` top left, `2` top right, `3` bottom right, `4` bottom left, `0` none |
+| `galmap` | `1` | `edworld_eht.dll` only: the names the galaxy map shows, put there for EHT; `0` = off |
+| `shader_catalog` | `1` | `edworld_eht.dll` only: each shader the game creates kept once per build of the game; `0` = none |
 
-All the settings, with their defaults and ranges: [settings.md](settings.md); those not listed here are for finding
-things in the game.
+Every other setting (how the clouds, the aurora and the navballs look, where the list and the spheres stand, the
+tests) is in [settings.md](settings.md), by its topic, with its default, its range and whether a change shows while
+the game runs.
 
 ### Navball colours
 
-The spheres are a muted grey by default. Each `compass_colour_*` setting takes a colour as `RRGGBB` (hex, no `#`);
-the fainter shades (the far side of the right sphere, the middle of the disc, the outline) are mixed from them. For
-example, the blue of 1.1.0-beta.1:
-
-```ini
-compass_colour_disc = 080E1E
-compass_colour_grid = 325596
-compass_colour_rim = 5096FF
-compass_colour_target = FFFFFF
-compass_colour_behind = FF9628
-compass_colour_nose = 50FF8C
-compass_colour_text_left = 96E6FF
-compass_colour_text_right = FFE678
-compass_colour_ok = 78FFA0
-compass_colour_wrong = FF5050
-```
-
-To make your own, change the lines you want; a setting left out keeps its grey. The ini is read when the game
-starts. `compass_sphere_gain` makes all of them lighter or darker.
+The spheres are a muted grey by default. Their colours (`RRGGBB` each, no `#`) and their brightness are
+settings: [settings.md](settings.md), the navballs.
 
 EDSM is asked once per new destination, with the system's id only.
 
@@ -268,24 +168,21 @@ layer, height, cover, opacity and tint, from the physics of the kind's typical p
 size). A gas that does not condense at its planets' temperatures gives a thin haze, not clouds; large cold planets
 get a thin, low layer, small warm ones a deep one. Until the kind is told (a few seconds after the planet comes near)
 and for a kind not known the clouds are as above; then they change over 2 s. The log has
-`clouds: the planet of radius ... m is <kind>`. `clouds_physics_intensity` shows them stronger (`2` = twice, and a
-haze gets the cover of clouds) or weaker; `clouds_tint` their colour (`0` = white, `2` = twice as far from it); `clouds_by_kind = 0` gives every planet the same clouds, to compare. All
-are read again while the game runs; what each kind gets and why is in [clouds.md](clouds.md). edworld reads the game's atmosphere every `clouds_kind_read_s` seconds (10) while
-it is drawn; `0` stops that and every planet gets the same clouds, by the ini. Nothing of it is written anywhere. When no read of
+`clouds: the planet of radius ... m is <kind>`. How strongly they show, their colour, and the same clouds on every
+planet to compare are settings ([settings.md](settings.md)), read again while the game runs; what each kind gets and
+why is in [clouds.md](clouds.md). edworld reads the game's atmosphere every 10 seconds while it is drawn. Nothing of it is written anywhere. When no read of
 the atmosphere gets through for a minute, the log says why (`atmo: no read of the shell got through in a minute: ...`).
 
-Storms (`clouds_cyclones`): in the kinds' clouds, cyclones with spiral arms and a clear eye, as many and as large
+Storms: in the kinds' clouds, cyclones with spiral arms and a clear eye, as many and as large
 as the planet's size, its day and its kind allow. edworld reads the day off the planet's turn in the picture
 (`clouds: the planet of radius ... m turns in ... h` in the log, after half a minute or so near it); a planet that turns
 slowly or is small has none, a large one turning in a day or two has one to three large ones and one at each pole, a
 fast large one several smaller ones. They turn the planet's way on one half, the other way on the other. The log has
-`clouds: N storm(s) on the planet ...`. `clouds_cyclones = 0` turns them off, read again while the game runs. Which
-planets to visit for them: [clouds.md](clouds.md#cyclones).
+`clouds: N storm(s) on the planet ...`. Which planets to visit for them: [clouds.md](clouds.md#cyclones).
 
-Lumps and weather (`clouds_lumps_by_layer`, `clouds_weather`): in the kinds' clouds the lumps' size follows the
+Lumps and weather: in the kinds' clouds the lumps' size follows the
 cloud layer's thickness and each lump is as high as it is strong; the clouds gather on the day side of a planet
-that turns slowly for its size and lie in bands by latitude on a faster one. Both `0` give the clouds as before;
-read again while the game runs. Why: [clouds.md](clouds.md).
+that turns slowly for its size and lie in bands by latitude on a faster one. Why: [clouds.md](clouds.md).
 
 Aurora (`aurora`): on the night side of a planet whose kind is known, an oval of curtains around a pole, over
 the clouds, coloured by the gas (oxygen green and red, nitrogen violet with a pink edge, neon orange, ...). Whether
@@ -293,12 +190,12 @@ the planet has one and how strong it is follow its size, its turn and its star; 
 hours its own and the same for every player. In a substorm, every hour or two, it brightens over minutes and dances
 for a quarter of an hour. Seen from the ground under a dark sky, through the clouds' gaps, and from orbit over the
 night side. The log has `aurora: the planet of radius ... m has a field of its own ...` once per planet. To see a
-strong one now: `aurora_activity = 7`, and `aurora_field = 1` on a planet the guess left without a field. Where and why, its colours and how often: [auroras.md](auroras.md).
+strong one now, [settings.md](settings.md) has two test settings for it. Where and why, its colours and how often: [auroras.md](auroras.md).
 
 ## Check that it works
 
-edworld's name and version stand small and grey in the screen's bottom right corner (`build_info`: 1 top left, 2 top
-right, 3 bottom right, 4 bottom left, 0 none); the log's `build_info:` line says where it went. Without them edworld
+edworld's name and version stand small and grey in the screen's bottom right corner (`build_info` moves it); the log's
+`build_info:` line says where it went. Without them edworld
 is not running, or found no picture to draw into (`build_info: no swap chain's back buffer ...`). With edupscale or
 edwide_screen loaded too, a line for each stands next to edworld's (above it at a bottom corner, below at a top one): its
 version and what it does now (edupscale's technique, edwide_screen's wings), so you see they run.
@@ -344,7 +241,8 @@ edworld sees nothing of the game: the navballs, the panel and the clouds stay aw
 
 For each ship you fly with edworld, open an [issue](https://github.com/arturbac/edworld/issues) with the ship's
 type, a screenshot with both spheres and the log (`edworld.log` or `edworld_eht.log`). If a sphere sits in a bad
-place, say where you would like it; `compass_anchor_*` moves it, and the values you used help too.
+place, say where you would like it; the navballs' settings ([settings.md](settings.md)) move it, and the
+values you used help too.
 
 ## After a verification of the game's files
 
