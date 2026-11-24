@@ -5928,11 +5928,13 @@ namespace edworld
         guarded_galmap(self, index_count, start_index, base_vertex);
 #endif
       orig_draw_indexed_instanced(self, index_count, instance_count, start_index, base_vertex, start_instance);
-      if(current_shell and atmo_period_s() and not hooks_off()
-         and self == immediate.load(std::memory_order_relaxed))
+      // the immediate context first: a deferred one may draw on another thread, which reads neither current_shell
+      // (the immediate context's) nor a live setting (atmo_period_s; the render thread's, ini/live.h)
+      if(self == immediate.load(std::memory_order_relaxed) and current_shell and atmo_period_s()
+         and not hooks_off())
         guarded_atmo(self);
-      if(current_shell and settings().clouds and not hooks_off()
-         and self == immediate.load(std::memory_order_relaxed))
+      if(self == immediate.load(std::memory_order_relaxed) and current_shell and settings().clouds
+         and not hooks_off())
         guarded_clouds(self, index_count, instance_count, start_index, base_vertex, start_instance);
       if(full_after_draw and self == immediate.load(std::memory_order_relaxed))
         guarded_full_after(self);

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The DrawIndexedInstanced hook checks the immediate context before the atmosphere's and the clouds' conditions: a
+  draw of a deferred context, which may run on another thread, no longer reads `current_shell` or the live settings
+  there (a data race; no symptom known).
 - The ini is read, completed and watched by edplugin_common's module `ini` (1669a91), by the same rules as
   edupscale's and edwide_screen's ini. A value that works today works the same:
   - `share`, taken out for `shm_dir`, and `clouds_radius` are said once a session as `no longer a setting` (before,
