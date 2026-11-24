@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# The catalog of the game's shaders (edworld_eht, shader_catalog; doc/developers.md), read offline.
+# The catalog of the game's shaders (edworld_eht, shader_catalog), read offline.
 #   shader_catalog.py names <build dir> <PlanetShaders dir>   the catalog's shaders found whole in the game's .csa
 #                                                             archives: their archive and block (names.tsv in the
 #                                                             build dir, and a summary)

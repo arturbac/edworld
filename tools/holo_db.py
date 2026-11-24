@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # The hologram models' descriptions (PoC, 2026-10-23): the samples edworld_eht writes to edworld_models\ (the model's
 # indices and vertices, the picture of its hologram) gathered into one JSON file a person describes in a page of a
-# browser, so each model of holo_models.h stands on a picture someone looked at (doc/developers.md).
+# browser, so each model of holo_models.h stands on a picture someone looked at.
 #   holo_db.py scan <edworld_models dir> <db dir> [journal dir] [--journal-tool <path>]   new samples into
 #                                         <db dir>/models.json: the game's picture as PNG, three views of the mesh
 #                                         (top, front, side), the journal's events around the sample as hints; a

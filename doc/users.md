@@ -192,7 +192,7 @@ the planet has one and how strong it is follow its size, its turn and its star; 
 hours its own and the same for every player. In a substorm, every hour or two, it brightens over minutes and dances
 for a quarter of an hour. Seen from the ground under a dark sky, through the clouds' gaps, and from orbit over the
 night side. The log has `aurora: the planet of radius ... m has a field of its own ...` once per planet. To see a
-strong one now, [settings.md](settings.md) has two test settings for it. Where and why, its colours and how often: [auroras.md](auroras.md).
+strong one now: `aurora_activity = 7` and `aurora_field = 1` (test settings, [settings.md](settings.md)). Where and why, its colours and how often: [auroras.md](auroras.md).
 
 ## Check that it works
 

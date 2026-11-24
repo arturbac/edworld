@@ -34,7 +34,7 @@ strong ones towering, and each kind's clouds have a colour of their own.
 There is an aurora over the night side of a planet whose atmosphere's kind is known: an oval
 of thin, tall curtains of rays around its magnetic pole, in the colours of its gas, brightening and dancing in
 substorms. How stormy follows the time, the same for every player. Seen from orbit and from the ground; `aurora = 0`
-turns it off. Its settings: [Clouds](doc/users.md#clouds).
+turns it off. Its settings: [Clouds](doc/users.md#clouds) and, every one, [settings.md](doc/settings.md).
 
 ![Auroras from the ground: a neon world's orange curtains (left), an argon-rich world's violet ones (right)](doc/images/aurora.jpg)
 

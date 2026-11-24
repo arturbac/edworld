@@ -108,7 +108,7 @@ namespace edworld
       note.changed = true;
       return note;
       }
-    // a read of no known kind never takes a known kind away, however many come (as the header and developers.md say;
+    // a read of no known kind never takes a known kind away, however many come (as the header says;
     // three in a row did before the second audit, 2026-11-18); it does not break a run of another kind either
     if(kind == atmosphere_kind_e::unknown)
       {
