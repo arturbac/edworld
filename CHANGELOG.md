@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- doc/developers.md moved out of the repository, to the developers' notes kept apart from the plugins;
+  the README no longer links it.
 - `edworld.ini.example` is gone: edworld writes its ini at its first start, every setting as a comment with
   its default, and adds the settings a new version brings at later starts; one place for the settings, the code.
 - edworld's work in the game's calls and its threads run under edplugin_common's guard: a fault or a C++ exception is
