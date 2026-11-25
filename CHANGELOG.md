@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `creator_pass` is read and compared by edplugin_common's `pass_modules` (77a7bd9; its default list,
+  `bdhkm64.dll`, the same names, spaces and case as before); no change in what is passed over.
+- The dll has a version resource (VERSIONINFO: the version, `edworld` or `edworld_eht`, its file name), the build's
+  time as its time stamp (`SOURCE_DATE_EPOCH`, else its commit's time) and the PDB named without the build's path;
+  the same code builds the same dll in the same build directory (edplugin_common baa684c).
 - The DrawIndexedInstanced hook checks the immediate context before the atmosphere's and the clouds' conditions: a
   draw of a deferred context, which may run on another thread, no longer reads `current_shell` or the live settings
   there (a data race; no symptom known).

@@ -226,28 +226,6 @@ namespace
     char passed[MAX_PATH]{};  ///< the first dll of creator_pass met on the way, empty if none
     };
 
-  ///\brief a dll's file name (no folder) among creator_pass's names, by commas, without regard to case
-  [[nodiscard]]
-  auto passed_over(std::wstring_view file) noexcept -> bool
-    {
-    std::wstring_view list{edworld::settings().creator_pass};
-    while(not list.empty())
-      {
-      auto const comma{list.find(L',')};
-      std::wstring_view item{list.substr(0, comma)};
-      list = comma == std::wstring_view::npos ? std::wstring_view{} : list.substr(comma + 1);
-      while(not item.empty() and (item.front() == L' ' or item.front() == L'\t'))
-        item.remove_prefix(1);
-      while(not item.empty() and (item.back() == L' ' or item.back() == L'\t'))
-        item.remove_suffix(1);
-      if(not item.empty() and item.size() == file.size()
-         and CompareStringOrdinal(item.data(), static_cast<int>(item.size()), file.data(), static_cast<int>(file.size()), TRUE)
-               == CSTR_EQUAL)
-        return true;
-      }
-    return false;
-    }
-
   ///\brief the folder of a module's file, with its last backslash
   auto folder_of(wchar_t const * path) noexcept -> std::wstring_view
     {
@@ -404,7 +382,8 @@ namespace
       if(not GetModuleFileNameW(m, path, MAX_PATH) or not GetModuleFileNameW(nullptr, exe, MAX_PATH))
         return c;
       std::wstring_view const folder{folder_of(path)};
-      if(passed_over(std::wstring_view{path}.substr(folder.size())))
+      // a dll's file name (no folder) among creator_pass's names by commas, without regard to case (edplugin_common)
+      if(edplugin_common::passed_over(std::wstring_view{path}.substr(folder.size()), edworld::settings().creator_pass))
         {
         if(not c.passed[0])
           WideCharToMultiByte(CP_UTF8, 0, path + folder.size(), -1, c.passed, sizeof c.passed - 1, nullptr, nullptr);

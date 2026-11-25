@@ -56,6 +56,10 @@ creator_case() {  # $1 = edworld | edworld_eht; a device asked through a dll fro
   EDWORLD_TEST_PASSER='pass\bdhkm64.dll' ini_run
   grep 'D3D11CreateDevice:' "$1.log" | tail -n 1 | grep -q 'asked by test_app.exe (past bdhkm64.dll: creator_pass)$'
   ini_check "creator_pass passes the dll over: the device is the game's" $?
+  printf 'creator_pass = ,\tBDHKM64.dll ,\n' > "$ini"
+  EDWORLD_TEST_PASSER='pass\bdhkm64.dll' ini_run
+  grep 'D3D11CreateDevice:' "$1.log" | tail -n 1 | grep -q 'asked by test_app.exe (past bdhkm64.dll: creator_pass)$'
+  ini_check "creator_pass with empty names and a tab passes the dll over" $?
   : > "$ini"
   EDWORLD_TEST_PASSER='pass\bdhkm64.dll' ini_run
   grep 'D3D11CreateDevice:' "$1.log" | tail -n 1 | grep -q 'asked by test_app.exe (past bdhkm64.dll: creator_pass)$'

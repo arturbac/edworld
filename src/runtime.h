@@ -11,6 +11,7 @@
 #include <edplugin_common/guard/guard.h>
 #include <edplugin_common/log/log.h>
 #include <edplugin_common/memory/memory.h>
+#include <edplugin_common/memory/pass_modules.h>
 #include <edplugin_common/paths/paths.h>
 #include <edplugin_common/text/format.h>
 
@@ -46,9 +47,9 @@ namespace edworld
     ///\brief the next d3d11 in the chain (EDHM, EDVR renamed, ReShade); empty = the system copy
     std::wstring next;
     ///\brief dlls passed over when edworld tells who asks for a device, by name, separated by commas: a program that
-    /// puts itself in the game's own call (an antivirus's hooks, `bdhkm64.dll` seen 2026-11-17 in a player's log, there
-    /// by default so the player needs no ini); empty = none
-    std::wstring creator_pass{L"bdhkm64.dll"};
+    /// puts itself in the game's own call (an antivirus's hooks; edplugin_common's list by default, `bdhkm64.dll`, so
+    /// the player needs no ini); empty = none
+    std::wstring creator_pass{edplugin_common::default_pass_modules};
     ///\brief edworld's name and version in a corner of the picture (the swap chain's back buffer): 1 top left, 2 top
     /// right, 3 bottom right, 4 bottom left; 0 = none
     std::uint32_t build_info{3};
