@@ -131,7 +131,7 @@ the file edworld writes: empty means the Saved Games folder, and the file then h
 | `clouds_volume` | `1` | clouds with depth you fly through; `0` = the flat layer, lighter for a weaker graphics card |
 | `aurora` | `1` | `1` = an aurora over the night side of a planet whose atmosphere's kind is known, `0` = none |
 | `snow` | `1` | `1` = snow of the air's own gas near you under the clouds of an ammonia or methane planet, `0` = none |
-| `build_info` | `3` | edworld's name and version in a corner: `1` top left, `2` top right, `3` bottom right, `4` bottom left, `0` none |
+| `build_info` | `3` | edworld's name and version in a corner (in a picture wider than 16:9, of its middle 16:9 part, where the game lays its HUD): `1` top left, `2` top right, `3` bottom right, `4` bottom left, `0` none |
 | `galmap` | `1` | `edworld_eht.dll` only: the names the galaxy map shows, put there for EHT; `0` = off |
 | `shader_catalog` | `1` | `edworld_eht.dll` only: each shader the game creates kept once per build of the game; `0` = none |
 
@@ -198,8 +198,9 @@ strong one now: `aurora_activity = 7` and `aurora_field = 1` (test settings, [se
 
 ## Check that it works
 
-edworld's name and version stand small and grey in the screen's bottom right corner (`build_info` moves it); the log's
-`build_info:` line says where it went. Without them edworld
+edworld's name and version stand small and grey in the screen's bottom right corner (`build_info` moves it); in a
+picture wider than 16:9 (a wide window, several monitors) in the corner of its middle 16:9 part, where the game lays
+its HUD - with three 16:9 monitors, on the middle one. The log's `build_info:` line says where it went. Without them edworld
 is not running, or found no picture to draw into (`build_info: no swap chain's back buffer ...`). With edupscale or
 edwide_screen loaded too, a line for each stands next to edworld's (above it at a bottom corner, below at a top one): its
 version and what it does now (edupscale's technique, edwide_screen's wings), so you see they run.

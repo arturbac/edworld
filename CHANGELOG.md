@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `build_info` in a picture wider than 16:9 (a wide window, a desktop over several monitors): edworld's name and
+  version, and the other plugins' lines, stand in a corner of the picture's middle part of its height x 16/9, where
+  the game lays its HUD, instead of a corner of the whole picture (with three 16:9 monitors, the middle one); a
+  picture of 16:9 or narrower as before. The log's `build_info:` line gives that part's x and width.
 - A lost device is logged once, flushed to the disk at once: once a second at the start of a frame with the HUD's
   panels, the device's `GetDeviceRemovedReason`; a reason other than `S_OK` writes the line (edplugin_common 476ea21,
   `dxgi/device_removed.h`).

@@ -369,22 +369,81 @@ namespace edworld
     float y;  ///< its top
     };
 
-  ///\brief where a text of text_w x text_h goes in a picture of width x height, margin pixels in from the corner:
-  /// 1 top left, 2 top right, 3 bottom right, 4 bottom left (clockwise); any other value as 3
-  [[nodiscard]]
-  constexpr auto corner_text_at(std::uint32_t corner, float width, float height, float text_w, float text_h, float margin) noexcept
-    -> corner_text_t
+  struct hud_span_t
     {
+    std::uint32_t left;   ///< the part's left edge
+    std::uint32_t width;  ///< its width
+    };
+
+  ///\brief the part of a picture of width x height the game lays its HUD in: in a picture wider than 16:9 (a wide
+  /// window, a desktop over several monitors) the middle height x 16/9 of it, rounded to a whole pixel; in one of
+  /// 16:9 or narrower, all of it. A picture called 16:9 that is a pixel or two wider (1366x768) counts as 16:9
+  [[nodiscard]]
+  constexpr auto hud_span(std::uint32_t width, std::uint32_t height) noexcept -> hud_span_t
+    {
+    std::uint64_t const span{(std::uint64_t{height} * 32u + 9u) / 18u};
+    if(height == 0u or width <= span + 2u)
+      return {0u, width};
+    return {static_cast<std::uint32_t>((width - span) / 2u), static_cast<std::uint32_t>(span)};
+    }
+
+  static_assert(
+    hud_span(5760u, 1080u).left == 1920u and hud_span(5760u, 1080u).width == 1920u,
+    "three 1920x1080 monitors: the middle one"
+  );
+  static_assert(hud_span(3440u, 1440u).left == 440u and hud_span(3440u, 1440u).width == 2560u, "21:9");
+  static_assert(hud_span(9000u, 2160u).left == 2580u and hud_span(9000u, 2160u).width == 3840u, "wider than 16:9");
+  static_assert(hud_span(1920u, 1080u).left == 0u and hud_span(1920u, 1080u).width == 1920u, "16:9: all of it");
+  static_assert(hud_span(2560u, 1440u).left == 0u and hud_span(2560u, 1440u).width == 2560u, "16:9: all of it");
+  static_assert(hud_span(1366u, 768u).left == 0u and hud_span(1366u, 768u).width == 1366u, "1366x768 counts as 16:9");
+  static_assert(hud_span(1360u, 768u).left == 0u and hud_span(1360u, 768u).width == 1360u, "a little narrower");
+  static_assert(hud_span(1920u, 1200u).left == 0u and hud_span(1920u, 1200u).width == 1920u, "16:10: all of it");
+  static_assert(hud_span(1920u, 0u).left == 0u and hud_span(1920u, 0u).width == 1920u, "no height: all of it");
+
+  ///\brief where a text of text_w x text_h goes in a picture of width x height, margin pixels in from a corner of
+  /// the part the game lays its HUD in (hud_span): 1 top left, 2 top right, 3 bottom right, 4 bottom left
+  /// (clockwise); any other value as 3
+  [[nodiscard]]
+  constexpr auto corner_text_at(
+    std::uint32_t corner, std::uint32_t width, std::uint32_t height, float text_w, float text_h, float margin
+  ) noexcept -> corner_text_t
+    {
+    hud_span_t const hud{hud_span(width, height)};
+    float const hud_left{static_cast<float>(hud.left)};
+    float const hud_right{static_cast<float>(hud.left + hud.width)};
     bool const left{corner == 1u or corner == 4u};
     bool const top{corner == 1u or corner == 2u};
-    return {left ? margin : width - margin - text_w, top ? margin : height - margin - text_h};
+    return {
+      left ? hud_left + margin : hud_right - margin - text_w,
+      top ? margin : static_cast<float>(height) - margin - text_h
+    };
     }
+
+  static_assert(
+    corner_text_at(1u, 9000u, 2160u, 300.f, 24.f, 16.f).x == 2596.f
+      and corner_text_at(1u, 9000u, 2160u, 300.f, 24.f, 16.f).y == 16.f,
+    "top left of the HUD's part"
+  );
+  static_assert(
+    corner_text_at(3u, 9000u, 2160u, 300.f, 24.f, 16.f).x == 6104.f
+      and corner_text_at(3u, 9000u, 2160u, 300.f, 24.f, 16.f).y == 2120.f,
+    "bottom right of the HUD's part"
+  );
+  static_assert(corner_text_at(2u, 1920u, 1080u, 300.f, 24.f, 16.f).x == 1604.f, "16:9: the picture's own corner");
 
   ///\brief the line `index` of a corner's block of lines, line_h apart: 0 = edworld's own, in the corner; the others
   /// away from it (above at the bottom corners, below at the top ones) - the other plugins' lines (2026-11-19)
   [[nodiscard]]
-  constexpr auto corner_line_at(std::uint32_t corner, float width, float height, float text_w, float text_h, float margin, float line_h,
-                                std::uint32_t index) noexcept -> corner_text_t
+  constexpr auto corner_line_at(
+    std::uint32_t corner,
+    std::uint32_t width,
+    std::uint32_t height,
+    float text_w,
+    float text_h,
+    float margin,
+    float line_h,
+    std::uint32_t index
+  ) noexcept -> corner_text_t
     {
     corner_text_t at{corner_text_at(corner, width, height, text_w, text_h, margin)};
     bool const top{corner == 1u or corner == 2u};

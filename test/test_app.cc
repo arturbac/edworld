@@ -1207,25 +1207,34 @@ int main()
           and to_pixel(1e20f, 3072u) == 3072u,
         "to_pixel: held to the surface, NaN to 0");
   }
-  // build_info: the corners clockwise from the top left; a value out of range as the bottom right
+  // build_info: the corners clockwise from the top left; a value out of range as the bottom right; in a picture wider
+  // than 16:9 the corners of its middle 16:9 part, where the game lays its HUD (9000x2160: x 2580 to 6420)
   {
   auto const at = [](std::uint32_t corner, float x, float y) -> bool
     {
-    auto const p{edworld::corner_text_at(corner, 9000.f, 2160.f, 300.f, 24.f, 16.f)};
+    auto const p{edworld::corner_text_at(corner, 9000u, 2160u, 300.f, 24.f, 16.f)};
     return std::fabs(p.x - x) < 0.01f and std::fabs(p.y - y) < 0.01f;
     };
-  check(at(1u, 16.f, 16.f) and at(2u, 8684.f, 16.f) and at(3u, 8684.f, 2120.f) and at(4u, 16.f, 2120.f),
-        "build_info: 1 top left, 2 top right, 3 bottom right, 4 bottom left");
-  check(at(7u, 8684.f, 2120.f), "build_info: a value out of range at the bottom right");
-  // the other plugins' lines (2026-11-19): line 1 above edworld's at the bottom corners, below it at the top ones
+  check(
+    at(1u, 2596.f, 16.f) and at(2u, 6104.f, 16.f) and at(3u, 6104.f, 2120.f) and at(4u, 2596.f, 2120.f),
+    "build_info: 1 top left, 2 top right, 3 bottom right, 4 bottom left of the HUD's part"
+  );
+  check(at(7u, 6104.f, 2120.f), "build_info: a value out of range at the bottom right");
+  auto const p169{edworld::corner_text_at(2u, 1920u, 1080u, 300.f, 24.f, 16.f)};
+  check(
+    std::fabs(p169.x - 1604.f) < 0.01f and std::fabs(p169.y - 16.f) < 0.01f, "build_info: a 16:9 picture's own corner"
+  );
+  // the other plugins' lines: line 1 above edworld's at the bottom corners, below it at the top ones
   auto const line = [](std::uint32_t corner, std::uint32_t i, float x, float y) -> bool
     {
-    auto const p{edworld::corner_line_at(corner, 9000.f, 2160.f, 300.f, 24.f, 16.f, 30.f, i)};
+    auto const p{edworld::corner_line_at(corner, 9000u, 2160u, 300.f, 24.f, 16.f, 30.f, i)};
     return std::fabs(p.x - x) < 0.01f and std::fabs(p.y - y) < 0.01f;
     };
-  check(line(3u, 0u, 8684.f, 2120.f) and line(3u, 1u, 8684.f, 2090.f) and line(3u, 2u, 8684.f, 2060.f) and line(2u, 1u, 8684.f, 46.f)
-          and line(4u, 1u, 16.f, 2090.f),
-        "build_info: the other plugins' lines stacked away from the corner, 30 apart");
+  check(
+    line(3u, 0u, 6104.f, 2120.f) and line(3u, 1u, 6104.f, 2090.f) and line(3u, 2u, 6104.f, 2060.f)
+      and line(2u, 1u, 6104.f, 46.f) and line(4u, 1u, 2596.f, 2090.f),
+    "build_info: the other plugins' lines stacked away from the corner, 30 apart"
+  );
   }
   // the compass: a filled dot and a hollow one drawn into a copy of the disc's square, read back; the angles from the
   // sphere's projection; the flight path angle from two fixes Status.json gave on 2026-10-06 (ed-lab, Kestrel)

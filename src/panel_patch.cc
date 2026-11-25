@@ -3783,7 +3783,9 @@ namespace edworld
     float const sw{static_cast<float>(d.Width)}, sh{static_cast<float>(d.Height)};
     float const size{std::clamp(std::round(sh * 0.011f), 12.f, 48.f)};
     ImVec2 const extent{r.font->CalcTextSizeA(size, FLT_MAX, 0.f, text)};
-    corner_text_t const at{corner_text_at(s.build_info, sw, sh, std::ceil(extent.x), size, std::round(size * 0.6f))};
+    corner_text_t const at{
+      corner_text_at(s.build_info, d.Width, d.Height, std::ceil(extent.x), size, std::round(size * 0.6f))
+    };
     ImGui::SetCurrentContext(r.imgui);
     ImGuiIO & io{ImGui::GetIO()};
     io.DisplaySize = ImVec2{sw, sh};
@@ -3797,7 +3799,9 @@ namespace edworld
     for(std::uint32_t i{1}; i < count; ++i)
       {
       ImVec2 const w{r.font->CalcTextSizeA(size, FLT_MAX, 0.f, lines[i])};
-      corner_text_t const li{corner_line_at(s.build_info, sw, sh, std::ceil(w.x), size, std::round(size * 0.6f), std::round(size * 1.25f), i)};
+      corner_text_t const li{corner_line_at(
+        s.build_info, d.Width, d.Height, std::ceil(w.x), size, std::round(size * 0.6f), std::round(size * 1.25f), i
+      )};
       dl->AddText(r.font, size, ImVec2{li.x + 1.f, li.y + 1.f}, IM_COL32(0, 0, 0, 200), lines[i]);
       dl->AddText(r.font, size, ImVec2{li.x, li.y}, im_colour(0x9aa0a6u), lines[i]);
       }
@@ -3813,8 +3817,17 @@ namespace edworld
     if(not told_build_info)
       {
       told_build_info = true;
-      log_line("build_info: \"{}\" drawn in corner {} of the back buffer {}x{} (format {})", text, s.build_info, d.Width, d.Height,
-               static_cast<unsigned>(d.Format));
+      hud_span_t const hud{hud_span(d.Width, d.Height)};
+      log_line(
+        "build_info: \"{}\" drawn in corner {} of the back buffer {}x{} (format {}), of its HUD's part x {} width {}",
+        text,
+        s.build_info,
+        d.Width,
+        d.Height,
+        static_cast<unsigned>(d.Format),
+        hud.left,
+        hud.width
+      );
       for(std::uint32_t i{1}; i < count; ++i)
         log_line("build_info: with \"{}\" (another plugin's)", lines[i]);
       }
