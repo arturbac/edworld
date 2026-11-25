@@ -29,6 +29,8 @@
 #include "snow.h"
 #include "shader_catalog.h"
 
+#include <edplugin_common/dxgi/device_removed.h>
+
 #include <d3d11_1.h>
 #include <d3d11_4.h>
 #include <malloc.h>
@@ -315,6 +317,7 @@ namespace edworld
     // ---- statistics for the log ----
     std::uint64_t stat_draws{}, stat_published{}, stat_dropped{}, stat_full{};
     LONGLONG last_log_qpc{};
+    LONGLONG last_removed_check_qpc{};  ///< the last look at the device's GetDeviceRemovedReason (once a second)
 
     // ---- the published file ----
     share_t * share{};
@@ -2368,6 +2371,12 @@ namespace edworld
           log_line("frame {}: totals draws {} faults {} vs {}", static_cast<unsigned long long>(frame),
                    static_cast<unsigned long long>(stat_draws), faults_seen(), static_cast<unsigned long long>(vs_created.load()));
           }
+        }
+      // a lost device logged once, flushed (edplugin_common): its reason read at most once a second
+      if((now - last_removed_check_qpc) * 1000 / qpc_frequency >= 1000)
+        {
+        last_removed_check_qpc = now;
+        edplugin_common::check_device_removed(device);
         }
       drain(now);
       if(pending_count)

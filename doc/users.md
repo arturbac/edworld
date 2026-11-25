@@ -232,6 +232,12 @@ player's log, is there by default, so keep it in the list). edworld then passes 
 over, finds the game behind it and logs `asked by EliteDangerous64.exe (past <its name>: creator_pass)`. Do not add an
 overlay's dll there (Epic's, Discord's, Steam's): edworld would follow the overlay's device instead of the game's.
 
+When the graphics card's driver drops the game's device (the game freezes or ends, the screen goes black), the log
+says it once, with the device's reason, for example `the device is lost: its reason 0x887A0006
+(DXGI_ERROR_DEVICE_HUNG)` (edworld looks once a second while it watches the HUD's panels). The line is written to the
+disk at once, so it stays even when the whole computer has to be restarted after it; a computer that stops before
+edworld looks leaves no such line.
+
 A line `warning: dll before edworld in the chain: ...` names each mod that stood before edworld in the chain (the
 file, its product and version; edloader itself gets a plain `chain: before edworld:` line), for a failure to tell who
 was there. Other mods before edworld are allowed; with

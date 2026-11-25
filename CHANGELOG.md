@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A lost device is logged once, flushed to the disk at once: once a second at the start of a frame with the HUD's
+  panels, the device's `GetDeviceRemovedReason`; a reason other than `S_OK` writes the line (edplugin_common 476ea21,
+  `dxgi/device_removed.h`).
 - `creator_pass` is read and compared by edplugin_common's `pass_modules` (77a7bd9; its default list,
   `bdhkm64.dll`, the same names, spaces and case as before); no change in what is passed over.
 - The dll has a version resource (VERSIONINFO: the version, `edworld` or `edworld_eht`, its file name), the build's
