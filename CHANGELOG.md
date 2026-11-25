@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.3.0-beta.1
 
+edworld on edplugin_common, the library the plugins share; no new features in the game.
+
+- edloader 1.4.0 in the zip.
 - `build_info` in a picture wider than 16:9 (a wide window, a desktop over several monitors): edworld's name and
   version, and the other plugins' lines, stand in a corner of the picture's middle part of its height x 16/9, where
   the game lays its HUD, instead of a corner of the whole picture (with three 16:9 monitors, the middle one); a
