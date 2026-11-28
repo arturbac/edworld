@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iterator>
+#include <limits>
 #include <optional>
 #include <cstdio>
 #include <cstdlib>
@@ -733,6 +734,41 @@ namespace
             and kept.aurora_gain == in.aurora_gain and kept.aurora_activity == -1.f
             and kept.aurora_dance == in.aurora_dance,
           "settings held: the defaults kept, aurora_activity -1 (by the time) too");
+
+    // NaN and infinities, should any reach the settings (the ini's read_float takes none), and aurora_activity below
+    // 0: the buffer the same held and not, the steps held to their range, the intensities below 0 and NaN as 0,
+    // aurora_activity below 0 kept; a NaN under std::max or std::clamp stays NaN, as clouds_values takes it
+    float const nan{std::numeric_limits<float>::quiet_NaN()};
+    float const inf{std::numeric_limits<float>::infinity()};
+    settings_t odd{};
+    odd.clouds_steps = nan;
+    odd.clouds_far_steps = inf;
+    odd.clouds_max_steps = -inf;
+    odd.clouds_near_to = nan;
+    odd.clouds_full_from_px = -inf;
+    odd.clouds_edge_full_px = nan;
+    odd.clouds_edge_band_px = inf;
+    odd.clouds_haze = nan;
+    odd.clouds_size_var = inf;
+    odd.clouds_weather = nan;
+    odd.clouds_physics_intensity = nan;
+    odd.clouds_tint = -inf;
+    odd.aurora_gain = nan;
+    odd.aurora_activity = -5.f;
+    odd.aurora_dance = inf;
+    settings_t odd_held{odd};
+    clouds_settings_held(odd_held);
+    std::array<float, clouds_value_count> odd_before{}, odd_after{};
+    (void)clouds_values(odd, planet, frame, odd_before);
+    (void)clouds_values(odd_held, planet, frame, odd_after);
+    check(std::memcmp(odd_before.data(), odd_after.data(), sizeof(odd_before)) == 0,
+          "settings held: the clouds' buffer the same for NaN and infinities, held and not");
+    check(odd_held.clouds_steps == 1.f and odd_held.clouds_far_steps == 256.f and odd_held.clouds_max_steps == 1.f
+            and odd_held.clouds_size_var == 0.9f and odd_held.clouds_physics_intensity == 0.f
+            and odd_held.clouds_tint == 0.f and odd_held.aurora_activity == -5.f and odd_held.aurora_dance == 2.f
+            and std::isnan(odd_held.clouds_near_to) and std::isnan(odd_held.aurora_gain),
+          "settings held: NaN steps as 1, infinite ones to their range, NaN and -inf intensities as 0, aurora_activity "
+          "below 0 kept, NaN under max and clamp kept");
     }
 
   // the atmosphere's kind from the hue of the game's table (atmosphere_kind.h)

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- The clouds' and the aurora's settings are held to their ranges after each read of the ini (the ranges the clouds
+  were drawn with already, the settings table's "(clamped)"): nothing drawn changes; the log's `settings: read again:`
+  line shows the values held, and a change of `clouds_steps` between two values out of 1..256 is no longer told as
+  needing a restart.
+
 ## 1.3.0-beta.1
 
 edworld on edplugin_common, the library the plugins share; no new features in the game.
