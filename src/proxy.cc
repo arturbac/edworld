@@ -84,7 +84,7 @@ namespace
 
   auto chain_next() -> void
     {
-    std::wstring path{edworld::settings().next};
+    std::wstring path{edworld::start_fields().next};
     // under edloader the way on is always edloader's list; a player has nothing to set for it
     if(path.empty() and GetEnvironmentVariableW(edplugin_common::edloader_config_dir_variable, nullptr, 0) != 0)
       path = L"d3d11.dll";
@@ -383,7 +383,7 @@ namespace
         return c;
       std::wstring_view const folder{folder_of(path)};
       // a dll's file name (no folder) among creator_pass's names by commas, without regard to case (edplugin_common)
-      if(edplugin_common::passed_over(std::wstring_view{path}.substr(folder.size()), edworld::settings().creator_pass))
+      if(edplugin_common::passed_over(std::wstring_view{path}.substr(folder.size()), edworld::start_fields().creator_pass))
         {
         if(not c.passed[0])
           WideCharToMultiByte(CP_UTF8, 0, path + folder.size(), -1, c.passed, sizeof c.passed - 1, nullptr, nullptr);

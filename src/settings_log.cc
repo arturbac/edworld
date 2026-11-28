@@ -374,6 +374,9 @@ namespace edworld
 
   auto settings() noexcept -> settings_t const & { return live.get(); }
 
+  // the slot in use for now; edplugin_common's live3_settings_t gives a copy of its own to the start-only fields
+  auto start_fields() noexcept -> settings_t const & { return live.get(); }
+
   auto settings_generation() noexcept -> std::uint32_t { return live.slot().generation; }
 
   auto start_settings(std::wstring const & config_dir, std::wstring const & output_dir) noexcept -> void

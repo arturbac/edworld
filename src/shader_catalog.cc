@@ -67,7 +67,7 @@ namespace edworld
     ///\brief the batch to the build's directory: a shader already there (an earlier session) is skipped
     auto write(std::vector<noted_t> const & batch) -> void
       {
-      std::wstring const root{stralgo::stl::merge(settings().dir, L"\\edworld_shaders"sv)};
+      std::wstring const root{stralgo::stl::merge(start_fields().dir, L"\\edworld_shaders"sv)};
       std::wstring const dir{stralgo::stl::merge(root, L'\\', widen(game_build_key()))};
       CreateDirectoryW(root.c_str(), nullptr);
       CreateDirectoryW(dir.c_str(), nullptr);
@@ -179,14 +179,14 @@ namespace edworld
 
   auto shader_catalog_note(shader_stage_e stage, void const * bytecode, std::size_t length, std::uint64_t hash) noexcept -> void
     {
-    if(not settings().shader_catalog or not bytecode or chain_refusal()[0])
+    if(not start_fields().shader_catalog or not bytecode or chain_refusal()[0])
       return;
     note(stage, hash, static_cast<std::uint8_t const *>(bytecode), length);
     }
 
   auto shader_catalog_note_layout(D3D11_INPUT_ELEMENT_DESC const * elements, UINT count) noexcept -> void
     {
-    if(not settings().shader_catalog or not elements or chain_refusal()[0])
+    if(not start_fields().shader_catalog or not elements or chain_refusal()[0])
       return;
     char text[4096];
     int at{};

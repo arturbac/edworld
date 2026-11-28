@@ -115,7 +115,7 @@ namespace edworld
     std::atomic<void *> seen_ptr[max_vs_seen]{};
     std::uint64_t seen_hash[max_vs_seen]{};
     std::atomic<std::uint32_t> seen_reserved{};
-    // the bytecode of the shaders in settings().dump_vs, kept from creation for a whole-frame dump (a slot counts once
+    // the bytecode of the shaders in start_fields().dump_vs, kept from creation for a whole-frame dump (a slot counts once
     // its hash is set)
     constexpr std::uint32_t max_kept_vs{8};
     struct kept_vs_t
@@ -485,7 +485,7 @@ namespace edworld
       return entries;
       }
 
-    ///\brief the way the context is watched, said in the log: settings().context_hook, else by whose code its methods
+    ///\brief the way the context is watched, said in the log: start_fields().context_hook, else by whose code its methods
     /// are (EDVR's threshold: three quarters of the first 96 in the system d3d11 is the runtime's own object)
     [[nodiscard]]
     auto pick_context_hook(ID3D11DeviceContext * ctx) noexcept -> context_hook_e
@@ -496,7 +496,7 @@ namespace edworld
       std::size_t const count{table_length(table)};
       std::size_t const sample{std::min(count, own_sample)};
       std::size_t const in_system{system_d3d11() ? entries_in(table, sample, system_d3d11()) : 0u};
-      std::uint32_t const asked{settings().context_hook};
+      std::uint32_t const asked{start_fields().context_hook};
       bool const runtime_own{sample != 0 and in_system * 4 >= sample * 3};
       bool const long_enough{count > static_cast<std::size_t>(slot_execute_command_list)};
       bool const own{long_enough and (asked == 2 or (asked == 0 and runtime_own))};
@@ -622,7 +622,7 @@ namespace edworld
 #if defined(EDWORLD_EHT)
     auto open_share() noexcept -> void
       {
-      std::wstring const & dir{settings().shm_dir};
+      std::wstring const & dir{start_fields().shm_dir};
       if(dir.empty())
         return;
       CreateDirectoryW(dir.c_str(), nullptr);
@@ -840,8 +840,8 @@ namespace edworld
           {
           publish(*oldest, m);
           ++stat_published;
-          if(settings().log_interval_ms
-             and (now - last_log_qpc) * 1000 / qpc_frequency >= settings().log_interval_ms)
+          if(start_fields().log_interval_ms
+             and (now - last_log_qpc) * 1000 / qpc_frequency >= start_fields().log_interval_ms)
             {
             last_log_qpc = now;
             log_batch_begin();  // the summary's lines in one write
@@ -1017,7 +1017,7 @@ namespace edworld
     LONGLONG last_trigger_check{};
     char dump_stamp[32]{};
 
-    auto trigger_path() -> std::wstring { return stralgo::stl::merge(settings().dir, L"\\edworld_dump"sv); }
+    auto trigger_path() -> std::wstring { return stralgo::stl::merge(start_fields().dir, L"\\edworld_dump"sv); }
 
     auto check_trigger(LONGLONG now) -> void
       {
@@ -1044,7 +1044,7 @@ namespace edworld
       GetSystemTime(&t);
       format_into(dump_stamp, "{:04}{:02}{:02}T{:02}{:02}{:02}_{:03}Z", t.wYear, t.wMonth, t.wDay, t.wHour,
                     t.wMinute, t.wSecond, t.wMilliseconds);
-      CreateDirectoryW(stralgo::stl::merge(settings().dir, L"\\edworld_dumps"sv).c_str(), nullptr);
+      CreateDirectoryW(stralgo::stl::merge(start_fields().dir, L"\\edworld_dumps"sv).c_str(), nullptr);
       log_line("dump: armed ({})", dump_stamp);
       }
 
@@ -1122,16 +1122,16 @@ namespace edworld
           {
           wchar_t name[MAX_PATH];
           if(p.checkpoint and p.ps_slot == rt_after_slot)
-            format_into(name, MAX_PATH, L"{}\\edworld_dumps\\{}_a{}_rt_after_{}x{}_f{}_pitch{}.raw", settings().dir,
+            format_into(name, MAX_PATH, L"{}\\edworld_dumps\\{}_a{}_rt_after_{}x{}_f{}_pitch{}.raw", start_fields().dir,
                           utf8(dump_stamp), p.checkpoint - 1u, p.width, p.height, p.format, m.RowPitch);
           else if(p.checkpoint and p.ps_slot)
-            format_into(name, MAX_PATH, L"{}\\edworld_dumps\\{}_a{}_ps{}_{}x{}_f{}_pitch{}.raw", settings().dir,
+            format_into(name, MAX_PATH, L"{}\\edworld_dumps\\{}_a{}_ps{}_{}x{}_f{}_pitch{}.raw", start_fields().dir,
                           utf8(dump_stamp), p.checkpoint - 1u, p.ps_slot - 1u, p.width, p.height, p.format, m.RowPitch);
           else if(p.checkpoint)
-            format_into(name, MAX_PATH, L"{}\\edworld_dumps\\{}_c{:04}_{}x{}_f{}_pitch{}.raw", settings().dir,
+            format_into(name, MAX_PATH, L"{}\\edworld_dumps\\{}_c{:04}_{}x{}_f{}_pitch{}.raw", start_fields().dir,
                           utf8(dump_stamp), p.checkpoint - 1u, p.width, p.height, p.format, m.RowPitch);
           else
-            format_into(name, MAX_PATH, L"{}\\edworld_dumps\\{}_{:08x}_{}x{}_f{}_pitch{}.raw", settings().dir,
+            format_into(name, MAX_PATH, L"{}\\edworld_dumps\\{}_{:08x}_{}x{}_f{}_pitch{}.raw", start_fields().dir,
                           utf8(dump_stamp), static_cast<unsigned long long>(p.id & 0xffffffffull), p.width, p.height, p.format,
                           m.RowPitch);
           queue_write(name, m.pData, m.RowPitch * mapped_rows(p.format, p.height), true);
@@ -1179,7 +1179,7 @@ namespace edworld
         if(SUCCEEDED(hr) and m.pData)
           {
           wchar_t name[MAX_PATH];
-          format_into(name, MAX_PATH, L"{}\\edworld_dumps\\{}_{}.bin", settings().dir, utf8(dump_stamp), utf8(p.name));
+          format_into(name, MAX_PATH, L"{}\\edworld_dumps\\{}_{}.bin", start_fields().dir, utf8(dump_stamp), utf8(p.name));
           queue_write(name, m.pData, p.bytes);
           immediate.load()->Unmap(p.staging, 0);
           }
@@ -1264,7 +1264,7 @@ namespace edworld
       {
       std::uint32_t const kind{settings().clouds_kind_read_s};
 #if defined(EDWORLD_EHT)
-      std::uint32_t const record{settings().atmo_record_s};
+      std::uint32_t const record{start_fields().atmo_record_s};
       if(record != 0u and (kind == 0u or record < kind))
         return record;
 #endif
@@ -1340,7 +1340,7 @@ namespace edworld
       if(atmo_share or atmo_share_failed)
         return atmo_share;
       atmo_share_failed = true;
-      std::wstring const & dir{settings().shm_dir};
+      std::wstring const & dir{start_fields().shm_dir};
       if(dir.empty())
         return nullptr;
       CreateDirectoryW(dir.c_str(), nullptr);
@@ -2032,8 +2032,8 @@ namespace edworld
       // the fingerprint: at most every atmo_record_s seconds, once a session per planet and band
       j.band = over < 1.f ? 0u : static_cast<std::uint32_t>(std::floor(std::log2(over)));
       std::uint64_t const key{(static_cast<std::uint64_t>(std::llround(radius)) << 8) | j.band};
-      bool record{settings().atmo_record_s != 0u and atmo_seen_count != atmo_max_seen
-                  and (p.qpc - atmo_recorded) * 1000 / qpc_frequency >= static_cast<LONGLONG>(settings().atmo_record_s) * 1000};
+      bool record{start_fields().atmo_record_s != 0u and atmo_seen_count != atmo_max_seen
+                  and (p.qpc - atmo_recorded) * 1000 / qpc_frequency >= static_cast<LONGLONG>(start_fields().atmo_record_s) * 1000};
       for(std::uint32_t i{}; record and i != atmo_seen_count; ++i)
         if(atmo_seen[i] == key)
           record = false;
@@ -2080,7 +2080,7 @@ namespace edworld
 #if defined(EDWORLD_EHT)
       if(not j.record)
         return;
-      std::wstring const folder{stralgo::stl::merge(settings().dir, L"\\edworld_atmo"sv)};
+      std::wstring const folder{stralgo::stl::merge(start_fields().dir, L"\\edworld_atmo"sv)};
       CreateDirectoryW(folder.c_str(), nullptr);
       std::uint64_t hash{0xcbf29ce484222325ull};
       bool new_table{};
@@ -2250,7 +2250,7 @@ namespace edworld
 
     auto in_dump_vs(std::uint64_t hash) noexcept -> bool
       {
-      for(std::uint64_t const h: settings().dump_vs)
+      for(std::uint64_t const h: start_fields().dump_vs)
         if(h == hash)
           return true;
       return false;
@@ -2262,21 +2262,21 @@ namespace edworld
       {
       full_done_waiting = false;
       wchar_t name[MAX_PATH];
-      format_into(name, MAX_PATH, L"{}\\edworld_dumps\\{}_draws.txt", settings().dir, utf8(dump_stamp));
+      format_into(name, MAX_PATH, L"{}\\edworld_dumps\\{}_draws.txt", start_fields().dir, utf8(dump_stamp));
       queue_write(name, full_text, full_text_used, true);
 #if defined(EDWORLD_EHT)
-      if(not settings().shm_dir.empty())
+      if(not start_fields().shm_dir.empty())
         {
         char text[64];
         std::size_t const n{format_into(text, "{} {}\n", dump_stamp, full_done_draws)};
-        std::wstring const done{stralgo::stl::merge(settings().shm_dir, L"\\dump_done"sv)};
+        std::wstring const done{stralgo::stl::merge(start_fields().shm_dir, L"\\dump_done"sv)};
         queue_write(stralgo::stl::merge(done, L".part"sv).c_str(), text, static_cast<std::uint32_t>(n), false, done.c_str());
         }
 #endif
       log_line("dump: whole frame's files queued ({} written of {} so far)", writes_done.load(), writes_queued.load());
       }
 
-    auto full_trigger_path() -> std::wstring { return stralgo::stl::merge(settings().dir, L"\\edworld_dump_all"sv); }
+    auto full_trigger_path() -> std::wstring { return stralgo::stl::merge(start_fields().dir, L"\\edworld_dump_all"sv); }
 
     auto check_full(LONGLONG now, bool panels) -> void
       {
@@ -2308,7 +2308,7 @@ namespace edworld
           log_line("dump: the frame ended {:.2f} ms after arming, at a draw after a gap of {} us (frame_gap_us {}); "
                    "draws of other contexts meanwhile {} in {} context(s){} (not recorded)",
                    static_cast<double>(now - full_armed_qpc) * 1000.0 / static_cast<double>(qpc_frequency),
-                   frame_gap_qpc * 1000000 / qpc_frequency, settings().frame_gap_us, full_other_draws.load(), contexts,
+                   frame_gap_qpc * 1000000 / qpc_frequency, start_fields().frame_gap_us, full_other_draws.load(), contexts,
                    full_other_more.load() ? " and more" : "");
           }
         return;
@@ -2348,7 +2348,7 @@ namespace edworld
       GetSystemTime(&t);
       format_into(dump_stamp, "{:04}{:02}{:02}T{:02}{:02}{:02}_{:03}Z", t.wYear, t.wMonth, t.wDay, t.wHour,
                     t.wMinute, t.wSecond, t.wMilliseconds);
-      CreateDirectoryW(stralgo::stl::merge(settings().dir, L"\\edworld_dumps"sv).c_str(), nullptr);
+      CreateDirectoryW(stralgo::stl::merge(start_fields().dir, L"\\edworld_dumps"sv).c_str(), nullptr);
       log_line("dump: whole frame armed ({})", dump_stamp);
       }
 
@@ -2365,7 +2365,7 @@ namespace edworld
       holo_end_laying_over();
       if constexpr(not with_eht)
         {
-        if(settings().log_interval_ms and (now - last_log_qpc) * 1000 / qpc_frequency >= settings().log_interval_ms)
+        if(start_fields().log_interval_ms and (now - last_log_qpc) * 1000 / qpc_frequency >= start_fields().log_interval_ms)
           {
           last_log_qpc = now;
           log_line("frame {}: totals draws {} faults {} vs {}", static_cast<unsigned long long>(frame),
@@ -2657,7 +2657,7 @@ namespace edworld
     ) -> void
       {
       LONGLONG const now{qpc_now()};
-      if((now - last_draw_qpc) * 1000000 / qpc_frequency > settings().frame_gap_us)
+      if((now - last_draw_qpc) * 1000000 / qpc_frequency > start_fields().frame_gap_us)
         {
         frame_gap_qpc = now - last_draw_qpc;
         begin_frame(now);
@@ -2670,15 +2670,15 @@ namespace edworld
         } const gap_from_end{};
       ++stat_draws;
       last_watched_ms.store(GetTickCount64(), std::memory_order_relaxed);
-      if(settings().compass)
+      if(start_fields().compass)
         panel_compass(ctx, device, frame);
-      if(settings().pad_text_samples or settings().pad_text_read)
+      if(start_fields().pad_text_samples or start_fields().pad_text_read)
         panel_pad_text(ctx, device, frame);
       if(watched_found[current_watched])
         {
         // found in the game: its draws carry the panel surface, but whether its records decode like the family's
         // is not known, so it gets the patch and publishes nothing
-        if(settings().patch)
+        if(start_fields().patch)
           panel_patch(ctx, device, frame);
         return;
         }
@@ -2690,7 +2690,7 @@ namespace edworld
           queue_dump(ctx);
           queue_geometry(ctx, index_count, instance_count, start_index, base_vertex, start_instance);
           }
-        if(settings().patch)
+        if(start_fields().patch)
           panel_patch(ctx, device, frame);
         return;
         }
@@ -2729,7 +2729,7 @@ namespace edworld
         stage_frame(ctx, slot);
       slot.have_entry[slot.count] = stage_entry(ctx, slot, slot.count, start_instance);
 
-      if(settings().patch)
+      if(start_fields().patch)
         panel_patch(ctx, device, frame);
 
       surface_cache_t surface{};
@@ -2800,7 +2800,7 @@ namespace edworld
       LONGLONG const now{qpc_now()};
       if((now - last_draw_qpc) * 1000 / qpc_frequency < panel_less_ms or not full_dump_wanted(now))
         return;
-      if((now - last_any_draw_qpc) * 1000000 / qpc_frequency > settings().frame_gap_us)
+      if((now - last_any_draw_qpc) * 1000000 / qpc_frequency > start_fields().frame_gap_us)
         {
         frame_gap_qpc = now - last_any_draw_qpc;
         begin_frame(now, false);
@@ -2851,8 +2851,8 @@ namespace edworld
       ID3D11DeviceContext * ctx, std::uint32_t index_count, std::uint32_t start_index, std::int32_t base_vertex, std::uint32_t start_instance
     ) noexcept -> void
       {
-      bool const list{settings().patch and settings().list};
-      bool const spheres{settings().compass and settings().compass_spheres};
+      bool const list{start_fields().patch and start_fields().list};
+      bool const spheres{start_fields().compass and start_fields().compass_spheres};
       if(not list and not spheres)
         return;
       ++own_depth;
@@ -2873,7 +2873,7 @@ namespace edworld
     auto guarded_build_info(ID3D11DeviceContext * ctx) noexcept -> void
       {
       bool const refused{chain_refusal()[0] != '\0'};
-      if(settings().build_info == 0 or ctx != immediate.load(std::memory_order_relaxed) or (hooks_off() and not refused)
+      if(start_fields().build_info == 0 or ctx != immediate.load(std::memory_order_relaxed) or (hooks_off() and not refused)
          or build_info_guard.broken())
         return;
       ++own_depth;
@@ -2912,7 +2912,7 @@ namespace edworld
       if(seen < max_vs_seen)
         verdict[seen].store(verdict_e::panel, std::memory_order_relaxed);
       std::uint64_t const hash{seen < max_vs_seen ? seen_hash[seen] : 0};
-      bool const ok{watch(vs, static_cast<std::uint32_t>(settings().watch_vs.size()), true)};
+      bool const ok{watch(vs, static_cast<std::uint32_t>(start_fields().watch_vs.size()), true)};
       log_line("vs {:016X} ({}) draws a panel surface (PS t{} {}x{}) and is not in watch_vs: {} ({})",
                static_cast<unsigned long long>(hash), static_cast<void const *>(vs), slot, w, h, ok ? "watched from now on" : "watched list full", how);
       }
@@ -3063,7 +3063,7 @@ namespace edworld
       if(g.share or g.share_failed)
         return g.share;
       g.share_failed = true;
-      std::wstring const & dir{settings().shm_dir};
+      std::wstring const & dir{start_fields().shm_dir};
       if(dir.empty())
         return nullptr;
       CreateDirectoryW(dir.c_str(), nullptr);
@@ -3386,7 +3386,7 @@ namespace edworld
         }
       // idle: the interval first, the target (four calls) only once it is due (D8, 2026-11-18)
       if(g.phase == galmap_phase_e::idle
-         and ((now - g.last) * 1000 / qpc_frequency < std::max<LONGLONG>(100, settings().galmap_interval_ms) or g.staging_failed))
+         and ((now - g.last) * 1000 / qpc_frequency < std::max<LONGLONG>(100, start_fields().galmap_interval_ms) or g.staging_failed))
         return;
       if(not galmap_target(ctx))
         return;
@@ -3945,7 +3945,7 @@ namespace edworld
                as_unsigned(f.grid[0]), as_unsigned(f.grid[1]), as_unsigned(f.grid[2]), as_unsigned(f.grid[3]), as_unsigned(f.grid[4]), as_unsigned(f.grid[5]), as_unsigned(f.grid[6]), as_unsigned(f.grid[7]));
       }
 
-    auto holo_models_dir() -> std::wstring { return stralgo::stl::merge(settings().dir, L"\\edworld_models"sv); }
+    auto holo_models_dir() -> std::wstring { return stralgo::stl::merge(start_fields().dir, L"\\edworld_models"sv); }
 
     ///\brief the sample's copies once the GPU has made them: fingerprint, resolve again, log; edworld_eht writes them too
     auto holo_sample_read(ID3D11DeviceContext * ctx, LONGLONG now) -> void
@@ -4580,11 +4580,11 @@ namespace edworld
         // edworld's own (ImGui's, the list's) are judged at once: they draw from copies of a panel's surface
         verdict[at].store(creating_own ? verdict_e::not_panel : verdict_e::pending, std::memory_order_relaxed);
         holo_kind_e kind{holo_kind_e::none};
-        if(not creating_own and settings().station_axes)
+        if(not creating_own and start_fields().station_axes)
           {
-          if(settings().station_vs and hash == settings().station_vs)
+          if(start_fields().station_vs and hash == start_fields().station_vs)
             kind = holo_kind_e::hologram;
-          else if(not settings().station_vs and holo_candidate(bytecode, length))
+          else if(not start_fields().station_vs and holo_candidate(bytecode, length))
             kind = holo_kind_e::candidate;
           }
         holo_kind[at].store(kind, std::memory_order_relaxed);
@@ -4598,7 +4598,7 @@ namespace edworld
 #if defined(EDWORLD_EHT)
       shader_catalog_note(shader_stage_e::vertex, bytecode, length, hash);
 #endif
-      if(settings().log_all_vs)
+      if(start_fields().log_all_vs)
         log_line("vs {:016X} {} bytes", static_cast<unsigned long long>(hash), static_cast<std::size_t>(length));
       if(in_dump_vs(hash))
         {
@@ -4634,7 +4634,7 @@ namespace edworld
         else
           log_line("clouds: the game made the atmosphere shell's shader");
         }
-      auto const & listed{settings().watch_vs};
+      auto const & listed{start_fields().watch_vs};
       for(std::size_t i{}; i != listed.size(); ++i)
         if(listed[i] == hash)
           {
@@ -4718,7 +4718,7 @@ namespace edworld
     ///\brief the catalog's hooks on the device's table; one failing leaves the others (and edworld) as they are
     auto patch_catalog(ID3D11Device * dev) noexcept -> void
       {
-      if(not settings().shader_catalog)
+      if(not start_fields().shader_catalog)
         return;
       bool ok{true};
       ok = patch_slot(dev, slot_create_pixel_shader,
@@ -4906,7 +4906,7 @@ namespace edworld
           {
           full_kept_written[k] = true;
           wchar_t file[MAX_PATH];
-          format_into(file, MAX_PATH, L"{}\\edworld_dumps\\{}_vs_{:016X}.dxbc", settings().dir, utf8(dump_stamp),
+          format_into(file, MAX_PATH, L"{}\\edworld_dumps\\{}_vs_{:016X}.dxbc", start_fields().dir, utf8(dump_stamp),
                         static_cast<unsigned long long>(hash));
           queue_write(file, kept_vs[k].bytes, kept_vs[k].length, true);
           }
@@ -5297,7 +5297,7 @@ namespace edworld
       raster.DepthClipEnable = TRUE;
       ok = ok and SUCCEEDED(device->CreateRasterizerState(&raster, &clouds.raster));
 
-      float const values[4]{settings().clouds_height, settings().clouds_alpha, settings().clouds_cover, settings().clouds_light};
+      float const values[4]{start_fields().clouds_height, start_fields().clouds_alpha, start_fields().clouds_cover, start_fields().clouds_light};
       D3D11_BUFFER_DESC desc{};
       desc.ByteWidth = sizeof values;
       desc.Usage = D3D11_USAGE_IMMUTABLE;
@@ -5394,11 +5394,11 @@ namespace edworld
       // runs, 43 the lumps' size, 44..85 the storms, 86..91 the lumps by the layer and the weather, 92..111 the aurora,
       // 112..123 the snow, 124..127 the weather's R/L before the day was read and how far it has come in
       float const values[128]{
-        settings().clouds_bottom, settings().clouds_top, settings().clouds_cover, settings().clouds_light,
-        clouds_steps_held(settings().clouds_steps), settings().clouds_density, settings().clouds_opacity, settings().clouds_top_gain,
-        settings().clouds_min_light, settings().clouds_under_gain, settings().clouds_detail, settings().clouds_detail_size,
-        settings().clouds_detail_range, settings().clouds_detail_edge, settings().clouds_detail_gap, 0.f,
-        settings().clouds_wind_low / 3.6f, settings().clouds_wind_high / 3.6f, 1.f, 0.f,
+        start_fields().clouds_bottom, start_fields().clouds_top, start_fields().clouds_cover, start_fields().clouds_light,
+        clouds_steps_held(start_fields().clouds_steps), start_fields().clouds_density, start_fields().clouds_opacity, start_fields().clouds_top_gain,
+        start_fields().clouds_min_light, start_fields().clouds_under_gain, start_fields().clouds_detail, start_fields().clouds_detail_size,
+        start_fields().clouds_detail_range, start_fields().clouds_detail_edge, start_fields().clouds_detail_gap, 0.f,
+        start_fields().clouds_wind_low / 3.6f, start_fields().clouds_wind_high / 3.6f, 1.f, 0.f,
         0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f
       };  // the rest, 44..127, zero
       std::memcpy(clouds.volume_values, values, sizeof values);
@@ -5766,7 +5766,7 @@ namespace edworld
       D3D11_VIEWPORT port{};
       UINT ports{1u};
       ctx->RSGetViewports(&ports, &port);
-      bool const volume_wanted{object and frame and settings().clouds_volume and port.Width >= 1024.f and make_volume(ctx)};
+      bool const volume_wanted{object and frame and start_fields().clouds_volume and port.Width >= 1024.f and make_volume(ctx)};
       clouds_timing_t::slot_t * timing{volume_wanted ? start_clouds_timing(ctx) : nullptr};
       bool const volume{volume_wanted and copy_depth(ctx)};
       if(volume)
@@ -5852,7 +5852,7 @@ namespace edworld
           guarded_probe(self, index_count, 1);
         }
 #if defined(EDWORLD_EHT)
-      if(self == immediate.load(std::memory_order_relaxed) and current_galmap and settings().galmap and not hooks_off())
+      if(self == immediate.load(std::memory_order_relaxed) and current_galmap and start_fields().galmap and not hooks_off())
         guarded_galmap(self, index_count, start_index, base_vertex);
 #endif
       orig_draw_indexed(self, index_count, start_index, base_vertex);
@@ -5932,7 +5932,7 @@ namespace edworld
           guarded_probe(self, index_count, instance_count);
         }
 #if defined(EDWORLD_EHT)
-      if(self == immediate.load(std::memory_order_relaxed) and current_galmap and settings().galmap and not hooks_off())
+      if(self == immediate.load(std::memory_order_relaxed) and current_galmap and start_fields().galmap and not hooks_off())
         guarded_galmap(self, index_count, start_index, base_vertex);
 #endif
       orig_draw_indexed_instanced(self, index_count, instance_count, start_index, base_vertex, start_instance);
@@ -5941,7 +5941,7 @@ namespace edworld
       if(self == immediate.load(std::memory_order_relaxed) and current_shell and atmo_period_s()
          and not hooks_off())
         guarded_atmo(self);
-      if(self == immediate.load(std::memory_order_relaxed) and current_shell and settings().clouds
+      if(self == immediate.load(std::memory_order_relaxed) and current_shell and start_fields().clouds
          and not hooks_off())
         guarded_clouds(self, index_count, instance_count, start_index, base_vertex, start_instance);
       if(self == immediate.load(std::memory_order_relaxed) and full_after_draw)
@@ -6243,9 +6243,9 @@ namespace edworld
     if(not share)
       open_share();
 #endif
-    if(settings().compass)
+    if(start_fields().compass)
       start_game_state();  // the compass's checking lines read the flight from Status.json
-    if(settings().patch)
+    if(start_fields().patch)
       {
       start_game_state();
       static std::atomic<bool> probe_started{};
@@ -6254,7 +6254,7 @@ namespace edworld
         if(HANDLE const t{CreateThread(nullptr, 0, probe_thread, nullptr, 0, nullptr)})
           CloseHandle(t);
       }
-    if(settings().patch and not settings().edsm)
+    if(start_fields().patch and not start_fields().edsm)
       log_line("{}", with_eht ? "patch: on, edsm = 0 - allegiance from EHT's target only"
                         : "patch: on, but edsm = 0 - no allegiance, only the test frame can be drawn");
     std::uint32_t const n{watched_count.load()};
@@ -6263,7 +6263,7 @@ namespace edworld
       static_cast<void const *>(dev),
       static_cast<void const *>(ctx),
       ctx1 ? "yes" : "no",
-      settings().watch_vs.size(),
+      start_fields().watch_vs.size(),
       n
     );
     }

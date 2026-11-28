@@ -246,13 +246,13 @@ namespace edworld
 
     auto map_target() -> void
       {
-      if(target_view or settings().shm_dir.empty())
+      if(target_view or start_fields().shm_dir.empty())
         return;
       DWORD const now{GetTickCount()};
       if(static_cast<LONG>(now - next_target_try) < 0)
         return;
       next_target_try = now + 2000;
-      std::wstring const path{stralgo::stl::merge(settings().shm_dir, L"\\target"sv)};
+      std::wstring const path{stralgo::stl::merge(start_fields().shm_dir, L"\\target"sv)};
       // a writer of the first layout (no factions) is read as far as it goes (edplugin_common's: none when the file is
       // missing or shorter than that, silent; at most the whole record)
       edplugin_common::mapped_t const mapped{edplugin_common::map_file_ro(path, target_size_first, sizeof(target_t))};
@@ -311,13 +311,13 @@ namespace edworld
 
     auto map_surface() -> void
       {
-      if(surface_view or settings().shm_dir.empty())
+      if(surface_view or start_fields().shm_dir.empty())
         return;
       DWORD const now{GetTickCount()};
       if(static_cast<LONG>(now - next_surface_try) < 0)
         return;
       next_surface_try = now + 2000;
-      std::wstring const path{stralgo::stl::merge(settings().shm_dir, L"\\surface"sv)};
+      std::wstring const path{stralgo::stl::merge(start_fields().shm_dir, L"\\surface"sv)};
       // a writer of the first layout (no docking grant) is read as far as it goes, as the target
       edplugin_common::mapped_t const mapped{edplugin_common::map_file_ro(path, surface_size_first, sizeof(surface_t))};
       surface_view = static_cast<surface_t const *>(mapped.view);
@@ -505,9 +505,9 @@ namespace edworld
       for(;;)
         {
 #if defined(EDWORLD_EHT)
-        if(not settings().shm_dir.empty())
+        if(not start_fields().shm_dir.empty())
           {
-          std::string const count{read_file(stralgo::stl::merge(settings().shm_dir, L"\\dump"sv))};
+          std::string const count{read_file(stralgo::stl::merge(start_fields().shm_dir, L"\\dump"sv))};
           if(dump_known and count != dump_seen and not count.empty())
             {
             full_dump_request.store(true);
@@ -605,7 +605,7 @@ namespace edworld
         // asked on a thread of its own: this one goes on reading Status.json while EDSM answers (D13, 2026-11-18: the
         // charge, the flight and the destination's place stood for the seconds of the request before); one at a time,
         // a destination chosen meanwhile is asked once the answer is in
-        if(dest and dest != asked and settings().edsm and (source_silent or source_lacks) and not edsm_busy.load())
+        if(dest and dest != asked and start_fields().edsm and (source_silent or source_lacks) and not edsm_busy.load())
           {
           asked = dest;
           edsm_busy.store(true);
@@ -633,8 +633,8 @@ namespace edworld
 
   auto status_path() -> std::wstring
     {
-    if(not settings().status_file.empty())
-      return settings().status_file;
+    if(not start_fields().status_file.empty())
+      return start_fields().status_file;
     PWSTR saved{};
     if(FAILED(SHGetKnownFolderPath(FOLDERID_SavedGames, 0, nullptr, &saved)) or not saved)
       return {};

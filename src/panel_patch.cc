@@ -195,10 +195,10 @@ namespace edworld
       cfg.FontDataOwnedByAtlas = false;
       static ImWchar const ranges[]{0x0020, 0x017F, 0};
       r.font = io.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t *>(font::list_font), static_cast<int>(font::list_font_size),
-                                              std::clamp(settings().list_text, 8.f, 64.f), &cfg, ranges);
+                                              std::clamp(start_fields().list_text, 8.f, 64.f), &cfg, ranges);
       if(not r.font)
         log_line("patch: the list's font could not be made; no list");
-      if(settings().compass_spheres)
+      if(start_fields().compass_spheres)
         r.sphere_font = io.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t *>(font::list_font), static_cast<int>(font::list_font_size),
                                                        84.f, &cfg, ranges);
       }
@@ -458,7 +458,7 @@ namespace edworld
         case allegiance_e::federation:  return 0xd9534fu;
         case allegiance_e::empire:      return 0x4a90d9u;
         case allegiance_e::alliance:    return 0x3cb371u;
-        case allegiance_e::independent: return settings().independent_colour;
+        case allegiance_e::independent: return start_fields().independent_colour;
         default:                        return 0xffffffu;
         }
       }
@@ -915,9 +915,9 @@ namespace edworld
     ///\brief the area under reading, as it was copied, into edworld_dumps (an unknown word: to learn it)
     auto dump_text(D3D11_MAPPED_SUBRESOURCE const & m, std::uint64_t destination) -> void
       {
-      CreateDirectoryW(stralgo::stl::merge(settings().dir, L"\\edworld_dumps"sv).c_str(), nullptr);
+      CreateDirectoryW(stralgo::stl::merge(start_fields().dir, L"\\edworld_dumps"sv).c_str(), nullptr);
       wchar_t name[MAX_PATH];
-      format_into(name, MAX_PATH, L"{}\\edworld_dumps\\superpower_{}_{}x{}_pitch{}.raw", settings().dir,
+      format_into(name, MAX_PATH, L"{}\\edworld_dumps\\superpower_{}_{}x{}_pitch{}.raw", start_fields().dir,
                     static_cast<unsigned long long>(destination), text_width, text_height, m.RowPitch);
       if(write_whole_file(name, m.pData, static_cast<std::size_t>(m.RowPitch) * text_height))
         log_line("superpower: the area read written to {}", wide(name));
@@ -1004,7 +1004,7 @@ namespace edworld
 
   auto panel_patch(ID3D11DeviceContext * ctx, ID3D11Device * device, std::uint64_t frame) -> void
     {
-    settings_t const & s{settings()};
+    settings_t const & s{start_fields()};
     if(s.patch == 0 or frame == patched_frame)
       return;
     game_state_t const g{game_state()};
@@ -1272,7 +1272,7 @@ namespace edworld
   auto panel_list_after(ID3D11DeviceContext * ctx, std::uint64_t frame, std::uint32_t index_count, std::uint32_t start_index,
                         std::int32_t base_vertex, std::uint32_t start_instance) -> void
     {
-    settings_t const & s{settings()};
+    settings_t const & s{start_fields()};
     if(frame != list_frame or not r.list_vs or index_count < 3 or index_count > 64)
       return;
     // only the panel surface's draws: PS t2 (the panel family), t1 (near a war settlement)
@@ -1689,7 +1689,7 @@ namespace edworld
     ///\brief the disc behind a sphere: dark, a little lighter towards its middle, translucent
     auto sphere_ground(ImDrawList * dl, ImVec2 c, float radius, int alpha) -> void
       {
-      settings_t const & s{settings()};
+      settings_t const & s{start_fields()};
       std::uint32_t const middle{mix_rgb(s.compass_colour_disc, s.compass_colour_rim, 0.2f)};
       for(int i{24}; i >= 1; --i)
         {
@@ -1750,7 +1750,7 @@ namespace edworld
       static int logged_band{-1};
       static bool logged_upside_down{};
       static bool logged_table{};
-      settings_t const & s{settings()};
+      settings_t const & s{start_fields()};
       flight_t const f{flight()};
       constexpr ULONGLONG model_hold_ms{1000};
       bool const granted{pad_granted(f.docking_granted_ms, unix_now() * 1000)};
@@ -2114,7 +2114,7 @@ namespace edworld
     auto draw_sphere_front(ImDrawList * dl, ImVec2 c, compass_direction_t const & d, bool have) -> void
       {
       float const radius{200.f};
-      settings_t const & s{settings()};
+      settings_t const & s{start_fields()};
       sphere_ground(dl, c, radius, 215);
       ImU32 const dim{col(s.compass_colour_grid)};
       for(float const a: {30.f, 60.f})
@@ -2146,7 +2146,7 @@ namespace edworld
         return ImVec2{c.x + p.x * radius, c.y - p.y * radius};
         };
       auto const facing = [&](compass_direction_t const & v) -> bool { return not sphere_view(v, yaw, pitch).on_far_side; };
-      settings_t const & s{settings()};
+      settings_t const & s{start_fields()};
       std::uint32_t const disc{s.compass_colour_disc}, grid{s.compass_colour_grid}, rim{s.compass_colour_rim};
       sphere_ground(dl, c, radius, 200);
       dl->AddCircle(c, radius, col(mix_rgb(disc, grid, 0.7f)), 96, 2.f);
@@ -2223,7 +2223,7 @@ namespace edworld
     /// blue ring seen from above, and the white dot where the view ahead (draw_sphere_front) has it
     auto draw_sphere_top(ImDrawList * dl, ImVec2 c, compass_direction_t const & d, bool have) -> void
       {
-      settings_t const & s{settings()};
+      settings_t const & s{start_fields()};
       float const radius{200.f};
       sphere_ground(dl, c, radius, 215);
       ImU32 const dim{col(s.compass_colour_grid)};
@@ -2260,7 +2260,7 @@ namespace edworld
       {
       constexpr float yaw{35.f}, pitch{30.f};
       float const radius{200.f};
-      settings_t const & s{settings()};
+      settings_t const & s{start_fields()};
       std::uint32_t const disc{s.compass_colour_disc}, grid{s.compass_colour_grid}, rim{s.compass_colour_rim};
       auto const at = [&](compass_direction_t const & v) -> ImVec2
         {
@@ -2697,12 +2697,12 @@ namespace edworld
       if(have and now_ms - cs.sphere_trigger_at >= 500u)
         {
         cs.sphere_trigger_at = now_ms;
-        trigger = stralgo::stl::merge(settings().dir, L"\\edworld_sphere_dump"sv);
+        trigger = stralgo::stl::merge(start_fields().dir, L"\\edworld_sphere_dump"sv);
         }
       if(not trigger.empty() and GetFileAttributesW(trigger.c_str()) != INVALID_FILE_ATTRIBUTES)
         {
         DeleteFileW(trigger.c_str());
-        CreateDirectoryW(stralgo::stl::merge(settings().dir, L"\\edworld_dumps"sv).c_str(), nullptr);
+        CreateDirectoryW(stralgo::stl::merge(start_fields().dir, L"\\edworld_dumps"sv).c_str(), nullptr);
         for(int k{}; k != 2; ++k)
           {
           D3D11_TEXTURE2D_DESC sd{};
@@ -2721,7 +2721,7 @@ namespace edworld
           if(SUCCEEDED(ctx->Map(staging, 0, D3D11_MAP_READ, 0, &m)) and m.pData)
             {
             wchar_t name[MAX_PATH];
-            format_into(name, MAX_PATH, L"{}\\edworld_dumps\\sphere{}_{}x{}_f28_pitch{}.raw", settings().dir, k, sphere_w,
+            format_into(name, MAX_PATH, L"{}\\edworld_dumps\\sphere{}_{}x{}_f28_pitch{}.raw", start_fields().dir, k, sphere_w,
                           sphere_h, m.RowPitch);
             write_whole_file(name, m.pData, static_cast<std::size_t>(m.RowPitch) * sphere_h);
             ctx->Unmap(staging, 0);
@@ -2738,7 +2738,7 @@ namespace edworld
 
   auto panel_compass(ID3D11DeviceContext * ctx, ID3D11Device * device, std::uint64_t frame) -> void
     {
-    settings_t const & s{settings()};
+    settings_t const & s{start_fields()};
     if(s.compass == 0 or frame == cs.drawn_frame)
       return;
     D3D11_TEXTURE2D_DESC d{};
@@ -3039,7 +3039,7 @@ namespace edworld
       {
       if(not drawn_or_told("compass spheres", sphere_misfits, quad_misfit(ctx, nullptr)))
         return false;
-      settings_t const & s{settings()};
+      settings_t const & s{start_fields()};
       bool const above{s.compass_sphere_text_above != 0};
       float const used_w{above ? above_w : below_w}, used_h{above ? above_h : below_h};
       list_cb_t cb{};
@@ -3242,7 +3242,7 @@ namespace edworld
     auto anchored_after(ID3D11DeviceContext * ctx, std::uint64_t frame, std::uint32_t index_count, std::uint32_t start_index,
                         std::int32_t base_vertex, std::uint32_t start_instance) -> void
       {
-      settings_t const & s{settings()};
+      settings_t const & s{start_fields()};
       D3D11_TEXTURE2D_DESC d{};
       ID3D11Texture2D * const tex{surface_sampled(ctx, s.compass_surface_width, s.compass_surface_height, d)};
       if(not tex)
@@ -3388,7 +3388,7 @@ namespace edworld
   auto panel_compass_after(ID3D11DeviceContext * ctx, std::uint64_t frame, std::uint32_t index_count, std::uint32_t start_index,
                            std::int32_t base_vertex, std::uint32_t start_instance) -> void
     {
-    settings_t const & s{settings()};
+    settings_t const & s{start_fields()};
     if(s.compass == 0 or not s.compass_spheres or not cs.spheres_drawn or not r.list_vs)
       return;
     if(s.compass_anchor)
@@ -3515,9 +3515,9 @@ namespace edworld
       pts.written_ms = GetTickCount64();
       if(not burst)
         pts.burst_until_ms = pts.written_ms + pad_burst_ms;
-      CreateDirectoryW(stralgo::stl::merge(settings().dir, L"\\edworld_padtext"sv).c_str(), nullptr);
+      CreateDirectoryW(stralgo::stl::merge(start_fields().dir, L"\\edworld_padtext"sv).c_str(), nullptr);
       wchar_t name[MAX_PATH];
-      format_into(name, MAX_PATH, L"{}\\edworld_padtext\\pad_{}_src{}_{}x{}_pitch{}.raw", settings().dir,
+      format_into(name, MAX_PATH, L"{}\\edworld_padtext\\pad_{}_src{}_{}x{}_pitch{}.raw", start_fields().dir,
                     static_cast<long long>(unix_now()), source_pad, pad_box_width, pad_box_height, m.RowPitch);
       if(write_whole_file(name, m.pData, static_cast<std::size_t>(m.RowPitch) * pad_box_height))
         {
@@ -3532,7 +3532,7 @@ namespace edworld
 
   auto panel_pad_text(ID3D11DeviceContext * ctx, ID3D11Device * device, std::uint64_t frame) -> void
     {
-    if(settings().pad_text_samples == 0 and settings().pad_text_read == 0)
+    if(start_fields().pad_text_samples == 0 and start_fields().pad_text_read == 0)
       return;
     if(frame == pts.copied_frame or (not pts.copied and frame % pad_text_every != 0))
       return;
@@ -3596,7 +3596,7 @@ namespace edworld
           pts.shown_ms = now;
           pts.taken_here = pts.unsure_told = false;
           }
-        pad_text_read_t const notice{settings().pad_text_read ? read_pad_text(pixels, m.RowPitch, shows) : pad_text_read_t{}};
+        pad_text_read_t const notice{start_fields().pad_text_read ? read_pad_text(pixels, m.RowPitch, shows) : pad_text_read_t{}};
         // a tower's notice whose number stays unsure while it fades in and after (a case the templates have not met):
         // no pad from it; told once a box, and its picture kept for tools/pad_text_digits.py
         if(shows and notice.notice and not notice.sure and not pts.taken_here and not pts.unsure_told
@@ -3605,12 +3605,12 @@ namespace edworld
           pts.unsure_told = true;
           log_line("pad text: a notice of the tower's, its number unsure (read {}, the least margin {} %): no pad from it",
                    notice.pad, notice.margin);
-          if(settings().pad_text_unsure_sample and not settings().pad_text_samples)
+          if(start_fields().pad_text_unsure_sample and not start_fields().pad_text_samples)
             write_pad_sample(m, flight().docking_pad, false);
           }
         bool const changed{shows and pts.shows and now - pts.written_ms >= 1000u
                            and pad_box_changed(pixels, m.RowPitch, pad_box_width, pad_box_height, pts.kept.empty() ? nullptr : pts.kept.data())};
-        if(settings().pad_text_samples)
+        if(start_fields().pad_text_samples)
           {
           if(shows and (not pts.shows or changed))
             write_pad_sample(m, flight().docking_pad, false);
@@ -3680,7 +3680,7 @@ namespace edworld
 
   auto build_info_after(ID3D11DeviceContext * ctx, ID3D11Device * device) -> void
     {
-    settings_t const & s{settings()};
+    settings_t const & s{start_fields()};
     if(s.build_info == 0)
       return;
     LONGLONG const now{qpc()};

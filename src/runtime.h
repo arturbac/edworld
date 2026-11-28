@@ -418,9 +418,11 @@ namespace edworld
     std::uint32_t compass_colour_top{0x7ab8e0u};
     };
 
-  ///\brief the settings in use (edplugin_common's live.h): the start-only ones from any thread, the live ones on the
-  /// render thread, which publishes them (refresh_live_settings)
+  ///\brief the settings in use (edplugin_common's live.h), for the live ones: taken once at the entry of the draw hook
+  /// on the render thread, which publishes them (refresh_live_settings), and handed down to what reads them
   auto settings() noexcept -> settings_t const &;
+  ///\brief the start-only settings, from any thread; their live fields are not to be read here
+  auto start_fields() noexcept -> settings_t const &;
   ///\brief one more at each change of the live settings (refresh_live_settings): a key of what was drawn from them
   /// (the two copies take turns, so their address comes back). On the render thread, as the live settings
   auto settings_generation() noexcept -> std::uint32_t;
