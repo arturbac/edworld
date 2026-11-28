@@ -1,6 +1,7 @@
 // edworld — <plugin>.ini and <plugin>.log (edworld or edworld_eht, by build): in the directories edloader hands its
 // plugins, else beside the dll; the names do not follow the dll's file name, which may be d3d11.dll. The ini is read,
 // completed and watched by edplugin_common's ini module from the table below.
+#include "clouds_values.h"
 #include "game_state.h"
 #include "panel_math.h"
 #include "runtime.h"
@@ -366,6 +367,9 @@ namespace edworld
       for(std::string const & n: notes)
         log_line("settings: {}", n);
       }
+
+    ///\brief the values held to their ranges after a read (the table's "(clamped)" of the clouds and the aurora)
+    auto clamp(settings_t & s) noexcept -> void { clouds_settings_held(s); }
     }  // namespace
 
   auto settings() noexcept -> settings_t const & { return live.get(); }
@@ -387,6 +391,7 @@ namespace edworld
       edplugin_common::ini_read_t read;
       if(read_into(s, read))
         log_notes(read.notes);
+      clamp(s);
       live.start(s);
       }
     catch(std::exception const & e)
@@ -419,6 +424,7 @@ namespace edworld
       edplugin_common::ini_read_t read;
       if(not read_into(s, read))
         return;
+      clamp(s);
       edplugin_common::at_start_changes(table, s, read, settings(), told, read.notes);
       log_notes(read.notes);
       live.publish(s, table);

@@ -18,9 +18,10 @@ foreach(variant edworld edworld_eht)
   target_compile_definitions(${variant}_test_app PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS
                              $<$<STREQUAL:${variant},edworld_eht>:EDWORLD_EHT>)
   # src/fits.h and src/panel_math.h take their rules and hashes from edplugin_common's headers (header-only, nothing
-  # linked, so the test's own definitions stay as they are)
+  # linked, so the test's own definitions stay as they are); src/clouds_values.h's runtime.h takes simple_enum's
   target_include_directories(${variant}_test_app PRIVATE "${test_gen}"
-                                                         $<TARGET_PROPERTY:edplugin_common,INTERFACE_INCLUDE_DIRECTORIES>)
+                                                         $<TARGET_PROPERTY:edplugin_common,INTERFACE_INCLUDE_DIRECTORIES>
+                                                         $<TARGET_PROPERTY:simple_enum::simple_enum,INTERFACE_INCLUDE_DIRECTORIES>)
   edplugin_common_warnings(${variant}_test_app)
   target_link_libraries(${variant}_test_app PRIVATE d3d11 dxguid)
   set_target_properties(${variant}_test_app PROPERTIES

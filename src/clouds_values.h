@@ -70,6 +70,31 @@ namespace edworld
                 and clouds_noise_shift(1u, 1, 0u) > 0.618f and clouds_noise_shift(1u, 1, 0u) < 0.619f
                 and clouds_noise_shift(2u, -1, 1u) > 0.618f and clouds_noise_shift(2u, 2, 7u) == clouds_noise_shift(1u, 2, 0u));
 
+  ///\brief the clouds' and the aurora's settings held to the ranges clouds_values gives the shader (the table's
+  /// "(clamped)"), after each read of the ini: the settings published are the ones drawn. clouds_values holds them
+  /// again and gets the same values (test_app checks it)
+  inline auto clouds_settings_held(settings_t & s) noexcept -> void
+    {
+    s.clouds_steps = clouds_steps_held(s.clouds_steps);
+    s.clouds_far_steps = clouds_steps_held(s.clouds_far_steps);
+    s.clouds_max_steps = clouds_steps_held(s.clouds_max_steps);
+    s.clouds_near_to = std::max(s.clouds_near_to, s.clouds_near_from + 0.001f);
+    s.clouds_full_from_px = std::max(s.clouds_full_from_px, s.clouds_hide_below_px + 1.f);
+    s.clouds_edge_full_px = std::max(s.clouds_edge_full_px, s.clouds_edge_hide_px + 0.01f);
+    s.clouds_edge_band_px = std::max(s.clouds_edge_band_px, 0.01f);
+    s.clouds_haze = std::max(s.clouds_haze, 0.f);
+    s.clouds_size_var = std::clamp(s.clouds_size_var, 0.f, 0.9f);
+    s.clouds_weather = std::clamp(s.clouds_weather, 0.f, 2.f);
+    // as atmosphere_clouds and atmosphere_clouds_tinted take them: below 0 (and NaN) as 0, no top
+    s.clouds_physics_intensity = s.clouds_physics_intensity > 0.f ? s.clouds_physics_intensity : 0.f;
+    s.clouds_tint = s.clouds_tint > 0.f ? s.clouds_tint : 0.f;
+    s.aurora_gain = std::clamp(s.aurora_gain, 0.f, 3.f);
+    // below 0: by the time, kept as it is
+    if(s.aurora_activity >= 0.f)
+      s.aurora_activity = std::min(s.aurora_activity, 9.f);
+    s.aurora_dance = std::clamp(s.aurora_dance, 0.f, 2.f);
+    }
+
   ///\brief values 0..127 of the clouds' buffer
   inline auto clouds_values(settings_t const & s, clouds_planet_t const & p, clouds_frame_t const & f,
                             std::array<float, clouds_value_count> & v) -> clouds_report_t

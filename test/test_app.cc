@@ -26,6 +26,7 @@
 #include "../src/faction_list.h"
 #include "../src/fits.h"
 #include "../src/blue_noise.h"
+#include "../src/clouds_values.h"
 #include "../src/galmap.h"
 #include "../src/gate_math.h"
 #include "../src/snow.h"
@@ -669,6 +670,71 @@ namespace
     return true;
     }
 
+  // the settings held after a read (clouds_settings_held in clouds_values.h): an ini with every clouds' and aurora's
+  // value out of its range gives the clouds' buffer the same values held and not; values in their ranges kept
+  auto settings_held_tests() -> void
+    {
+    using namespace edworld;
+    clouds_planet_t planet{};
+    planet.kind = atmosphere_kind_e::ammonia;
+    planet.radius = 1'500'000.f;
+    planet.kind_weight = 1.f;
+    planet.day_s = 90'000.f;
+    planet.day_fade = 1.f;
+    planet.light_rg = 0.5f;
+    planet.light_bg = 0.4f;
+    planet.light_g = 1.f;
+    planet.utc_s = 1'000'000.;
+    clouds_frame_t const frame{12.f, 12., 1.f, 1920.f, 0.25f, {}};
+
+    settings_t out{};
+    out.clouds_steps = 1e6f;
+    out.clouds_far_steps = -3.f;
+    out.clouds_max_steps = 999.f;
+    out.clouds_near_from = 0.5f;
+    out.clouds_near_to = 0.1f;
+    out.clouds_hide_below_px = 50.f;
+    out.clouds_full_from_px = 10.f;
+    out.clouds_edge_hide_px = 4.f;
+    out.clouds_edge_full_px = 1.f;
+    out.clouds_edge_band_px = -2.f;
+    out.clouds_haze = -1.f;
+    out.clouds_size_var = 5.f;
+    out.clouds_weather = -3.f;
+    out.clouds_physics_intensity = -1.f;
+    out.clouds_tint = -2.f;
+    out.aurora_gain = 10.f;
+    out.aurora_activity = 20.f;
+    out.aurora_dance = -1.f;
+    settings_t held{out};
+    clouds_settings_held(held);
+    std::array<float, clouds_value_count> before{}, after{};
+    (void)clouds_values(out, planet, frame, before);
+    (void)clouds_values(held, planet, frame, after);
+    check(std::memcmp(before.data(), after.data(), sizeof(before)) == 0,
+          "settings held: the clouds' buffer the same for values out of their ranges, held and not");
+    check(held.clouds_steps == 256.f and held.clouds_far_steps == 1.f and held.clouds_max_steps == 256.f
+            and held.clouds_near_to == 0.5f + 0.001f and held.clouds_full_from_px == 51.f
+            and held.clouds_edge_full_px == 4.f + 0.01f and held.clouds_edge_band_px == 0.01f and held.clouds_haze == 0.f
+            and held.clouds_size_var == 0.9f and held.clouds_weather == 0.f and held.clouds_physics_intensity == 0.f
+            and held.clouds_tint == 0.f and held.aurora_gain == 3.f and held.aurora_activity == 9.f
+            and held.aurora_dance == 0.f,
+          "settings held: each value out of its range held to it");
+
+    settings_t const in{};
+    settings_t kept{in};
+    clouds_settings_held(kept);
+    check(kept.clouds_steps == in.clouds_steps and kept.clouds_far_steps == in.clouds_far_steps
+            and kept.clouds_max_steps == in.clouds_max_steps and kept.clouds_near_to == in.clouds_near_to
+            and kept.clouds_full_from_px == in.clouds_full_from_px and kept.clouds_edge_full_px == in.clouds_edge_full_px
+            and kept.clouds_edge_band_px == in.clouds_edge_band_px and kept.clouds_haze == in.clouds_haze
+            and kept.clouds_size_var == in.clouds_size_var and kept.clouds_weather == in.clouds_weather
+            and kept.clouds_physics_intensity == in.clouds_physics_intensity and kept.clouds_tint == in.clouds_tint
+            and kept.aurora_gain == in.aurora_gain and kept.aurora_activity == -1.f
+            and kept.aurora_dance == in.aurora_dance,
+          "settings held: the defaults kept, aurora_activity -1 (by the time) too");
+    }
+
   // the atmosphere's kind from the hue of the game's table (atmosphere_kind.h)
   auto atmosphere_tests() -> void
     {
@@ -1076,6 +1142,7 @@ namespace
 
 int main()
   {
+  settings_held_tests();
   atmosphere_tests();
   sample_context_tests();
   pad_text_tests();
