@@ -769,6 +769,72 @@ namespace
             and std::isnan(odd_held.clouds_near_to) and std::isnan(odd_held.aurora_gain),
           "settings held: NaN steps as 1, infinite ones to their range, NaN and -inf intensities as 0, aurora_activity "
           "below 0 kept, NaN under max and clamp kept");
+
+    // the start-only settings from start, the live ones from live (clouds_values(start, live, ...)): the buffer of
+    // two different settings is the one of a copy of live with start's start-only fields, and not the one with the
+    // two swapped
+    settings_t start{};
+    start.clouds_bottom = 1'200.f;
+    start.clouds_top = 9'000.f;
+    start.clouds_cover = 0.6f;
+    start.clouds_light = 1.3f;
+    start.clouds_steps = 48.f;
+    start.clouds_density = 0.7f;
+    start.clouds_opacity = 0.8f;
+    start.clouds_top_gain = 1.1f;
+    start.clouds_min_light = 0.2f;
+    start.clouds_under_gain = 0.9f;
+    start.clouds_detail = 0.5f;
+    start.clouds_detail_size = 300.f;
+    start.clouds_detail_range = 0.4f;
+    start.clouds_detail_edge = 0.3f;
+    start.clouds_detail_gap = 0.2f;
+    start.clouds_wind_low = 36.f;
+    start.clouds_wind_high = 72.f;
+    start.clouds_near_from = 0.9f;  // a live field: not to be taken from start
+    settings_t live{};
+    live.clouds_bottom = 10.f;  // a start-only field: not to be taken from live
+    live.clouds_steps = 200.f;
+    live.clouds_near_from = 0.3f;
+    live.clouds_near_to = 0.6f;
+    live.clouds_far_steps = 20.f;
+    live.clouds_haze = 0.25f;
+    live.clouds_weather = 1.5f;
+    // the other live fields clouds_values reads, off their defaults (start keeps those): one read from start shows
+    live.clouds_hide_below_px = 30.f;
+    live.clouds_full_from_px = 120.f;
+    live.clouds_max_steps = 96.f;
+    live.clouds_edge_hide_px = 3.f;
+    live.clouds_edge_full_px = 12.f;
+    live.clouds_edge_band_px = 24.f;
+    live.clouds_size_var = 0.5f;
+    live.clouds_physics_intensity = 0.6f;
+    live.clouds_tint = 0.7f;
+    settings_t merged{live};
+    merged.clouds_bottom = start.clouds_bottom;
+    merged.clouds_top = start.clouds_top;
+    merged.clouds_cover = start.clouds_cover;
+    merged.clouds_light = start.clouds_light;
+    merged.clouds_steps = start.clouds_steps;
+    merged.clouds_density = start.clouds_density;
+    merged.clouds_opacity = start.clouds_opacity;
+    merged.clouds_top_gain = start.clouds_top_gain;
+    merged.clouds_min_light = start.clouds_min_light;
+    merged.clouds_under_gain = start.clouds_under_gain;
+    merged.clouds_detail = start.clouds_detail;
+    merged.clouds_detail_size = start.clouds_detail_size;
+    merged.clouds_detail_range = start.clouds_detail_range;
+    merged.clouds_detail_edge = start.clouds_detail_edge;
+    merged.clouds_detail_gap = start.clouds_detail_gap;
+    merged.clouds_wind_low = start.clouds_wind_low;
+    merged.clouds_wind_high = start.clouds_wind_high;
+    std::array<float, clouds_value_count> split{}, whole{}, swapped{};
+    (void)clouds_values(start, live, planet, frame, split);
+    (void)clouds_values(merged, merged, planet, frame, whole);
+    (void)clouds_values(live, start, planet, frame, swapped);
+    check(std::memcmp(split.data(), whole.data(), sizeof(split)) == 0
+            and std::memcmp(split.data(), swapped.data(), sizeof(split)) != 0,
+          "clouds values: the start-only settings from start, the live ones from live");
     }
 
   // the atmosphere's kind from the hue of the game's table (atmosphere_kind.h)

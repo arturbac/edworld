@@ -6,6 +6,8 @@
   were drawn with already, the settings table's "(clamped)"): nothing drawn changes; the log's `settings: read again:`
   line shows the values held, and a change of `clouds_steps` between two values out of 1..256 is no longer told as
   needing a restart.
+- The live settings are taken once at the draw hook's entry and handed down, the start-only ones read from the
+  settings of the start: a change of the ini is drawn from the hook's next entry, not partly in the same one.
 
 ## 1.3.0-beta.1
 
