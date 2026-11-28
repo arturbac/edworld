@@ -95,30 +95,31 @@ namespace edworld
     s.aurora_dance = std::clamp(s.aurora_dance, 0.f, 2.f);
     }
 
-  ///\brief values 0..127 of the clouds' buffer
-  inline auto clouds_values(settings_t const & s, clouds_planet_t const & p, clouds_frame_t const & f,
-                            std::array<float, clouds_value_count> & v) -> clouds_report_t
+  ///\brief values 0..127 of the clouds' buffer: the start-only fields from `start`, the live ones from `s` (the game
+  /// gives the two from their own places; a test may give the same settings twice)
+  inline auto clouds_values(settings_t const & start, settings_t const & s, clouds_planet_t const & p,
+                            clouds_frame_t const & f, std::array<float, clouds_value_count> & v) -> clouds_report_t
     {
     v.fill(0.f);
     clouds_report_t report{};
-    v[0] = s.clouds_bottom;
-    v[1] = s.clouds_top;
-    v[2] = s.clouds_cover;
-    v[3] = s.clouds_light;
-    v[4] = clouds_steps_held(s.clouds_steps);
-    v[5] = s.clouds_density;
-    v[6] = s.clouds_opacity;
-    v[7] = s.clouds_top_gain;
-    v[8] = s.clouds_min_light;
-    v[9] = s.clouds_under_gain;
-    v[10] = s.clouds_detail;
-    v[11] = s.clouds_detail_size;
-    v[12] = s.clouds_detail_range;
-    v[13] = s.clouds_detail_edge;
-    v[14] = s.clouds_detail_gap;
+    v[0] = start.clouds_bottom;
+    v[1] = start.clouds_top;
+    v[2] = start.clouds_cover;
+    v[3] = start.clouds_light;
+    v[4] = clouds_steps_held(start.clouds_steps);
+    v[5] = start.clouds_density;
+    v[6] = start.clouds_opacity;
+    v[7] = start.clouds_top_gain;
+    v[8] = start.clouds_min_light;
+    v[9] = start.clouds_under_gain;
+    v[10] = start.clouds_detail;
+    v[11] = start.clouds_detail_size;
+    v[12] = start.clouds_detail_range;
+    v[13] = start.clouds_detail_edge;
+    v[14] = start.clouds_detail_gap;
     v[15] = f.seconds;
-    v[16] = s.clouds_wind_low / 3.6f;
-    v[17] = s.clouds_wind_high / 3.6f;
+    v[16] = start.clouds_wind_low / 3.6f;
+    v[17] = start.clouds_wind_high / 3.6f;
     v[18] = f.pixel;
     v[19] = static_cast<float>(s.clouds_game_fade);
     v[20] = static_cast<float>(s.clouds_mode);
@@ -149,8 +150,8 @@ namespace edworld
     v[35] = c.bottom;
     v[36] = c.top;
     v[37] = c.cover;
-    v[38] = c.opacity * s.clouds_opacity;
-    v[39] = c.detail * s.clouds_detail;
+    v[38] = c.opacity * start.clouds_opacity;
+    v[39] = c.detail * start.clouds_detail;
     v[40] = c.tint[0];
     v[41] = c.tint[1];
     v[42] = c.tint[2];

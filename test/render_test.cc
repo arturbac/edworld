@@ -308,7 +308,7 @@ namespace
       now.snow[9] = snow_parts_all + 4.f;
       }
     std::array<float, clouds_value_count> values{};
-    (void)clouds_values(settings, planet, now, values);
+    (void)clouds_values(settings, settings, planet, now, values);
 
     g.ctx->UpdateSubresource(g.object, 0, nullptr, object.data(), 0, 0);
     g.ctx->UpdateSubresource(g.frame, 0, nullptr, frame.data(), 0, 0);

@@ -1260,9 +1260,9 @@ namespace edworld
 
     ///\brief how often the shell is read, seconds: for the clouds, and in edworld_eht for the fingerprint too; 0 = never
     [[nodiscard]]
-    auto atmo_period_s() noexcept -> std::uint32_t
+    auto atmo_period_s(settings_t const & live) noexcept -> std::uint32_t
       {
-      std::uint32_t const kind{settings().clouds_kind_read_s};
+      std::uint32_t const kind{live.clouds_kind_read_s};
 #if defined(EDWORLD_EHT)
       std::uint32_t const record{start_fields().atmo_record_s};
       if(record != 0u and (kind == 0u or record < kind))
@@ -1482,10 +1482,10 @@ namespace edworld
     /// snow off, no kind of snow, not on foot outdoors nor in a craft in the air), how fast the crystals fall, where the
     /// eye went east, north and up since a reference fix, then how fast it goes east, north and up, then the parts drawn
     /// (snow_bench)
-    auto atmo_snow_values(float * v) noexcept -> void
+    auto atmo_snow_values(settings_t const & live, float * v) noexcept -> void
       {
       std::fill(v, v + 12, 0.f);
-      if(not settings().snow)
+      if(not live.snow)
         {
         snow_walk.have = false;
         return;
@@ -1499,14 +1499,14 @@ namespace edworld
         snow_walk.have = false;
         return;
         }
-      float const gain{std::max(settings().snow_gain, 0.f)};
+      float const gain{std::max(live.snow_gain, 0.f)};
       v[0] = snow.under_clouds * snow_most * gain;
       v[1] = snow.clear * snow_most * gain;
       v[2] = snow_fall_speed(gravity, snow.air_density);
       // a clock finer than the tick's 16 ms: at 300 m/s a tick is 5 m of the eye's way
       double const now{std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count()};
       v[9] = snow_parts_all;
-      if(settings().snow_bench)
+      if(live.snow_bench)
         {
         if(snow_bench_from < 0.0)
           snow_bench_from = now;
@@ -1594,12 +1594,13 @@ namespace edworld
     bool atmo_aurora_field{};
 
     ///\brief the log lines of a change in what the clouds' buffer was made of: the storms, the aurora
-    auto atmo_report_changes(clouds_planet_t const & p, clouds_report_t const & r) noexcept -> void
+    auto atmo_report_changes(settings_t const & live, clouds_planet_t const & p, clouds_report_t const & r) noexcept
+      -> void
       {
-      if(p.kind == atmosphere_kind_e::unknown or not settings().clouds_by_kind)
+      if(p.kind == atmosphere_kind_e::unknown or not live.clouds_by_kind)
         return;
       bool const day{p.day_s > 0.f};
-      if(settings().clouds_cyclones
+      if(live.clouds_cyclones
          and (atmo_cyclones_radius != p.radius or atmo_cyclones_count != r.storms.count or atmo_cyclones_day != day))
         {
         atmo_cyclones_radius = p.radius;
@@ -1673,9 +1674,9 @@ namespace edworld
     auto atmo_drain(LONGLONG now) -> void;
 
     ///\brief at the shell's draw: the copies of its table and constants, when it is time for the next
-    auto atmo_queue(ID3D11DeviceContext * ctx) -> void
+    auto atmo_queue(ID3D11DeviceContext * ctx, settings_t const & live) -> void
       {
-      std::uint32_t const period{atmo_period_s()};
+      std::uint32_t const period{atmo_period_s(live)};
       if(period == 0u)
         return;
       LONGLONG const now{qpc_now()};
@@ -2127,13 +2128,13 @@ namespace edworld
 #endif
       }
 
-    auto guarded_atmo(ID3D11DeviceContext * ctx) noexcept -> void
+    auto guarded_atmo(ID3D11DeviceContext * ctx, settings_t const & live) noexcept -> void
       {
       ++own_depth;
       hook_work(
         [&]
         {
-          atmo_queue(ctx);
+          atmo_queue(ctx, live);
         },
         no_handler);
       --own_depth;
@@ -5554,6 +5555,7 @@ namespace edworld
     ///\brief the volume in place of the layer, with the shaders and states of the shell put back after it
     auto draw_volume(
       ID3D11DeviceContext * ctx,
+      settings_t const & live,
       cb_binding_t const & object,
       cb_binding_t const & frame,
       UINT index_count,
@@ -5611,12 +5613,12 @@ namespace edworld
       now.flicker_s = seconds;
       now.pixel = half ? 2.f : 1.f;
       now.port_width = game_port_count != 0u ? game_ports[0].Width : 0.f;
-      std::uint32_t const noise_time{settings().clouds_noise_time};
+      std::uint32_t const noise_time{live.clouds_noise_time};
       now.noise_shift = noise_time == 0u ? 0.f : clouds_noise_shift(noise_time, edupscale_jitter_frame(), ++clouds.draws_made);
-      atmo_snow_values(now.snow.data());
+      atmo_snow_values(live, now.snow.data());
       clouds_planet_t const planet{atmo_clouds_planet()};
       std::array<float, clouds_value_count> values{};
-      atmo_report_changes(planet, clouds_values(settings(), planet, now, values));
+      atmo_report_changes(live, planet, clouds_values(start_fields(), live, planet, now, values));
       std::copy(values.begin(), values.end(), clouds.volume_values);
       ctx->UpdateSubresource(clouds.volume_params, 0, nullptr, clouds.volume_values, 0, 0);
       if(half)
@@ -5696,6 +5698,7 @@ namespace edworld
 
     auto draw_clouds(
       ID3D11DeviceContext * ctx,
+      settings_t const & live,
       UINT index_count,
       UINT instance_count,
       UINT start_index,
@@ -5770,7 +5773,7 @@ namespace edworld
       clouds_timing_t::slot_t * timing{volume_wanted ? start_clouds_timing(ctx) : nullptr};
       bool const volume{volume_wanted and copy_depth(ctx)};
       if(volume)
-        draw_volume(ctx, object_b, frame_b, index_count, instance_count, start_index, base_vertex, start_instance);
+        draw_volume(ctx, live, object_b, frame_b, index_count, instance_count, start_index, base_vertex, start_instance);
       stop_clouds_timing(ctx, timing);
       if(not volume and object and frame)
         {
@@ -5805,6 +5808,7 @@ namespace edworld
 
     auto guarded_clouds(
       ID3D11DeviceContext * ctx,
+      settings_t const & live,
       UINT index_count,
       UINT instance_count,
       UINT start_index,
@@ -5816,7 +5820,7 @@ namespace edworld
       hook_work(
         [&]
         {
-          draw_clouds(ctx, index_count, instance_count, start_index, base_vertex, start_instance);
+          draw_clouds(ctx, live, index_count, instance_count, start_index, base_vertex, start_instance);
         },
         no_handler);
       --own_depth;
@@ -5937,13 +5941,16 @@ namespace edworld
 #endif
       orig_draw_indexed_instanced(self, index_count, instance_count, start_index, base_vertex, start_instance);
       // the immediate context first: a deferred one may draw on another thread, which reads neither current_shell
-      // (the immediate context's) nor a live setting (atmo_period_s; the render thread's, ini/live.h)
-      if(self == immediate.load(std::memory_order_relaxed) and current_shell and atmo_period_s()
-         and not hooks_off())
-        guarded_atmo(self);
-      if(self == immediate.load(std::memory_order_relaxed) and current_shell and start_fields().clouds
-         and not hooks_off())
-        guarded_clouds(self, index_count, instance_count, start_index, base_vertex, start_instance);
+      // (the immediate context's) nor a live setting (the render thread's, ini/live.h). The live settings taken once
+      // here and handed down to all that reads them below
+      if(self == immediate.load(std::memory_order_relaxed))
+        {
+        settings_t const & live{settings()};
+        if(current_shell and atmo_period_s(live) and not hooks_off())
+          guarded_atmo(self, live);
+        if(current_shell and start_fields().clouds and not hooks_off())
+          guarded_clouds(self, live, index_count, instance_count, start_index, base_vertex, start_instance);
+        }
       if(self == immediate.load(std::memory_order_relaxed) and full_after_draw)
         guarded_full_after(self);
       if(watched)

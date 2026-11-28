@@ -710,8 +710,8 @@ namespace
     settings_t held{out};
     clouds_settings_held(held);
     std::array<float, clouds_value_count> before{}, after{};
-    (void)clouds_values(out, planet, frame, before);
-    (void)clouds_values(held, planet, frame, after);
+    (void)clouds_values(out, out, planet, frame, before);
+    (void)clouds_values(held, held, planet, frame, after);
     check(std::memcmp(before.data(), after.data(), sizeof(before)) == 0,
           "settings held: the clouds' buffer the same for values out of their ranges, held and not");
     check(held.clouds_steps == 256.f and held.clouds_far_steps == 1.f and held.clouds_max_steps == 256.f
@@ -759,8 +759,8 @@ namespace
     settings_t odd_held{odd};
     clouds_settings_held(odd_held);
     std::array<float, clouds_value_count> odd_before{}, odd_after{};
-    (void)clouds_values(odd, planet, frame, odd_before);
-    (void)clouds_values(odd_held, planet, frame, odd_after);
+    (void)clouds_values(odd, odd, planet, frame, odd_before);
+    (void)clouds_values(odd_held, odd_held, planet, frame, odd_after);
     check(std::memcmp(odd_before.data(), odd_after.data(), sizeof(odd_before)) == 0,
           "settings held: the clouds' buffer the same for NaN and infinities, held and not");
     check(odd_held.clouds_steps == 1.f and odd_held.clouds_far_steps == 256.f and odd_held.clouds_max_steps == 1.f
